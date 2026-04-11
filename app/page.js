@@ -1,11 +1,42 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Blocks, Ear, BookOpenText, Gamepad2, Search, Plus, X, BookA, Volume2 } from "lucide-react";
+import { Blocks, Ear, BookOpenText, Gamepad2, Search, Plus, X, BookA, Volume2, Play, Link2, UserCircle2, PlayCircle, Clock3, Mic2, PenLine } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 const CAROUSEL_INTERVAL = 15000;
 
+
+
+const MODULE_ACCENTS = {
+  listening: { bg: "#eab308", soft: "rgba(234,179,8,0.18)", text: "#92400e" },
+  reading: { bg: "#3b82f6", soft: "rgba(59,130,246,0.18)", text: "#1d4ed8" },
+  shadowing: { bg: "#ef4444", soft: "rgba(239,68,68,0.18)", text: "#b91c1c" },
+  writing: { bg: "#10b981", soft: "rgba(16,185,129,0.18)", text: "#047857" },
+  gaming: { bg: "#8b5cf6", soft: "rgba(139,92,246,0.18)", text: "#6d28d9" },
+};
+
+const MODULE_TABS = [
+  { key: "listening", label: "Listening", icon: Ear },
+  { key: "reading", label: "Reading", icon: BookOpenText },
+  { key: "shadowing", label: "Shadowing", icon: Mic2 },
+  { key: "writing", label: "Writing", icon: PenLine },
+  { key: "gaming", label: "Gaming", icon: Gamepad2 },
+];
+
+const SEEDED_CHANNELS = [
+  { id: "c1", name: "Nihongo no Mori", category: "JLPT" },
+  { id: "c2", name: "Comprehensible Japanese", category: "Immersion" },
+  { id: "c3", name: "Japanese Ammo with Misa", category: "Grammar" },
+  { id: "c4", name: "YUYUの日本語Podcast", category: "Podcast" },
+];
+
+const SEEDED_VIDEOS = [
+  { id: "nBJ5dhjR3mY", title: "Learn Japanese with Real Conversations", channel: "Comprehensible Japanese", duration: "18:43", level: "N4-N3", published: "2 weeks ago" },
+  { id: "B4fI6UC6W8A", title: "Shadowing Japanese: Daily Routine", channel: "Nihongo no Mori", duration: "12:08", level: "N3", published: "1 month ago" },
+  { id: "M4g8QHkM4mY", title: "Japanese Listening Practice for Beginners", channel: "Japanese Ammo with Misa", duration: "22:31", level: "N5-N4", published: "3 days ago" },
+  { id: "YfS0xvAcf3Q", title: "Slow Japanese Podcast - Tokyo Life", channel: "YUYUの日本語Podcast", duration: "16:19", level: "N4", published: "6 days ago" },
+];
 // --- Helper Components ---
 
 function PillSliderToggle({ value, options, onChange, width = 110, size = "md" }) {
@@ -59,7 +90,7 @@ function WordLearningCard() {
   const [dictionaryValue, setDictionaryValue] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [progress, setProgress] = useState(0);
-  const startTimeRef = useRef(Date.now());
+  const startTimeRef = useRef(0);
 
   const playAudio = (url) => {
     if (!url) return;
@@ -268,14 +299,21 @@ export default function Home() {
   const [wordsRead, setWordsRead] = useState(3050000);
   const [wordsWritten, setWordsWritten] = useState(260000);
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const overallHours = useMemo(() => listeningHours + gamingHours + shadowingHours, [listeningHours, gamingHours, shadowingHours]);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 900);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   return (
     <main style={styles.page}>
       <div style={styles.bgOrb1} /><div style={styles.bgOrb2} />
       <div style={styles.container}>
-        <section style={styles.heroGrid}>
+        <section style={{ ...styles.heroGrid, gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr" }}>
           <div style={styles.heroCard}>
             <h1 style={styles.title}>Japanese Progress</h1>
             <div style={styles.overallRow}>
@@ -297,17 +335,36 @@ export default function Home() {
           <WordLearningCard />
         </section>
         <section style={styles.tabsWrap}>
-          <TabButton active={tab === "listening"} onClick={() => setTab("listening")}>Listening</TabButton>
-          <TabButton active={tab === "reading"} onClick={() => setTab("reading")}>Reading</TabButton>
-          <TabButton active={tab === "gaming"} onClick={() => setTab("gaming")}>Gaming</TabButton>
+          <ModuleNav activeTab={tab} onChange={setTab} />
         </section>
         <section style={styles.contentWrap}>
-          {tab === "listening" && <ListeningTab listeningHours={listeningHours} shadowingHours={shadowingHours} setListeningHours={setListeningHours} setShadowingHours={setShadowingHours} />}
-          {tab === "reading" && <ReadingTab wordsRead={wordsRead} wordsWritten={wordsWritten} setWordsRead={setWordsRead} setWordsWritten={setWordsWritten} />}
-          {tab === "gaming" && <GamingTab gamingHours={gamingHours} setGamingHours={setGamingHours} />}
+          {tab === "listening" && <ListeningTab listeningHours={listeningHours} setListeningHours={setListeningHours} isMobile={isMobile} />}
+          {tab === "reading" && <ReadingTab wordsRead={wordsRead} setWordsRead={setWordsRead} isMobile={isMobile} />}
+          {tab === "shadowing" && <ShadowingTab shadowingHours={shadowingHours} setShadowingHours={setShadowingHours} isMobile={isMobile} />}
+          {tab === "writing" && <WritingTab wordsWritten={wordsWritten} setWordsWritten={setWordsWritten} isMobile={isMobile} />}
+          {tab === "gaming" && <GamingTab gamingHours={gamingHours} setGamingHours={setGamingHours} isMobile={isMobile} />}
         </section>
       </div>
     </main>
+  );
+}
+
+function ModuleNav({ activeTab, onChange }) {
+  const activeIndex = Math.max(0, MODULE_TABS.findIndex((item) => item.key === activeTab));
+  return (
+    <div style={styles.moduleNavTrack}>
+      <div style={styles.moduleNavSlider(activeIndex, MODULE_TABS.length, MODULE_ACCENTS[activeTab]?.bg)} />
+      {MODULE_TABS.map((item) => {
+        const Icon = item.icon;
+        const isActive = activeTab === item.key;
+        return (
+          <button key={item.key} onClick={() => onChange(item.key)} style={styles.moduleNavButton(isActive)}>
+            <Icon size={15} />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -344,27 +401,98 @@ function NumberField({ label, value, onChange, step = 1 }) {
   );
 }
 
-function TabButton({ active, children, onClick }) {
-  return <button onClick={onClick} style={styles.tabButton(active)}>{children}</button>;
-}
+function ListeningTab({ listeningHours, setListeningHours, isMobile }) {
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  const [subscribedChannels, setSubscribedChannels] = useState(SEEDED_CHANNELS);
+  const [videoFeed, setVideoFeed] = useState(SEEDED_VIDEOS);
+  const [selectedVideoId, setSelectedVideoId] = useState(SEEDED_VIDEOS[0]?.id);
 
-function ListeningTab({ listeningHours, shadowingHours, setListeningHours, setShadowingHours }) {
+  const selectedVideo = useMemo(() => videoFeed.find((video) => video.id === selectedVideoId) || videoFeed[0], [videoFeed, selectedVideoId]);
+  const handleVideoSelect = (videoId) => setSelectedVideoId(videoId);
+
+  useEffect(() => {
+    if (!videoFeed.length) return;
+    const stillExists = videoFeed.some((video) => video.id === selectedVideoId);
+    if (!stillExists) setSelectedVideoId(videoFeed[0].id);
+  }, [videoFeed, selectedVideoId]);
+
   return (
-    <div style={styles.mainGrid}>
+    <div style={{ ...styles.listeningGrid, gridTemplateColumns: isMobile ? "1fr" : "1.55fr 1fr" }}>
       <div style={styles.largeCard}>
-        <div style={styles.sectionHeader}><div><h2 style={styles.sectionTitle}>Listening</h2><p style={styles.sectionText}>Adjust totals.</p></div><div style={styles.pill}>Main learning area</div></div>
-        <div style={styles.controlGrid}>
+        <div style={{ ...styles.sectionHeader, flexDirection: isMobile ? "column" : "row" }}><div><h2 style={styles.sectionTitle}>Listening Workspace</h2><p style={styles.sectionText}>YouTube-first Japanese listening dashboard for study sessions.</p></div><div style={{ ...styles.pill, background: MODULE_ACCENTS.listening.soft, color: MODULE_ACCENTS.listening.text }}>YouTube learning source</div></div>
+        <div style={styles.playerShell}>
+          <div style={styles.playerHeader}>
+            <div style={styles.playerHeaderLeft}><Play size={18} color="#ef4444" /><span style={styles.playerPlatform}>YouTube Integration</span></div>
+            <Tag label={youtubeConnected ? "Connected" : "Not Connected"} tone={youtubeConnected ? "green" : "orange"} />
+          </div>
+          <div style={styles.playerFrameWrap}>
+            <iframe
+              title={selectedVideo?.title || "Japanese listening video"}
+              src={`https://www.youtube.com/embed/${selectedVideo?.id}?rel=0`}
+              style={styles.playerFrame}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+          <div style={styles.playerMeta}>
+            <h3 style={styles.playerTitle}>{selectedVideo?.title}</h3>
+            <p style={styles.playerSub}>{selectedVideo?.channel} · {selectedVideo?.duration} · {selectedVideo?.level}</p>
+          </div>
+        </div>
+        <div style={styles.controlGridSingle}>
           <NumberField label="Listening hours" value={listeningHours} onChange={setListeningHours} step={0.5} />
-          <NumberField label="Shadowing hours" value={shadowingHours} onChange={setShadowingHours} step={0.5} />
         </div>
       </div>
+
       <div style={styles.sideColumn}>
-        <div style={styles.sideCard}><h3 style={styles.sideTitle}>Timer</h3><div style={styles.bigNumber}>00:00:00</div></div>
         <div style={styles.sideCard}>
-          <h3 style={styles.sideTitle}>Quick stats</h3>
-          <div style={styles.smallStatsGrid}>
-            <div style={styles.smallStat}><div style={styles.metricLabel}>Listening</div><div style={styles.smallStatValue}>{formatHours(listeningHours)}</div></div>
-            <div style={styles.smallStat}><div style={styles.metricLabel}>Shadowing</div><div style={styles.smallStatValue}>{formatHours(shadowingHours)}</div></div>
+          <h3 style={styles.sideTitle}>YouTube account</h3>
+          <div style={styles.accountRow}>
+            <div style={styles.accountIdentity}><UserCircle2 size={18} /><span>{youtubeConnected ? "Connected learner account" : "Sign in to connect YouTube"}</span></div>
+            <button
+              style={styles.connectButton(youtubeConnected)}
+              onClick={() => {
+                setYoutubeConnected((v) => !v);
+                setSubscribedChannels([...SEEDED_CHANNELS]);
+                setVideoFeed([...SEEDED_VIDEOS]);
+              }}
+            >
+              <Link2 size={14} /> {youtubeConnected ? "Disconnect" : "Connect"}
+            </button>
+          </div>
+          <p style={styles.helperText}>Foundation ready for auth, subscriptions sync, and personalized recommendations.</p>
+        </div>
+
+        <div style={styles.sideCard}>
+          <h3 style={styles.sideTitle}>Subscribed Japanese channels</h3>
+          <div style={styles.listStack}>
+            {subscribedChannels.map((channel) => (
+              <div key={channel.id} style={styles.simpleRow}>
+                <span style={styles.simpleTitle}>{channel.name}</span>
+                <Tag label={channel.category} tone="blue" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.sideCard}>
+          <h3 style={styles.sideTitle}>Recommended / recent videos</h3>
+          <div style={styles.listStack}>
+            {videoFeed.map((video) => {
+              const active = video.id === selectedVideo?.id;
+              return (
+                <button key={video.id} style={styles.videoFeedButton(active)} onClick={() => handleVideoSelect(video.id)}>
+                  <div style={styles.videoFeedTop}>
+                    <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
+                    <span style={styles.videoFeedTitle(active)}>{video.title}</span>
+                  </div>
+                  <div style={styles.videoFeedMeta(active)}>
+                    <span>{video.channel}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Clock3 size={12} />{video.duration}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -372,21 +500,34 @@ function ListeningTab({ listeningHours, shadowingHours, setListeningHours, setSh
   );
 }
 
-function ReadingTab({ wordsRead, wordsWritten, setWordsRead, setWordsWritten }) {
+function ReadingTab({ wordsRead, setWordsRead, isMobile }) {
   return (
-    <div style={styles.largeCard}><h2 style={styles.sectionTitle}>Reading & Writing</h2><p style={styles.sectionText}>Keep word totals current.</p>
-      <div style={styles.controlGrid}>
-        <NumberField label="Words read" value={wordsRead} onChange={setWordsRead} step={100} />
-        <NumberField label="Words written" value={wordsWritten} onChange={setWordsWritten} step={100} />
-      </div>
+    <div style={styles.largeCard}><h2 style={styles.sectionTitle}>Reading</h2><p style={styles.sectionText}>Track total words read across books, manga, and articles.</p>
+      <div style={{ ...styles.controlGridSingle, gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 360px)" }}><NumberField label="Words read" value={wordsRead} onChange={setWordsRead} step={100} /></div>
     </div>
   );
 }
 
-function GamingTab({ gamingHours, setGamingHours }) {
+function ShadowingTab({ shadowingHours, setShadowingHours, isMobile }) {
+  return (
+    <div style={styles.largeCard}><h2 style={styles.sectionTitle}>Shadowing</h2><p style={styles.sectionText}>Track active output practice and imitation sessions.</p>
+      <div style={{ ...styles.controlGridSingle, gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 360px)" }}><NumberField label="Shadowing hours" value={shadowingHours} onChange={setShadowingHours} step={0.5} /></div>
+    </div>
+  );
+}
+
+function WritingTab({ wordsWritten, setWordsWritten, isMobile }) {
+  return (
+    <div style={styles.largeCard}><h2 style={styles.sectionTitle}>Writing</h2><p style={styles.sectionText}>Track total words written from journaling and output drills.</p>
+      <div style={{ ...styles.controlGridSingle, gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 360px)" }}><NumberField label="Words written" value={wordsWritten} onChange={setWordsWritten} step={100} /></div>
+    </div>
+  );
+}
+
+function GamingTab({ gamingHours, setGamingHours, isMobile }) {
   return (
     <div style={styles.largeCard}><h2 style={styles.sectionTitle}>Gaming</h2><p style={styles.sectionText}>Track immersion hours.</p>
-      <div style={styles.controlGridSingle}><NumberField label="Gaming hours" value={gamingHours} onChange={setGamingHours} step={0.5} /></div>
+      <div style={{ ...styles.controlGridSingle, gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 360px)" }}><NumberField label="Gaming hours" value={gamingHours} onChange={setGamingHours} step={0.5} /></div>
     </div>
   );
 }
@@ -483,16 +624,40 @@ const styles = {
   expandableWrap: { marginTop: "12px", borderRadius: "18px", background: "rgba(255,255,255,0.32)", border: "1px solid rgba(255,255,255,0.62)", padding: "12px" },
   expandableSummary: { cursor: "pointer", listStyle: "none", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", fontSize: "12px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#667085" },
   expandableArrow: { fontSize: "20px", lineHeight: 1, color: "#cbd5e1" },
-  tabsWrap: { ...glass, borderRadius: "999px", padding: "10px", display: "flex", gap: "10px" },
-  tabButton: (active) => ({ border: "none", borderRadius: "999px", padding: "12px 18px", cursor: "pointer", fontWeight: 600, fontSize: "14px", background: active ? "#111827" : "rgba(255,255,255,0.62)", color: active ? "#fff" : "#111827", boxShadow: active ? "0 10px 30px rgba(15,23,42,0.18)" : "none" }),
-  mainGrid: { display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: "18px" },
+  tabsWrap: { ...glass, borderRadius: "999px", padding: "10px", display: "block", overflowX: "auto" },
+  contentWrap: { minWidth: 0 },
+  moduleNavTrack: { position: "relative", display: "grid", gridTemplateColumns: "repeat(5, minmax(116px, 1fr))", minWidth: "610px", gap: "6px", padding: "6px", borderRadius: "999px", background: "rgba(255,255,255,0.42)", border: "1px solid rgba(255,255,255,0.7)" },
+  moduleNavSlider: (idx, count, bgColor) => ({ position: "absolute", top: "6px", bottom: "6px", left: `calc(6px + (${idx} * (100% - 12px) / ${count}))`, width: `calc((100% - 12px) / ${count})`, borderRadius: "999px", background: bgColor || "#111827", boxShadow: "0 10px 30px rgba(15,23,42,0.25)", transition: "all 320ms cubic-bezier(0.22, 1, 0.36, 1)" }),
+  moduleNavButton: (active) => ({ position: "relative", zIndex: 1, border: "none", borderRadius: "999px", background: "transparent", color: active ? "#fff" : "#475569", cursor: "pointer", padding: "12px 14px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", fontWeight: 700, fontSize: "13px", transition: "color 220ms ease" }),
+  listeningGrid: { display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: "18px" },
   largeCard: { ...glass, borderRadius: "30px", padding: "24px" },
   sideColumn: { display: "grid", gap: "18px" },
   sideCard: { ...glass, borderRadius: "30px", padding: "24px" },
+  sideTitle: { margin: 0, fontSize: "18px", letterSpacing: "-0.02em", marginBottom: "12px" },
   sectionHeader: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", marginBottom: "18px" },
   sectionTitle: { margin: 0, fontSize: "24px", letterSpacing: "-0.03em" },
   sectionText: { margin: "8px 0 0 0", color: "#667085", fontSize: "14px" },
   pill: { display: "inline-flex", alignItems: "center", padding: "8px 12px", borderRadius: "999px", background: "rgba(255,255,255,0.52)", border: "1px solid rgba(255,255,255,0.72)", fontSize: "13px", color: "#667085" },
+  playerShell: { borderRadius: "22px", border: "1px solid rgba(15,23,42,0.12)", background: "rgba(255,255,255,0.56)", padding: "14px", display: "grid", gap: "12px" },
+  playerHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" },
+  playerHeaderLeft: { display: "inline-flex", alignItems: "center", gap: "8px" },
+  playerPlatform: { fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b", fontWeight: 700 },
+  playerFrameWrap: { position: "relative", width: "100%", paddingTop: "56.25%", borderRadius: "16px", overflow: "hidden", border: "1px solid rgba(15,23,42,0.12)", background: "#0f172a" },
+  playerFrame: { position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" },
+  playerMeta: { display: "grid", gap: "4px" },
+  playerTitle: { margin: 0, fontSize: "20px", lineHeight: 1.25, letterSpacing: "-0.02em" },
+  playerSub: { margin: 0, fontSize: "13px", color: "#64748b" },
+  accountRow: { display: "grid", gap: "10px" },
+  accountIdentity: { display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#0f172a", flexWrap: "wrap" },
+  connectButton: (connected) => ({ border: connected ? "1px solid rgba(239,68,68,0.32)" : "1px solid rgba(16,185,129,0.32)", background: connected ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)", color: connected ? "#b91c1c" : "#047857", borderRadius: "12px", padding: "10px 12px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", cursor: "pointer", fontWeight: 700 }),
+  helperText: { margin: "10px 0 0 0", color: "#64748b", fontSize: "13px", lineHeight: 1.5 },
+  listStack: { display: "grid", gap: "10px" },
+  simpleRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", borderRadius: "14px", border: "1px solid rgba(15,23,42,0.1)", background: "rgba(255,255,255,0.62)", padding: "11px 12px" },
+  simpleTitle: { fontSize: "13px", fontWeight: 600, color: "#0f172a" },
+  videoFeedButton: (active) => ({ border: active ? "1px solid rgba(234,179,8,0.55)" : "1px solid rgba(15,23,42,0.1)", background: active ? "linear-gradient(140deg, #facc15, #eab308)" : "rgba(255,255,255,0.62)", color: active ? "#fff" : "#0f172a", borderRadius: "14px", padding: "10px 12px", display: "grid", gap: "6px", textAlign: "left", cursor: "pointer", transition: "all 220ms ease" }),
+  videoFeedTop: { display: "flex", alignItems: "flex-start", gap: "8px" },
+  videoFeedTitle: (active) => ({ fontSize: "13px", fontWeight: 700, lineHeight: 1.35, color: active ? "#fff" : "#111827" }),
+  videoFeedMeta: (active) => ({ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "12px", color: active ? "rgba(255,255,255,0.92)" : "#64748b" }),
   bigNumber: { fontSize: "56px", fontWeight: 700, letterSpacing: "-0.06em", textAlign: "center" },
   smallStatsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" },
   smallStat: { padding: "16px", borderRadius: "18px", background: "rgba(255,255,255,0.48)", border: "1px solid rgba(255,255,255,0.68)" },
