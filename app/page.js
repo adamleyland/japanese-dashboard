@@ -1,9 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Blocks, Ear, BookOpenText, Gamepad2  } from "lucide-react";
 
 export default function Home() {
   const [tab, setTab] = useState("listening");
+  const [listeningHours, setListeningHours] = useState(1030);
+  const [shadowingHours, setShadowingHours] = useState(180);
+  const [gamingHours, setGamingHours] = useState(280);
+  const [wordsRead, setWordsRead] = useState(3050000);
+  const [wordsWritten, setWordsWritten] = useState(260000);
+  const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
+
+  const overallHours = useMemo(
+    () => listeningHours + gamingHours + shadowingHours,
+    [listeningHours, gamingHours, shadowingHours]
+  );
 
   return (
     <main style={styles.page}>
@@ -12,18 +24,67 @@ export default function Home() {
       <div style={styles.container}>
         <section style={styles.heroGrid}>
           <div style={styles.heroCard}>
-            <div style={styles.eyebrow}>Main dashboard</div>
-            <h1 style={styles.title}>Japanese Progress Dashboard</h1>
-            <p style={styles.subtitle}>
-              Track listening, reading, and gaming in one clean place.
-            </p>
+            <h1 style={styles.title}>Japanese Progress</h1>
 
-            <div style={styles.metricsGrid}>
-              <MetricCard label="Listening" value="1030 / 2000h" />
-              <MetricCard label="Reading" value="3.05m / 5m" />
-              <MetricCard label="Gaming" value="280h" />
-              <MetricCard label="Overall" value="52.4%" />
+            <div style={styles.overallRow}>
+              <MetricCard
+                label="Overall hours"
+                value={formatHours(overallHours)}
+                icon={<Blocks size={20} strokeWidth={2} color="#ef4444" />}
+                featured
+              />
             </div>
+
+            <div style={styles.metricsGridThree}>
+              <MetricCard
+                label="Listening hours"
+                value={formatHours(listeningHours)}
+                icon={<Ear size={20} strokeWidth={2} color="#eab308" />}
+                onQuickAdd={() => setListeningHours((value) => value + 1)}
+                quickAddLabel="+1h"
+              />
+              <MetricCard
+                label="Words read"
+                value={formatWords(wordsRead)}
+                icon={<BookOpenText size={20} strokeWidth={2} color="#3b82f6" />}
+                onQuickAdd={() => setWordsRead((value) => value + 1000)}
+                quickAddLabel="+1k"
+              />
+              <MetricCard
+                label="Gaming hours"
+                value={formatHours(gamingHours)}
+                icon={<Gamepad2 size={20} strokeWidth={2} color="#8b5cf6" />}
+                onQuickAdd={() => setGamingHours((value) => value + 1)}
+                quickAddLabel="+1h"
+              />
+            </div>
+
+            <details
+              style={styles.expandableWrap}
+              open={isAdditionalOpen}
+              onToggle={(event) => setIsAdditionalOpen(event.currentTarget.open)}
+            >
+              <summary style={styles.expandableSummary}>
+                <span>Additional metrics</span>
+                <span style={styles.expandableArrow}>
+                  {isAdditionalOpen ? "▲" : "▼"}
+                </span>
+              </summary>
+              <div style={styles.subMetricsGrid}>
+                <SubMetricCard
+                  label="Shadowing hours"
+                  value={formatHours(shadowingHours)}
+                  onQuickAdd={() => setShadowingHours((value) => value + 0.5)}
+                  quickAddLabel="+0.5h"
+                />
+                <SubMetricCard
+                  label="Words written"
+                  value={formatWords(wordsWritten)}
+                  onQuickAdd={() => setWordsWritten((value) => value + 500)}
+                  quickAddLabel="+500"
+                />
+              </div>
+            </details>
           </div>
 
           <div style={styles.wordCard}>
@@ -53,21 +114,84 @@ export default function Home() {
         </section>
 
         <section style={styles.contentWrap}>
-          {tab === "listening" && <ListeningTab />}
-          {tab === "reading" && <ReadingTab />}
-          {tab === "gaming" && <GamingTab />}
+          {tab === "listening" && (
+            <ListeningTab
+              listeningHours={listeningHours}
+              shadowingHours={shadowingHours}
+              setListeningHours={setListeningHours}
+              setShadowingHours={setShadowingHours}
+            />
+          )}
+          {tab === "reading" && (
+            <ReadingTab
+              wordsRead={wordsRead}
+              wordsWritten={wordsWritten}
+              setWordsRead={setWordsRead}
+              setWordsWritten={setWordsWritten}
+            />
+          )}
+          {tab === "gaming" && (
+            <GamingTab gamingHours={gamingHours} setGamingHours={setGamingHours} />
+          )}
         </section>
       </div>
     </main>
   );
 }
 
-function MetricCard({ label, value }) {
+function MetricCard({
+  label,
+  value,
+  icon,
+  onQuickAdd,
+  quickAddLabel = "+1",
+  featured = false,
+}) {
   return (
-    <div style={styles.metricCard}>
+    <div style={styles.metricCard(featured)}>
+      <div style={styles.metricTopRow}>
+        <div style={styles.metricIconWrap(featured)}>{icon}</div>
+        {onQuickAdd ? (
+          <button onClick={onQuickAdd} style={styles.quickAddButton}>
+            {quickAddLabel}
+          </button>
+        ) : null}
+      </div>
       <div style={styles.metricLabel}>{label}</div>
-      <div style={styles.metricValue}>{value}</div>
+      <div style={styles.metricValue(featured)}>{value}</div>
     </div>
+  );
+}
+
+function SubMetricCard({ label, value, onQuickAdd, quickAddLabel = "+1" }) {
+  return (
+    <div style={styles.metricCard(false)}>
+      <div style={styles.metricTopRow}>
+        <div style={styles.metricLabel}>{label}</div>
+        {onQuickAdd ? (
+          <button onClick={onQuickAdd} style={styles.quickAddButton}>
+            {quickAddLabel}
+          </button>
+        ) : null}
+      </div>
+      <div style={styles.metricValue(false)}>{value}</div>
+    </div>
+  );
+}
+
+function NumberField({ label, value, onChange, step = 1 }) {
+  return (
+    <label style={styles.inputCard}>
+      <span style={styles.inputLabel}>{label}</span>
+      <input
+        type="number"
+        min={0}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))}
+        style={styles.input}
+      />
+    </label>
   );
 }
 
@@ -79,29 +203,38 @@ function TabButton({ active, children, onClick }) {
   );
 }
 
-function ListeningTab() {
+function ListeningTab({
+  listeningHours,
+  shadowingHours,
+  setListeningHours,
+  setShadowingHours,
+}) {
   return (
     <div style={styles.mainGrid}>
       <div style={styles.largeCard}>
         <div style={styles.sectionHeader}>
           <div>
             <h2 style={styles.sectionTitle}>Listening</h2>
-            <p style={styles.sectionText}>This is where the big YouTube player will go next.</p>
+            <p style={styles.sectionText}>
+              Adjust your active listening and shadowing totals here.
+            </p>
           </div>
           <div style={styles.pill}>Main learning area</div>
         </div>
 
-        <div style={styles.videoPlaceholder}>
-          YouTube player coming next
-        </div>
-
-        <div style={styles.progressBar}>
-          <div style={{ ...styles.progressFill, width: "51.5%" }} />
-        </div>
-
-        <div style={styles.progressMeta}>
-          <span>51.5% complete</span>
-          <span>1 block = 10 hours</span>
+        <div style={styles.controlGrid}>
+          <NumberField
+            label="Listening hours"
+            value={listeningHours}
+            onChange={setListeningHours}
+            step={0.5}
+          />
+          <NumberField
+            label="Shadowing hours"
+            value={shadowingHours}
+            onChange={setShadowingHours}
+            step={0.5}
+          />
         </div>
       </div>
 
@@ -115,12 +248,12 @@ function ListeningTab() {
           <h3 style={styles.sideTitle}>Quick stats</h3>
           <div style={styles.smallStatsGrid}>
             <div style={styles.smallStat}>
-              <div style={styles.metricLabel}>Today</div>
-              <div style={styles.smallStatValue}>1.0h</div>
+              <div style={styles.metricLabel}>Listening</div>
+              <div style={styles.smallStatValue}>{formatHours(listeningHours)}</div>
             </div>
             <div style={styles.smallStat}>
-              <div style={styles.metricLabel}>Remaining</div>
-              <div style={styles.smallStatValue}>970h</div>
+              <div style={styles.metricLabel}>Shadowing</div>
+              <div style={styles.smallStatValue}>{formatHours(shadowingHours)}</div>
             </div>
           </div>
         </div>
@@ -129,22 +262,57 @@ function ListeningTab() {
   );
 }
 
-function ReadingTab() {
+function ReadingTab({ wordsRead, wordsWritten, setWordsRead, setWordsWritten }) {
   return (
     <div style={styles.largeCard}>
-      <h2 style={styles.sectionTitle}>Reading</h2>
-      <p style={styles.sectionText}>Reading tracker will go here next.</p>
+      <h2 style={styles.sectionTitle}>Reading & Writing</h2>
+      <p style={styles.sectionText}>Keep word totals current to drive dashboard metrics.</p>
+
+      <div style={styles.controlGrid}>
+        <NumberField
+          label="Words read"
+          value={wordsRead}
+          onChange={setWordsRead}
+          step={100}
+        />
+        <NumberField
+          label="Words written"
+          value={wordsWritten}
+          onChange={setWordsWritten}
+          step={100}
+        />
+      </div>
     </div>
   );
 }
 
-function GamingTab() {
+function GamingTab({ gamingHours, setGamingHours }) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Gaming</h2>
-      <p style={styles.sectionText}>Gaming tracker will go here next.</p>
+      <p style={styles.sectionText}>Track immersion hours from Japanese games.</p>
+
+      <div style={styles.controlGridSingle}>
+        <NumberField
+          label="Gaming hours"
+          value={gamingHours}
+          onChange={setGamingHours}
+          step={0.5}
+        />
+      </div>
     </div>
   );
+}
+
+function formatHours(value) {
+  return `${Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1,
+  })}h`;
+}
+
+function formatWords(value) {
+  return Number(value).toLocaleString();
 }
 
 const glass = {
@@ -207,6 +375,18 @@ const styles = {
     borderRadius: "30px",
     padding: "24px",
   },
+  logoSlot: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "16px",
+    border: "1px dashed rgba(15,23,42,0.2)",
+    background: "rgba(255,255,255,0.35)",
+    marginBottom: "10px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "28px",
+  },
   wordCard: {
     ...glass,
     borderRadius: "30px",
@@ -221,9 +401,9 @@ const styles = {
   },
   title: {
     fontSize: "44px",
-    lineHeight: 1.05,
+    lineHeight: 1.2,
     letterSpacing: "-0.05em",
-    margin: "0 0 10px 0",
+    margin: "10px 0 35px 0",
   },
   subtitle: {
     color: "#667085",
@@ -231,17 +411,67 @@ const styles = {
     fontSize: "16px",
     lineHeight: 1.6,
   },
-  metricsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "12px",
+  overallRow: {
     marginTop: "20px",
   },
-  metricCard: {
-    background: "rgba(255,255,255,0.55)",
-    border: "1px solid rgba(255,255,255,0.72)",
-    borderRadius: "22px",
-    padding: "18px",
+  metricsGridThree: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "12px",
+    marginTop: "12px",
+  },
+  subMetricsGrid: {
+    marginTop: "10px",
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+  },
+  metricCard: (featured) => ({
+    background: featured ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.58)",
+    border: "1px solid rgba(255,255,255,0.82)",
+    boxShadow: featured
+      ? "0 16px 36px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.7)"
+      : "0 12px 26px rgba(15,23,42,0.1)",
+    borderRadius: featured ? "24px" : "22px",
+    padding: featured ? "20px" : "18px",
+  }),
+  metricTopRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    marginBottom: "10px",
+  },
+  metricIconWrap: (featured) => ({
+    width: featured ? "40px" : "34px",
+    height: featured ? "40px" : "34px",
+    borderRadius: "12px",
+    border: "1px solid rgba(15,23,42,0.1)",
+    background: "rgba(255,255,255,0.85)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: featured ? "20px" : "18px",
+  }),
+  quickAddButton: {
+    border: "1px solid rgba(15,23,42,0.14)",
+    background: "rgba(255,255,255,0.9)",
+    borderRadius: "999px",
+    padding: "6px 10px",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#111827",
+    cursor: "pointer",
+  },
+  quickAddButtonSub: {
+    border: "1px solid rgba(15,23,42,0.1)",
+    background: "rgba(255,255,255,0.85)",
+    borderRadius: "999px",
+    padding: "5px 9px",
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#111827",
+    cursor: "pointer",
   },
   metricLabel: {
     fontSize: "12px",
@@ -250,10 +480,36 @@ const styles = {
     color: "#667085",
     marginBottom: "8px",
   },
-  metricValue: {
-    fontSize: "28px",
+  metricValue: (featured) => ({
+    fontSize: featured ? "40px" : "30px",
     fontWeight: 700,
     letterSpacing: "-0.04em",
+    lineHeight: 1,
+  }),
+  expandableWrap: {
+    marginTop: "12px",
+    borderRadius: "18px",
+    background: "rgba(255,255,255,0.32)",
+    border: "1px solid rgba(255,255,255,0.62)",
+    padding: "12px",
+  },
+  expandableSummary: {
+    cursor: "pointer",
+    listStyle: "none",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    fontSize: "12px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#667085",
+  },
+  expandableArrow: {
+    fontSize: "20px",
+    lineHeight: 1,
+    color: "#cbd5e1",
   },
   word: {
     fontSize: "52px",
@@ -352,39 +608,6 @@ const styles = {
     fontSize: "13px",
     color: "#667085",
   },
-  videoPlaceholder: {
-    height: "420px",
-    borderRadius: "24px",
-    background:
-      "linear-gradient(135deg, rgba(17,24,39,0.92), rgba(55,65,81,0.88))",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#fff",
-    fontSize: "22px",
-    fontWeight: 600,
-    marginBottom: "18px",
-  },
-  progressBar: {
-    width: "100%",
-    height: "16px",
-    borderRadius: "999px",
-    overflow: "hidden",
-    background: "rgba(255,255,255,0.5)",
-    border: "1px solid rgba(255,255,255,0.72)",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: "999px",
-    background: "linear-gradient(90deg, #111827 0%, #374151 100%)",
-  },
-  progressMeta: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginTop: "10px",
-    color: "#667085",
-    fontSize: "14px",
-  },
   sideTitle: {
     margin: "0 0 14px 0",
     fontSize: "20px",
@@ -411,5 +634,41 @@ const styles = {
     fontSize: "24px",
     fontWeight: 700,
     letterSpacing: "-0.04em",
+  },
+  controlGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+    marginTop: "18px",
+  },
+  controlGridSingle: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 360px)",
+    marginTop: "18px",
+  },
+  inputCard: {
+    display: "grid",
+    gap: "8px",
+    borderRadius: "18px",
+    background: "rgba(255,255,255,0.48)",
+    border: "1px solid rgba(255,255,255,0.68)",
+    padding: "14px",
+  },
+  inputLabel: {
+    fontSize: "12px",
+    color: "#667085",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+  input: {
+    width: "100%",
+    border: "1px solid rgba(15, 23, 42, 0.12)",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "#111827",
+    background: "rgba(255,255,255,0.9)",
+    outline: "none",
   },
 };
