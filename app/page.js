@@ -20,8 +20,19 @@ import {
   PenLine,
   Pause,
   RotateCcw,
-  Timer as TimerIcon,
   Play,
+  SkipForward,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Maximize2,
+  Minimize2,
+  Save,
+  Settings2,
+  Eye,
+  EyeOff,
+  BarChart3,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -106,7 +117,7 @@ function PillSliderToggle({ value, options, onChange, width = 110, size = "md" }
   );
 }
 
-function ProgressRing({ radius, stroke, progress }) {
+function ProgressRing({ radius, stroke, progress, color = "#ef4444" }) {
   const normalizedRadius = radius - stroke * 2;
   const circumference = normalizedRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -122,7 +133,7 @@ function ProgressRing({ radius, stroke, progress }) {
         cy={radius}
       />
       <circle
-        stroke="#ef4444"
+        stroke={color}
         fill="transparent"
         strokeWidth={stroke}
         strokeDasharray={`${circumference} ${circumference}`}
@@ -237,7 +248,10 @@ function WordLearningCard() {
   };
 
   useEffect(() => {
-    fetchCarousel();
+    const timer = setTimeout(() => {
+      fetchCarousel();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -250,12 +264,14 @@ function WordLearningCard() {
       let query = supabase.from("words").select("*, examples (*)");
 
       if (dictionaryInputMode === "ja") {
-        query = query.or(`term.ilike.%${dictionaryValue}%,reading.ilike.%${dictionaryValue}%`);
+        query = query.or(
+          `term.ilike.%${dictionaryValue}%,reading.ilike.%${dictionaryValue}%,kanji.ilike.%${dictionaryValue}%`,
+        );
       } else {
         query = query.ilike("meaning", `%${dictionaryValue}%`);
       }
 
-      const { data } = await query.limit(5);
+      const { data } = await query.order("is_common", { ascending: false }).limit(10);
       setSearchResults(data || []);
     };
 
@@ -277,7 +293,6 @@ function WordLearningCard() {
 
   useEffect(() => {
     if (mode !== "carousel" || carouselEntries.length === 0) {
-      setProgress(0);
       return;
     }
 
@@ -299,6 +314,27 @@ function WordLearningCard() {
   }, [mode, carouselEntries.length]);
 
   const activeEntry = carouselEntries[activeWordIndex] || null;
+  const activeExamples =
+    activeEntry?.examples?.filter((ex) => ex?.sentence_ja || ex?.sentence_en).slice(0, 2) || [];
+
+  const rotateCarousel = (direction = 1) => {
+    if (!carouselEntries.length) return;
+    setActiveWordIndex(
+      (prev) => (prev + direction + carouselEntries.length) % carouselEntries.length,
+    );
+    startTimeRef.current = Date.now();
+    setProgress(0);
+  };
+
+  const markKnown = async () => {
+    if (!activeEntry?.carousel_id) return;
+    await supabase.from("user_carousel").delete().eq("id", activeEntry.carousel_id);
+    await supabase
+      .from("mastered_words")
+      .upsert({ word_id: activeEntry.id }, { onConflict: "word_id", ignoreDuplicates: true });
+    fetchCarousel();
+    setActiveWordIndex(0);
+  };
 
   const highlightSentence = (sentence, target) => {
     if (!target || !sentence.includes(target)) return sentence;
@@ -388,37 +424,59 @@ function WordLearningCard() {
               </div>
 
               <div style={styles.contextSectionBox}>
-                <div style={styles.wordSentenceLabel}>Context examples</div>
+                {activeExamples.length > 0 ? (
+                  <>
+                    <div style={styles.wordSentenceLabel}>Context examples</div>
 
-                <div style={styles.contextExamplesList}>
-                  {activeEntry.examples?.slice(0, 2).map((ex, i) => (
-                    <div key={i} style={styles.contextExampleItem}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "flex-start",
-                          gap: "8px",
-                        }}
-                      >
-                        <div style={styles.wordSentence}>
-                          {highlightSentence(ex.sentence_ja, ex.highlight_ja)}
-                        </div>
-
-                        {ex.sentence_audio_url && (
-                          <button
-                            onClick={() => playAudio(ex.sentence_audio_url)}
-                            style={styles.miniAudioBtn}
+                    <div style={styles.contextExamplesList}>
+                      {activeExamples.map((ex, i) => (
+                        <div key={i} style={styles.contextExampleItem}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: "8px",
+                            }}
                           >
-                            <Ear size={14} color="#64748b" />
-                          </button>
-                        )}
-                      </div>
+                            {ex.sentence_ja && (
+                              <div style={styles.wordSentence}>
+                                {highlightSentence(ex.sentence_ja, ex.highlight_ja)}
+                              </div>
+                            )}
 
-                      <div style={styles.wordSentenceTranslation}>{ex.sentence_en}</div>
+                            {ex.sentence_audio_url && (
+                              <button
+                                onClick={() => playAudio(ex.sentence_audio_url)}
+                                style={styles.miniAudioBtn}
+                              >
+                                <Ear size={14} color="#64748b" />
+                              </button>
+                            )}
+                          </div>
+
+                          {ex.sentence_en && (
+                            <div style={styles.wordSentenceTranslation}>{ex.sentence_en}</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <div style={styles.dictionaryPlaceholder}>No example sentence available.</div>
+                )}
+              </div>
+
+              <div style={styles.carouselActionRow}>
+                <button onClick={() => rotateCarousel(-1)} style={styles.secondaryAction}>
+                  <ChevronLeft size={14} /> Previous
+                </button>
+                <button onClick={() => rotateCarousel(1)} style={styles.secondaryAction}>
+                  Next <ChevronRight size={14} />
+                </button>
+                <button onClick={markKnown} style={styles.masteredAction}>
+                  <CheckCircle2 size={14} /> Tick / Known
+                </button>
               </div>
             </>
           ) : (
@@ -677,18 +735,8 @@ export default function Home() {
 }
 
 function ModuleNav({ activeTab, onChange }) {
-  const activeIndex = Math.max(0, MODULE_TABS.findIndex((item) => item.key === activeTab));
-
   return (
     <div style={styles.moduleNavTrack}>
-      <div
-        style={styles.moduleNavSlider(
-          activeIndex,
-          MODULE_TABS.length,
-          MODULE_ACCENTS[activeTab]?.bg,
-        )}
-      />
-
       {MODULE_TABS.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.key;
@@ -699,8 +747,8 @@ function ModuleNav({ activeTab, onChange }) {
             onClick={() => onChange(item.key)}
             style={styles.moduleNavButton(isActive)}
           >
-            <Icon size={15} />
-            <span>{item.label}</span>
+            <Icon size={18} />
+            {isActive && <span style={{ marginLeft: "6px" }}>{item.label}</span>}
           </button>
         );
       })}
@@ -765,6 +813,7 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
   const [videoFeed] = useState(SEEDED_VIDEOS);
   const [selectedVideoId, setSelectedVideoId] = useState(SEEDED_VIDEOS[0]?.id);
   const [workspaceTab, setWorkspaceTab] = useState("account");
+  const [focusMode, setFocusMode] = useState(false);
 
   const [clockMode, setClockMode] = useState("stopwatch");
   const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
@@ -773,25 +822,52 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
   const [timerRunning, setTimerRunning] = useState(false);
 
   const [listeningGoal, setListeningGoal] = useState(1200);
-  const [todayHours, setTodayHours] = useState(1.5);
+  const [showVisualization, setShowVisualization] = useState(true);
+  const [vizMode, setVizMode] = useState("blocks");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const sessionRef = useRef(0);
 
   const playerRef = useRef(null);
   const playerHostRef = useRef(null);
   const initRef = useRef(false);
 
-  const selectedVideo = useMemo(
-    () => videoFeed.find((video) => video.id === selectedVideoId) || videoFeed[0],
-    [videoFeed, selectedVideoId],
+  const approvedChannelNames = useMemo(
+    () => new Set(subscribedChannels.map((channel) => channel.name)),
+    [subscribedChannels],
+  );
+  const approvedFeed = useMemo(
+    () => videoFeed.filter((video) => approvedChannelNames.has(video.channel)),
+    [videoFeed, approvedChannelNames],
   );
 
-  useEffect(() => {
-    if (!videoFeed.length) return;
-    const stillExists = videoFeed.some((video) => video.id === selectedVideoId);
-    if (!stillExists) setSelectedVideoId(videoFeed[0].id);
-  }, [videoFeed, selectedVideoId]);
+  const selectedVideo = useMemo(
+    () => approvedFeed.find((video) => video.id === selectedVideoId) || approvedFeed[0],
+    [approvedFeed, selectedVideoId],
+  );
+  const queueTotal = approvedFeed.length;
+  const queueIndex = Math.max(0, approvedFeed.findIndex((item) => item.id === selectedVideo?.id));
 
   useEffect(() => {
     if (!playerHostRef.current || initRef.current) return;
+
+    const syncVideoProgress = () => {
+      const player = playerRef.current;
+      if (!player || !selectedVideoId) return;
+      if (typeof player.getCurrentTime !== "function") return;
+
+      const currentTime = Math.floor(player.getCurrentTime() || 0);
+      localStorage.setItem(
+        "jp_dashboard_youtube_session",
+        JSON.stringify({ selectedVideoId, currentTime, updatedAt: Date.now() }),
+      );
+    };
+
+    const goNextVideo = () => {
+      if (!approvedFeed.length || !selectedVideoId) return;
+      const index = approvedFeed.findIndex((video) => video.id === selectedVideoId);
+      const next = approvedFeed[(index + 1) % approvedFeed.length];
+      if (next?.id) setSelectedVideoId(next.id);
+    };
 
     const onPlayerState = (event) => {
       const state = event?.data;
@@ -800,10 +876,22 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
 
       if (state === YTRef.PLAYING) {
         setStopwatchRunning(true);
+        sessionRef.current = Date.now();
       }
 
-      if (state === YTRef.PAUSED || state === YTRef.ENDED) {
+      if (state === YTRef.PAUSED) {
         setStopwatchRunning(false);
+        syncVideoProgress();
+      }
+
+      if (state === YTRef.ENDED) {
+        setStopwatchRunning(false);
+        if (sessionRef.current) {
+          const gained = (Date.now() - sessionRef.current) / 3600000;
+          if (gained > 0) setListeningHours((hours) => hours + gained);
+          sessionRef.current = 0;
+        }
+        goNextVideo();
       }
     };
 
@@ -848,14 +936,19 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
     return () => {
       window.onYouTubeIframeAPIReady = priorReady;
     };
-  }, [selectedVideoId]);
+  }, [approvedFeed, selectedVideoId, setListeningHours]);
 
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !selectedVideoId) return;
 
     if (typeof player.loadVideoById === "function") {
-      player.loadVideoById(selectedVideoId);
+      const stored =
+        typeof window !== "undefined"
+          ? JSON.parse(localStorage.getItem("jp_dashboard_youtube_session") || "null")
+          : null;
+      const resumeAt = stored?.selectedVideoId === selectedVideoId ? stored.currentTime : 0;
+      player.loadVideoById({ videoId: selectedVideoId, startSeconds: resumeAt || 0 });
     }
   }, [selectedVideoId]);
 
@@ -871,6 +964,7 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
     const timer = setInterval(() => {
       setTimerSeconds((seconds) => {
         if (seconds <= 1) {
+          setListeningHours((hours) => hours + 300 / 3600);
           setTimerRunning(false);
           return 0;
         }
@@ -879,17 +973,52 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [clockMode, timerRunning]);
+  }, [clockMode, timerRunning, setListeningHours]);
 
   const bankStopwatch = () => {
     if (!stopwatchSeconds) return;
     const bankedHours = stopwatchSeconds / 3600;
     setListeningHours((hours) => hours + bankedHours);
-    setTodayHours((hours) => hours + bankedHours);
     setStopwatchSeconds(0);
   };
 
+  const liveSessionSeconds = clockMode === "timer" ? 300 - timerSeconds : stopwatchSeconds;
+
+  const toggleTimerStart = () => {
+    if (clockMode === "stopwatch") {
+      setStopwatchRunning((running) => !running);
+    } else {
+      setTimerRunning((running) => !running);
+    }
+  };
+
+  const skipCurrentVideo = () => {
+    if (!approvedFeed.length || !selectedVideo?.id) return;
+    const index = approvedFeed.findIndex((video) => video.id === selectedVideo.id);
+    const next = approvedFeed[(index + 1) % approvedFeed.length];
+    if (next?.id) setSelectedVideoId(next.id);
+  };
+
+  const saveCurrentSession = () => {
+    const player = playerRef.current;
+    const currentTime =
+      player && typeof player.getCurrentTime === "function"
+        ? Math.floor(player.getCurrentTime() || 0)
+        : 0;
+
+    localStorage.setItem(
+      "jp_dashboard_youtube_session",
+      JSON.stringify({
+        selectedVideoId,
+        currentTime,
+        liveSessionSeconds,
+        savedAt: Date.now(),
+      }),
+    );
+  };
+
   const totalBlocks = Math.max(12, Math.ceil(Math.max(listeningGoal, listeningHours) / 10));
+  const listeningProgress = Math.min(100, (listeningHours / Math.max(1, listeningGoal)) * 100);
 
   return (
     <div
@@ -908,136 +1037,127 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
           <div>
             <h2 style={styles.sectionTitle}>Listening Workspace</h2>
             <p style={styles.sectionText}>
-              Japanese listening source with YouTube account-ready controls.
+              Approved-channel feed and immersion architecture.
             </p>
-          </div>
-
-          <div
-            style={{
-              ...styles.pill,
-              background: MODULE_ACCENTS.listening.soft,
-              color: MODULE_ACCENTS.listening.text,
-            }}
-          >
-            YouTube learning source
           </div>
         </div>
 
-        <div style={styles.playerShell}>
-          <div style={styles.playerHeader}>
-            <div style={styles.playerHeaderLeft}>
-              <Video size={18} color="#ef4444" />
-              <span style={styles.playerPlatform}>YouTube Integration</span>
+        {focusMode && <div style={styles.focusBackdrop} onClick={() => setFocusMode(false)} />}
+        
+        <div style={{ ...styles.playerShell, ...(focusMode ? styles.playerShellFocus : {}) }}>
+          {!focusMode && (
+            <div style={styles.playerHeader}>
+              <div style={styles.playerHeaderLeft}>
+                <Video size={18} color="#ef4444" />
+                <span style={styles.playerPlatform}>YouTube Integration</span>
+              </div>
+              <Tag label={youtubeConnected ? "Connected" : "Not Connected"} tone={youtubeConnected ? "green" : "orange"} />
+            </div>
+          )}
+
+          <div style={{ ...styles.playerFrameWrap, ...(focusMode ? styles.playerFrameWrapFocus : {}) }}>
+            <div ref={playerHostRef} style={styles.playerFrame} />
+            <button style={styles.focusModeBtn} onClick={() => setFocusMode((v) => !v)}>
+              {focusMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          </div>
+
+          <div style={focusMode ? styles.playerControlRowFocus : styles.playerControlColumn}>
+            <div style={styles.playerMeta}>
+              <h3 style={styles.playerTitle}>{selectedVideo?.title}</h3>
+              <p style={styles.playerSub}>
+                {selectedVideo?.channel} · {selectedVideo?.duration} · Que {queueIndex + 1}/{queueTotal}
+              </p>
+            </div>
+            <div style={styles.playerControlRow}>
+              <button style={styles.miniActionButton("blue")} onClick={saveCurrentSession}>
+                <Save size={12} /> Save
+              </button>
+              <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
+                <SkipForward size={12} /> Skip
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {!focusMode && (
+          <div style={styles.innerTabsWrap}>
+            <div style={styles.innerTabsRow}>
+              {[
+                { key: "account", label: "Account" },
+                { key: "channels", label: "Subscribed Channels" },
+                { key: "recommended", label: "Recommended" },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  style={styles.innerTabButton(workspaceTab === item.key)}
+                  onClick={() => setWorkspaceTab(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
 
-            <Tag label={youtubeConnected ? "Connected" : "Not Connected"} tone={youtubeConnected ? "green" : "orange"} />
-          </div>
-
-          <div style={styles.playerFrameWrap}>
-            <div ref={playerHostRef} style={styles.playerFrame} />
-          </div>
-
-          <div style={styles.playerMeta}>
-            <h3 style={styles.playerTitle}>{selectedVideo?.title}</h3>
-            <p style={styles.playerSub}>
-              {selectedVideo?.channel} · {selectedVideo?.duration} · {selectedVideo?.level}
-            </p>
-          </div>
-        </div>
-
-        <div style={styles.innerTabsWrap}>
-          <div style={styles.innerTabsRow}>
-            {[
-              { key: "account", label: "Account" },
-              { key: "channels", label: "Subscribed Channels" },
-              { key: "recommended", label: "Recommended" },
-            ].map((item) => (
-              <button
-                key={item.key}
-                style={styles.innerTabButton(workspaceTab === item.key)}
-                onClick={() => setWorkspaceTab(item.key)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={styles.innerTabPanel}>
-            {workspaceTab === "account" && (
-              <>
-                <div style={styles.accountIdentity}>
-                  <UserCircle2 size={18} />
-                  <span>
-                    {youtubeConnected
-                      ? "Connected learner account"
-                      : "Sign in to connect YouTube"}
-                  </span>
-                </div>
-
-                <button
-                  style={styles.connectButton(youtubeConnected)}
-                  onClick={() => {
-                    setYoutubeConnected((v) => !v);
-                    setSubscribedChannels([...SEEDED_CHANNELS]);
-                  }}
-                >
-                  <Link2 size={14} /> {youtubeConnected ? "Disconnect" : "Connect"}
-                </button>
-
-                <p style={styles.helperText}>
-                  Prepared for OAuth, channel sync, and personalized recommendation feed.
-                </p>
-              </>
-            )}
-
-            {workspaceTab === "channels" && (
-              <div style={styles.listStack}>
-                {subscribedChannels.map((channel) => (
-                  <div key={channel.id} style={styles.simpleRow}>
-                    <span style={styles.simpleTitle}>{channel.name}</span>
-                    <Tag label={channel.category} tone="blue" />
+            <div style={styles.innerTabPanel}>
+              {workspaceTab === "account" && (
+                <>
+                  <div style={styles.accountIdentity}>
+                    <UserCircle2 size={18} />
+                    <span>
+                      {youtubeConnected ? "Connected learner account" : "Sign in to connect YouTube"}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <button
+                    style={styles.connectButton(youtubeConnected)}
+                    onClick={() => {
+                      setYoutubeConnected((v) => !v);
+                      setSubscribedChannels([...SEEDED_CHANNELS]);
+                    }}
+                  >
+                    <Link2 size={14} /> {youtubeConnected ? "Disconnect" : "Connect"}
+                  </button>
+                </>
+              )}
 
-            {workspaceTab === "recommended" && (
-              <div style={styles.listStack}>
-                {videoFeed.map((video) => {
-                  const active = video.id === selectedVideo?.id;
+              {workspaceTab === "channels" && (
+                <div style={styles.listStack}>
+                  {subscribedChannels.map((channel) => (
+                    <div key={channel.id} style={styles.simpleRow}>
+                      <span style={styles.simpleTitle}>{channel.name}</span>
+                      <Tag label={channel.category} tone="blue" />
+                    </div>
+                  ))}
+                </div>
+              )}
 
-                  return (
-                    <button
-                      key={video.id}
-                      style={styles.videoFeedButton(active)}
-                      onClick={() => setSelectedVideoId(video.id)}
-                    >
-                      <div style={styles.videoFeedTop}>
-                        <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
-                        <span style={styles.videoFeedTitle(active)}>{video.title}</span>
-                      </div>
-
-                      <div style={styles.videoFeedMeta(active)}>
-                        <span>{video.channel}</span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                          <Clock3 size={12} />
-                          {video.duration}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+              {workspaceTab === "recommended" && (
+                <div style={styles.listStack}>
+                  {approvedFeed.map((video) => {
+                    const active = video.id === selectedVideo?.id;
+                    return (
+                      <button
+                        key={video.id}
+                        style={styles.videoFeedButton(active)}
+                        onClick={() => setSelectedVideoId(video.id)}
+                      >
+                        <div style={styles.videoFeedTop}>
+                          <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
+                          <span style={styles.videoFeedTitle(active)}>{video.title}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div style={styles.sideColumn}>
         <div style={styles.sideCard}>
           <div style={styles.clockHeader}>
-            <h3 style={styles.sideTitle}>Timer / Stopwatch</h3>
-
+            <h3 style={styles.sideTitle}>Live Session Timer</h3>
             <PillSliderToggle
               value={clockMode}
               options={[
@@ -1045,139 +1165,126 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
                 { value: "timer", label: "Timer" },
               ]}
               onChange={setClockMode}
-              width={isCompact ? 190 : 220}
+              width={200}
               size="sm"
             />
           </div>
 
-          {clockMode === "stopwatch" ? (
-            <>
-              <div style={styles.clockValue}>{formatClock(stopwatchSeconds)}</div>
-
-              <div style={styles.clockActions}>
-                <button
-                  style={styles.actionButton("green")}
-                  onClick={() => setStopwatchRunning(true)}
-                >
-                  <Play size={14} /> Start
-                </button>
-                <button
-                  style={styles.actionButton("orange")}
-                  onClick={() => setStopwatchRunning(false)}
-                >
-                  <Pause size={14} /> Pause
-                </button>
-                <button
-                  style={styles.actionButton("slate")}
-                  onClick={() => {
-                    setStopwatchRunning(false);
-                    setStopwatchSeconds(0);
-                  }}
-                >
-                  <RotateCcw size={14} /> Reset
-                </button>
+          <div style={styles.timerContainer}>
+            <div style={styles.timerRingWrap}>
+              <ProgressRing 
+                radius={70} 
+                stroke={6} 
+                progress={((clockMode === "timer" ? (300 - timerSeconds) : stopwatchSeconds) % 60) / 60 * 100}
+                color="#6366f1"
+              />
+              <div style={styles.timerRingValue}>
+                {formatClock(clockMode === "timer" ? timerSeconds : stopwatchSeconds).split(':').slice(1).join(':')}
+                <div style={{fontSize: '11px', fontWeight: 500, color: '#64748b', opacity: 0.8}}>MIN:SEC</div>
               </div>
+            </div>
 
-              <div style={styles.clockActions}>
-                <button
-                  style={{
-                    ...styles.actionButton("yellow"),
-                    opacity: stopwatchSeconds === 0 ? 0.5 : 1,
-                    cursor: stopwatchSeconds === 0 ? "not-allowed" : "pointer",
-                  }}
-                  onClick={bankStopwatch}
-                  disabled={stopwatchSeconds === 0}
-                >
-                  Bank time to Listening
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={styles.clockValue}>{formatClock(timerSeconds)}</div>
-
-              <div style={styles.clockActions}>
-                <button
-                  style={styles.actionButton("green")}
-                  onClick={() => setTimerRunning(true)}
-                >
-                  <Play size={14} /> Start
-                </button>
-                <button
-                  style={styles.actionButton("orange")}
-                  onClick={() => setTimerRunning(false)}
-                >
-                  <Pause size={14} /> Pause
-                </button>
-                <button
-                  style={styles.actionButton("slate")}
-                  onClick={() => {
-                    setTimerRunning(false);
-                    setTimerSeconds(300);
-                  }}
-                >
-                  <RotateCcw size={14} /> Reset
-                </button>
-              </div>
-
-              <div style={styles.clockActions}>
-                <button
-                  style={styles.actionButton("blue")}
-                  onClick={() => setTimerSeconds((s) => s + 300)}
-                >
-                  <TimerIcon size={14} /> +5 min
-                </button>
-              </div>
-            </>
-          )}
+            <div style={styles.timerActionRow}>
+              <button
+                style={styles.iconActionButton((clockMode === "stopwatch" ? stopwatchRunning : timerRunning))}
+                onClick={toggleTimerStart}
+              >
+                {(clockMode === "stopwatch" ? stopwatchRunning : timerRunning) ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <button
+                style={styles.iconActionButton(false)}
+                onClick={() => {
+                  if (clockMode === "stopwatch") { setStopwatchRunning(false); setStopwatchSeconds(0); }
+                  else { setTimerRunning(false); setTimerSeconds(300); }
+                }}
+              >
+                <RotateCcw size={14} />
+              </button>
+              <button
+                style={styles.iconActionButton(false)}
+                onClick={clockMode === "stopwatch" ? bankStopwatch : () => {}}
+              >
+                <Check size={14} />
+              </button>
+            </div>
+          </div>
         </div>
 
         <div style={styles.sideCard}>
-          <h3 style={styles.sideTitle}>Listening Visualisation</h3>
-
-          <div style={styles.adjustRow}>
-            <button
-              style={styles.adjustBtn}
-              onClick={() => setListeningHours((h) => Math.max(0, h - 0.5))}
-            >
-              -0.5h
-            </button>
-
-            <div style={styles.adjustMain}>{formatHours(listeningHours)}</div>
-
-            <button style={styles.adjustBtn} onClick={() => setListeningHours((h) => h + 0.5)}>
-              +0.5h
-            </button>
+          <div style={styles.visualHeader}>
+            <h3 style={styles.sideTitle}>Listening Visualisation</h3>
+            <div style={styles.visualTools}>
+              <button style={styles.iconBadgeBtn} onClick={() => setSettingsOpen((v) => !v)}>
+                <Settings2 size={14} />
+              </button>
+            </div>
           </div>
 
-          <div style={styles.goalGrid}>
-            <NumberField
-              label="Goal (hours)"
-              value={listeningGoal}
-              onChange={setListeningGoal}
-              step={1}
-            />
-            <NumberField
-              label="Today (hours)"
-              value={todayHours}
-              onChange={setTodayHours}
-              step={0.25}
-            />
+          <div style={styles.visualMainStats}>
+             <div style={styles.visualLargeValue}>{formatHours(listeningHours)}</div>
+             <p style={{textAlign: 'center', fontSize: '11px', textTransform: 'uppercase', color: '#64748b', margin: '-5px 0 10px 0', letterSpacing: '0.05em'}}>Total Immersed</p>
           </div>
 
-          <div style={styles.blockGrid}>
-            {Array.from({ length: totalBlocks }).map((_, index) => {
-              const fill = Math.max(0, Math.min(1, (listeningHours - index * 10) / 10));
+          <div style={styles.quickAdjustGrid}>
+            {[
+              { label: "+1h", delta: 1 },
+              { label: "+30m", delta: 0.5 },
+              { label: "+5m", delta: 5 / 60 },
+            ].map((item) => (
+              <button
+                key={item.label}
+                style={styles.adjustBtn}
+                onClick={() => setListeningHours((h) => Math.max(0, h + item.delta))}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
-              return (
-                <div key={index} style={styles.progressBlockShell}>
-                  <div style={styles.progressBlockFill(fill)} />
+          {settingsOpen && (
+            <div style={styles.goalGrid}>
+              <NumberField
+                label="Goal (hours)"
+                value={listeningGoal}
+                onChange={setListeningGoal}
+                step={1}
+              />
+              <PillSliderToggle
+                value={vizMode}
+                options={[
+                  { value: "blocks", label: "Blocks" },
+                  { value: "bar", label: "Bar" },
+                ]}
+                onChange={setVizMode}
+                width={200}
+                size="sm"
+              />
+            </div>
+          )}
+
+          {showVisualization && (
+            <div style={{marginTop: '15px'}}>
+              {vizMode === "blocks" ? (
+                <div style={styles.blockGrid}>
+                  {Array.from({ length: totalBlocks }).map((_, index) => {
+                    const fill = Math.max(0, Math.min(1, (listeningHours - index * 10) / 10));
+                    return (
+                      <div key={index} style={styles.progressBlockShell}>
+                        <div style={styles.progressBlockFill(fill)} />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-
-          <p style={styles.helperText}>Each block = 10 listening hours.</p>
+              ) : (
+                <div style={styles.progressBarWrap}>
+                  <div style={styles.progressBarFill(listeningProgress)} />
+                  <div style={styles.progressBarLabel}>
+                    <BarChart3 size={14} /> {listeningProgress.toFixed(1)}%
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1189,7 +1296,6 @@ function ReadingTab({ wordsRead, setWordsRead }) {
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Reading</h2>
       <p style={styles.sectionText}>Track total words read across books, manga, and articles.</p>
-
       <div style={styles.controlGridSingle}>
         <NumberField label="Words read" value={wordsRead} onChange={setWordsRead} step={100} />
       </div>
@@ -1202,7 +1308,6 @@ function ShadowingTab({ shadowingHours, setShadowingHours }) {
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Shadowing</h2>
       <p style={styles.sectionText}>Track active output practice and imitation sessions.</p>
-
       <div style={styles.controlGridSingle}>
         <NumberField
           label="Shadowing hours"
@@ -1220,7 +1325,6 @@ function WritingTab({ wordsWritten, setWordsWritten }) {
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Writing</h2>
       <p style={styles.sectionText}>Track total words written from journaling and output drills.</p>
-
       <div style={styles.controlGridSingle}>
         <NumberField
           label="Words written"
@@ -1238,7 +1342,6 @@ function GamingTab({ gamingHours, setGamingHours }) {
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Gaming</h2>
       <p style={styles.sectionText}>Track immersion hours.</p>
-
       <div style={styles.controlGridSingle}>
         <NumberField
           label="Gaming hours"
@@ -1272,108 +1375,20 @@ function formatClock(totalSeconds) {
 
 function convertRomajiToKanaForSearch(value) {
   const map = {
-    kya: "きゃ",
-    kyu: "きゅ",
-    kyo: "きょ",
-    gya: "ぎゃ",
-    gyu: "ぎゅ",
-    gyo: "ぎょ",
-    sha: "しゃ",
-    shu: "しゅ",
-    sho: "しょ",
-    cha: "ちゃ",
-    chu: "ちゅ",
-    cho: "ちょ",
-    nya: "にゃ",
-    nyu: "にゅ",
-    nyo: "にょ",
-    hya: "ひゃ",
-    hyu: "ひゅ",
-    hyo: "ひょ",
-    mya: "みゃ",
-    myu: "みゅ",
-    myo: "みょ",
-    rya: "りゃ",
-    ryu: "りゅ",
-    ryo: "りょ",
-    bya: "びゃ",
-    byu: "びゅ",
-    byo: "びょ",
-    pya: "ぴゃ",
-    pyu: "ぴゅ",
-    pyo: "ぴょ",
-    ja: "じゃ",
-    ju: "じゅ",
-    jo: "じょ",
-    tsu: "つ",
-    shi: "し",
-    chi: "ち",
-    fu: "ふ",
-    ka: "か",
-    ki: "き",
-    ku: "く",
-    ke: "け",
-    ko: "こ",
-    sa: "さ",
-    su: "す",
-    se: "せ",
-    so: "そ",
-    ta: "た",
-    te: "て",
-    to: "と",
-    na: "な",
-    ni: "に",
-    nu: "ぬ",
-    ne: "ね",
-    no: "の",
-    ha: "は",
-    hi: "ひ",
-    he: "へ",
-    ho: "ほ",
-    ma: "ま",
-    mi: "み",
-    mu: "む",
-    me: "め",
-    mo: "も",
-    ya: "や",
-    yu: "ゆ",
-    yo: "よ",
-    ra: "ら",
-    ri: "り",
-    ru: "る",
-    re: "れ",
-    ro: "ろ",
-    wa: "わ",
-    wo: "を",
-    ga: "が",
-    gi: "ぎ",
-    gu: "ぐ",
-    ge: "げ",
-    go: "ご",
-    za: "ざ",
-    ji: "じ",
-    zu: "ず",
-    ze: "ぜ",
-    zo: "ぞ",
-    da: "だ",
-    de: "で",
-    do: "ど",
-    ba: "ば",
-    bi: "び",
-    bu: "ぶ",
-    be: "べ",
-    bo: "ぼ",
-    pa: "ぱ",
-    pi: "ぴ",
-    pu: "ぷ",
-    pe: "ぺ",
-    po: "ぽ",
-    a: "あ",
-    i: "い",
-    u: "う",
-    e: "え",
-    o: "お",
-    nn: "ん",
+    kya: "きゃ", kyu: "きゅ", kyo: "きょ", gya: "ぎゃ", gyu: "ぎゅ", gyo: "ぎょ",
+    sha: "しゃ", shu: "しゅ", sho: "しょ", cha: "ちゃ", chu: "ちゅ", cho: "ちょ",
+    nya: "にゃ", nyu: "にゅ", nyo: "にょ", hya: "ひゃ", hyu: "ひゅ", hyo: "ひょ",
+    mya: "みゃ", myu: "みゅ", myo: "みょ", rya: "りゃ", ryu: "りゅ", ryo: "りょ",
+    bya: "びゃ", byu: "びゅ", byo: "びょ", pya: "ぴゃ", pyu: "ぴゅ", pyo: "ぴょ",
+    ja: "じゃ", ju: "じゅ", jo: "じょ", tsu: "つ", shi: "し", chi: "ち", fu: "ふ",
+    ka: "か", ki: "き", ku: "く", ke: "け", ko: "こ", sa: "さ", su: "す", se: "せ",
+    so: "そ", ta: "た", te: "て", to: "と", na: "な", ni: "に", nu: "ぬ", ne: "ね",
+    no: "の", ha: "は", hi: "ひ", he: "へ", ho: "ほ", ma: "ま", mi: "み", mu: "む",
+    me: "め", mo: "も", ya: "や", yu: "ゆ", yo: "よ", ra: "ら", ri: "り", ru: "る",
+    re: "れ", ro: "ろ", wa: "わ", wo: "を", ga: "が", gi: "ぎ", gu: "ぐ", ge: "げ",
+    go: "ご", za: "ざ", ji: "じ", zu: "ず", ze: "ぜ", zo: "ぞ", da: "だ", de: "で",
+    do: "ど", ba: "ば", bi: "び", bu: "ぶ", be: "べ", bo: "ぼ", pa: "ぱ", pi: "ぴ",
+    pu: "ぷ", pe: "ぺ", po: "ぽ", a: "あ", i: "い", u: "う", e: "え", o: "お", nn: "ん",
   };
 
   const text = value.toLowerCase();
@@ -1383,48 +1398,17 @@ function convertRomajiToKanaForSearch(value) {
   while (i < text.length) {
     const char = text[i];
     const next = text[i + 1] ?? "";
-
-    if (/\s/.test(char)) {
-      out += char;
-      i++;
-      continue;
+    if (/\s/.test(char)) { out += char; i++; continue; }
+    if (i + 1 < text.length && char === next && !["a", "i", "u", "e", "o", "n"].includes(char)) {
+      out += "っ"; i++; continue;
     }
-
-    if (
-      i + 1 < text.length &&
-      char === next &&
-      !["a", "i", "u", "e", "o", "n"].includes(char)
-    ) {
-      out += "っ";
-      i++;
-      continue;
-    }
-
     const tri = text.slice(i, i + 3);
     const bi = text.slice(i, i + 2);
-
-    if (map[tri]) {
-      out += map[tri];
-      i += 3;
-      continue;
-    }
-
-    if (map[bi]) {
-      out += map[bi];
-      i += 2;
-      continue;
-    }
-
-    if (map[char]) {
-      out += map[char];
-      i++;
-      continue;
-    }
-
-    out += char;
-    i++;
+    if (map[tri]) { out += map[tri]; i += 3; continue; }
+    if (map[bi]) { out += map[bi]; i += 2; continue; }
+    if (map[char]) { out += map[char]; i++; continue; }
+    out += char; i++;
   }
-
   return out;
 }
 
@@ -1697,13 +1681,48 @@ const styles = {
     color: "#94a3b8",
   },
   dictionaryResultsArea: {
-    overflowY: "auto",
     marginTop: "4px",
   },
   dictionaryResultsList: {
     display: "grid",
     gap: "10px",
     padding: "2px",
+    maxHeight: "315px",
+    overflowY: "auto",
+    paddingRight: "4px",
+  },
+  carouselActionRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "8px",
+  },
+  secondaryAction: {
+    border: "1px solid rgba(15,23,42,0.12)",
+    background: "rgba(255,255,255,0.86)",
+    borderRadius: "12px",
+    padding: "8px 10px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "5px",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#334155",
+    cursor: "pointer",
+  },
+  masteredAction: {
+    border: "1px solid rgba(16,185,129,0.26)",
+    background: "rgba(16,185,129,0.14)",
+    borderRadius: "12px",
+    padding: "8px 10px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "5px",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#047857",
+    cursor: "pointer",
   },
   dictionaryPlaceholder: {
     borderRadius: "14px",
@@ -1800,14 +1819,12 @@ const styles = {
   overallRow: { marginTop: "20px" },
   metricsGridThree: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
     gap: "12px",
     marginTop: "12px",
   },
   subMetricsGrid: {
     marginTop: "10px",
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "12px",
   },
   metricCard: (f) => ({
@@ -1899,53 +1916,35 @@ const styles = {
     ...glass,
     borderRadius: "999px",
     padding: "8px",
-    display: "block",
-    overflowX: "auto",
+    display: "flex",
+    justifyContent: "center",
   },
   contentWrap: { minWidth: 0 },
   moduleNavTrack: {
-    position: "relative",
-    display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(100px, 1fr))",
-    minWidth: "560px",
-    gap: "6px",
-    padding: "6px",
+    display: "flex",
+    gap: "10px",
+    padding: "4px",
     borderRadius: "999px",
-    background: "rgba(255,255,255,0.42)",
+    background: "rgba(255,255,255,0.4)",
     border: "1px solid rgba(255,255,255,0.7)",
   },
-  moduleNavSlider: (idx, count, bgColor) => ({
-    position: "absolute",
-    top: "6px",
-    bottom: "6px",
-    left: `calc(6px + (${idx} * (100% - 12px) / ${count}))`,
-    width: `calc((100% - 12px) / ${count})`,
-    borderRadius: "999px",
-    background: bgColor || "#111827",
-    boxShadow: "0 10px 30px rgba(15,23,42,0.25)",
-    transition: "all 320ms cubic-bezier(0.22, 1, 0.36, 1)",
-  }),
   moduleNavButton: (active) => ({
-    position: "relative",
-    zIndex: 1,
     border: "none",
     borderRadius: "999px",
-    background: "transparent",
+    background: active ? "#111827" : "transparent",
     color: active ? "#fff" : "#475569",
     cursor: "pointer",
-    padding: "10px 8px",
+    padding: active ? "10px 20px" : "10px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "6px",
     fontWeight: 700,
-    fontSize: "12px",
-    transition: "color 220ms ease",
-    whiteSpace: "nowrap",
+    fontSize: "13px",
+    transition: "all 300ms cubic-bezier(0.23, 1, 0.32, 1)",
+    boxShadow: active ? "0 8px 20px rgba(15,23,42,0.15)" : "none",
   }),
   listeningMainGrid: {
     display: "grid",
-    gridTemplateColumns: "1.6fr 1fr",
     gap: "14px",
   },
   largeCard: {
@@ -1965,8 +1964,8 @@ const styles = {
   sideTitle: {
     margin: 0,
     fontSize: "18px",
+    fontWeight: 700,
     letterSpacing: "-0.02em",
-    marginBottom: "10px",
   },
   sectionHeader: {
     display: "flex",
@@ -1985,30 +1984,33 @@ const styles = {
     color: "#667085",
     fontSize: "14px",
   },
-  pill: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "8px 12px",
-    borderRadius: "999px",
-    background: "rgba(255,255,255,0.52)",
-    border: "1px solid rgba(255,255,255,0.72)",
-    fontSize: "12px",
-    color: "#667085",
-  },
   playerShell: {
     borderRadius: "20px",
     border: "1px solid rgba(15,23,42,0.12)",
     background: "rgba(255,255,255,0.56)",
     padding: "12px",
     display: "grid",
-    gap: "10px",
+    gap: "12px",
+    position: "relative",
+    zIndex: 2,
+  },
+  playerShellFocus: {
+    position: "fixed",
+    top: "45%",
+    left: "50%",
+    width: "min(1100px, calc(100vw - 40px))",
+    transform: "translate(-50%, -50%)",
+    zIndex: 1001,
+    boxShadow: "0 40px 100px rgba(0,0,0,0.5)",
+    background: "rgba(255,255,255,0.95)",
+    padding: "16px",
+    border: "none",
   },
   playerHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "10px",
-    flexWrap: "wrap",
+    marginBottom: "4px",
   },
   playerHeaderLeft: {
     display: "inline-flex",
@@ -2029,7 +2031,10 @@ const styles = {
     borderRadius: "14px",
     overflow: "hidden",
     border: "1px solid rgba(15,23,42,0.12)",
-    background: "#0f172a",
+    background: "#000",
+  },
+  playerFrameWrapFocus: {
+    borderRadius: "16px",
   },
   playerFrame: {
     position: "absolute",
@@ -2038,220 +2043,234 @@ const styles = {
     height: "100%",
     border: "none",
   },
+  playerControlColumn: {
+    display: 'grid',
+    gap: '12px'
+  },
+  playerControlRowFocus: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 4px 0 4px",
+  },
   playerMeta: {
     display: "grid",
-    gap: "3px",
+    gap: "2px",
   },
   playerTitle: {
     margin: 0,
-    fontSize: "18px",
-    lineHeight: 1.25,
-    letterSpacing: "-0.02em",
+    fontSize: "16px",
+    fontWeight: 700,
+    letterSpacing: "-0.01em",
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '400px'
   },
   playerSub: {
     margin: 0,
-    fontSize: "13px",
+    fontSize: "12px",
     color: "#64748b",
   },
+  focusModeBtn: {
+    position: "absolute",
+    top: "12px",
+    right: "12px",
+    zIndex: 10,
+    background: "rgba(0,0,0,0.4)",
+    backdropFilter: "blur(4px)",
+    color: "#fff",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: "8px",
+    width: "32px",
+    height: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  playerControlRow: {
+    display: "flex",
+    gap: "8px",
+  },
+  miniActionButton: (tone) => ({
+    background: tone === "blue" ? "rgba(59,130,246,0.1)" : "rgba(249,115,22,0.1)",
+    color: tone === "blue" ? "#1d4ed8" : "#c2410c",
+    border: "1px solid transparent",
+    borderRadius: "8px",
+    padding: "6px 12px",
+    fontSize: "12px",
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    cursor: "pointer",
+  }),
   innerTabsWrap: {
     marginTop: "12px",
-    display: "grid",
-    gap: "10px",
   },
   innerTabsRow: {
     display: "flex",
     gap: "8px",
-    overflowX: "auto",
-    paddingBottom: "2px",
+    marginBottom: "10px",
   },
   innerTabButton: (active) => ({
-    border: "1px solid rgba(15,23,42,0.08)",
-    background: active ? "rgba(234,179,8,0.18)" : "rgba(255,255,255,0.68)",
-    color: active ? "#92400e" : "#475569",
+    border: "none",
+    background: active ? "rgba(234,179,8,0.15)" : "transparent",
+    color: active ? "#92400e" : "#64748b",
     borderRadius: "999px",
-    padding: "9px 12px",
+    padding: "8px 16px",
     fontSize: "12px",
     fontWeight: 700,
-    whiteSpace: "nowrap",
     cursor: "pointer",
   }),
   innerTabPanel: {
     borderRadius: "16px",
-    border: "1px solid rgba(15,23,42,0.08)",
-    background: "rgba(255,255,255,0.58)",
+    background: "rgba(255,255,255,0.4)",
+    border: "1px solid rgba(15,23,42,0.05)",
     padding: "12px",
-    display: "grid",
-    gap: "10px",
   },
   accountIdentity: {
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
     gap: "8px",
+    fontSize: "14px",
     fontWeight: 600,
-    color: "#0f172a",
-    flexWrap: "wrap",
+    marginBottom: "12px",
   },
   connectButton: (connected) => ({
-    border: connected
-      ? "1px solid rgba(239,68,68,0.32)"
-      : "1px solid rgba(16,185,129,0.32)",
-    background: connected ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)",
-    color: connected ? "#b91c1c" : "#047857",
-    borderRadius: "12px",
-    padding: "9px 11px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    cursor: "pointer",
+    background: connected ? "rgba(239,68,68,0.1)" : "#111827",
+    color: connected ? "#ef4444" : "#fff",
+    border: "none",
+    borderRadius: "10px",
+    padding: "10px 16px",
+    fontSize: "13px",
     fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
   }),
-  helperText: {
-    margin: "0",
-    color: "#64748b",
-    fontSize: "12px",
-    lineHeight: 1.5,
-  },
   listStack: {
     display: "grid",
     gap: "8px",
   },
   simpleRow: {
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: "8px",
-    borderRadius: "12px",
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.62)",
-    padding: "10px 11px",
+    alignItems: "center",
+    padding: "8px 12px",
+    background: "#fff",
+    borderRadius: "10px",
+    border: "1px solid rgba(0,0,0,0.05)",
   },
-  simpleTitle: {
-    fontSize: "13px",
-    fontWeight: 600,
-    color: "#0f172a",
-  },
+  simpleTitle: { fontSize: "13px", fontWeight: 600 },
   videoFeedButton: (active) => ({
-    border: active
-      ? "1px solid rgba(234,179,8,0.55)"
-      : "1px solid rgba(15,23,42,0.1)",
-    background: active
-      ? "linear-gradient(140deg, #facc15, #eab308)"
-      : "rgba(255,255,255,0.62)",
-    color: active ? "#fff" : "#0f172a",
-    borderRadius: "12px",
-    padding: "9px 11px",
-    display: "grid",
-    gap: "5px",
-    textAlign: "left",
+    padding: "10px 12px",
+    background: active ? "rgba(234,179,8,1)" : "#fff",
+    color: active ? "#fff" : "#111827",
+    border: "1px solid rgba(0,0,0,0.05)",
+    borderRadius: "10px",
     cursor: "pointer",
-    transition: "all 220ms ease",
+    textAlign: "left",
   }),
-  videoFeedTop: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "8px",
-  },
   videoFeedTitle: (active) => ({
     fontSize: "13px",
     fontWeight: 700,
-    lineHeight: 1.35,
-    color: active ? "#fff" : "#111827",
   }),
-  videoFeedMeta: (active) => ({
+  timerContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '20px',
+    padding: '10px 0'
+  },
+  timerRingWrap: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  timerRingValue: {
+    position: 'absolute',
+    textAlign: 'center',
+    fontSize: '28px',
+    fontWeight: 800,
+    color: '#1e293b'
+  },
+  timerActionRow: {
+    display: "flex",
+    gap: "10px",
+    justifyContent: "center",
+    width: "100%",
+  },
+  iconActionButton: (active) => ({
+    background: active ? "rgba(99,102,241,0.1)" : "#fff",
+    color: active ? "#6366f1" : "#475569",
+    border: "1px solid rgba(0,0,0,0.08)",
+    borderRadius: "12px",
+    width: "44px",
+    height: "44px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  }),
+  visualHeader: {
     display: "flex",
     justifyContent: "space-between",
-    gap: "8px",
-    fontSize: "12px",
-    color: active ? "rgba(255,255,255,0.92)" : "#64748b",
-  }),
-  clockHeader: {
-    display: "grid",
-    gap: "10px",
+    alignItems: "center",
+    marginBottom: "15px",
   },
-  clockValue: {
-    fontSize: "42px",
+  visualTools: { display: "flex", gap: "6px" },
+  iconBadgeBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#64748b",
+    cursor: "pointer",
+    padding: "4px",
+  },
+  visualLargeValue: {
+    fontSize: "48px",
     fontWeight: 800,
     letterSpacing: "-0.04em",
     textAlign: "center",
-    margin: "8px 0",
   },
-  clockActions: {
+  visualMainStats: {
+    padding: '10px 0'
+  },
+  quickAdjustGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(3, 1fr)",
     gap: "8px",
-  },
-  actionButton: (tone) => ({
-    border: "1px solid transparent",
-    borderRadius: "10px",
-    padding: "9px 10px",
-    fontSize: "12px",
-    fontWeight: 700,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    cursor: "pointer",
-    background:
-      tone === "green"
-        ? "rgba(16,185,129,0.16)"
-        : tone === "orange"
-          ? "rgba(249,115,22,0.16)"
-          : tone === "yellow"
-            ? "rgba(234,179,8,0.16)"
-            : tone === "blue"
-              ? "rgba(59,130,246,0.16)"
-              : "rgba(148,163,184,0.2)",
-    color:
-      tone === "green"
-        ? "#047857"
-        : tone === "orange"
-          ? "#c2410c"
-          : tone === "yellow"
-            ? "#92400e"
-            : tone === "blue"
-              ? "#1d4ed8"
-              : "#334155",
-    gridColumn: tone === "yellow" || tone === "blue" ? "span 3" : "span 1",
-  }),
-  adjustRow: {
-    display: "grid",
-    gridTemplateColumns: "auto 1fr auto",
-    alignItems: "center",
-    gap: "10px",
-    marginBottom: "12px",
+    marginBottom: "15px",
   },
   adjustBtn: {
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.8)",
-    borderRadius: "10px",
-    padding: "8px 10px",
-    cursor: "pointer",
+    background: "#fff",
+    border: "1px solid rgba(0,0,0,0.08)",
+    borderRadius: "8px",
+    padding: "8px 0",
     fontSize: "12px",
     fontWeight: 700,
-  },
-  adjustMain: {
-    textAlign: "center",
-    fontSize: "24px",
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
+    cursor: "pointer",
   },
   goalGrid: {
-    display: "grid",
-    gap: "8px",
-    gridTemplateColumns: "1fr",
+    background: 'rgba(255,255,255,0.4)',
+    padding: '12px',
+    borderRadius: '16px',
+    border: '1px solid rgba(0,0,0,0.05)',
+    display: 'grid',
+    gap: '12px'
   },
   blockGrid: {
-    marginTop: "10px",
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(18px, 1fr))",
-    gap: "6px",
+    gridTemplateColumns: "repeat(auto-fill, minmax(14px, 1fr))",
+    gap: "5px",
   },
   progressBlockShell: {
-    height: "22px",
-    borderRadius: "6px",
-    background: "rgba(148,163,184,0.25)",
-    border: "1px solid rgba(148,163,184,0.35)",
+    height: "18px",
+    background: "rgba(0,0,0,0.05)",
+    borderRadius: "4px",
     overflow: "hidden",
     position: "relative",
   },
@@ -2261,37 +2280,45 @@ const styles = {
     top: 0,
     bottom: 0,
     width: `${fill * 100}%`,
-    background: "linear-gradient(180deg, #facc15 0%, #eab308 100%)",
-    transition: "width 260ms ease",
+    background: "#eab308",
   }),
-  controlGridSingle: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 360px)",
-    marginTop: "16px",
+  progressBarWrap: {
+    height: "24px",
+    background: "rgba(0,0,0,0.05)",
+    borderRadius: "999px",
+    position: "relative",
+    overflow: "hidden",
   },
-  inputCard: {
-    display: "grid",
-    gap: "8px",
-    borderRadius: "14px",
-    background: "rgba(255,255,255,0.48)",
-    border: "1px solid rgba(255,255,255,0.68)",
-    padding: "12px",
-  },
-  inputLabel: {
+  progressBarFill: (p) => ({
+    position: "absolute",
+    height: "100%",
+    width: `${p}%`,
+    background: "#eab308",
+  }),
+  progressBarLabel: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     fontSize: "11px",
-    color: "#667085",
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
+    fontWeight: 800,
+    gap: "4px",
   },
+  focusBackdrop: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.5)",
+    zIndex: 1000,
+  },
+  controlGridSingle: { marginTop: "20px" },
+  inputCard: { display: "grid", gap: "6px" },
+  inputLabel: { fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: 'uppercase' },
   input: {
-    width: "100%",
-    border: "1px solid rgba(15, 23, 42, 0.12)",
+    padding: "10px",
     borderRadius: "10px",
-    padding: "9px 10px",
-    fontSize: "16px",
-    fontWeight: 600,
-    color: "#111827",
-    background: "rgba(255,255,255,0.9)",
-    outline: "none",
+    border: "1px solid rgba(0,0,0,0.1)",
+    background: "#fff",
+    fontSize: "14px",
   },
 };
