@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Blocks,
   Ear,
@@ -15,7 +16,6 @@ import {
   Link2,
   UserCircle2,
   PlayCircle,
-  Clock3,
   Mic2,
   PenLine,
   Pause,
@@ -30,8 +30,6 @@ import {
   Minimize2,
   Save,
   Settings2,
-  Eye,
-  EyeOff,
   BarChart3,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -475,7 +473,7 @@ function WordLearningCard() {
                   Next <ChevronRight size={14} />
                 </button>
                 <button onClick={markKnown} style={styles.masteredAction}>
-                  <CheckCircle2 size={14} /> Tick / Known
+                  <CheckCircle2 size={14} /> Known
                 </button>
               </div>
             </>
@@ -814,6 +812,7 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
   const [selectedVideoId, setSelectedVideoId] = useState(SEEDED_VIDEOS[0]?.id);
   const [workspaceTab, setWorkspaceTab] = useState("account");
   const [focusMode, setFocusMode] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const [clockMode, setClockMode] = useState("stopwatch");
   const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
@@ -822,7 +821,7 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
   const [timerRunning, setTimerRunning] = useState(false);
 
   const [listeningGoal, setListeningGoal] = useState(1200);
-  const [showVisualization, setShowVisualization] = useState(true);
+  const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("blocks");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionRef = useRef(0);
@@ -846,6 +845,21 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
   );
   const queueTotal = approvedFeed.length;
   const queueIndex = Math.max(0, approvedFeed.findIndex((item) => item.id === selectedVideo?.id));
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!focusMode) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [focusMode]);
 
   useEffect(() => {
     if (!playerHostRef.current || initRef.current) return;
@@ -896,7 +910,7 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
     };
 
     const mountPlayer = () => {
-      if (initRef.current || !window.YT?.Player) return;
+      if (initRef.current || !window.YT?.Player || !playerHostRef.current) return;
 
       playerRef.current = new window.YT.Player(playerHostRef.current, {
         videoId: selectedVideoId,
@@ -936,7 +950,7 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
     return () => {
       window.onYouTubeIframeAPIReady = priorReady;
     };
-  }, [approvedFeed, selectedVideoId, setListeningHours]);
+  }, [approvedFeed, selectedVideoId, setListeningHours, focusMode]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -1021,273 +1035,356 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
   const listeningProgress = Math.min(100, (listeningHours / Math.max(1, listeningGoal)) * 100);
 
   return (
-    <div
-      style={{
-        ...styles.listeningMainGrid,
-        gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
-      }}
-    >
-      <div style={styles.largeCard}>
-        <div
-          style={{
-            ...styles.sectionHeader,
-            flexDirection: isCompact ? "column" : "row",
-          }}
-        >
-          <div>
-            <h2 style={styles.sectionTitle}>Listening Workspace</h2>
-            <p style={styles.sectionText}>
-              Approved-channel feed and immersion architecture.
-            </p>
+    <>
+      <div
+        style={{
+          ...styles.listeningMainGrid,
+          gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
+        }}
+      >
+        <div style={styles.largeCard}>
+          <div
+            style={{
+              ...styles.sectionHeader,
+              flexDirection: isCompact ? "column" : "row",
+            }}
+          >
+            <div>
+              <h2 style={styles.sectionTitle}>Listening Workspace</h2>
+              <p style={styles.sectionText}>
+                Approved-channel feed and immersion architecture.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {focusMode && <div style={styles.focusBackdrop} onClick={() => setFocusMode(false)} />}
-        
-        <div style={{ ...styles.playerShell, ...(focusMode ? styles.playerShellFocus : {}) }}>
           {!focusMode && (
-            <div style={styles.playerHeader}>
-              <div style={styles.playerHeaderLeft}>
-                <Video size={18} color="#ef4444" />
-                <span style={styles.playerPlatform}>YouTube Integration</span>
+            <div style={styles.playerShell}>
+              <div style={styles.playerHeader}>
+                <div style={styles.playerHeaderLeft}>
+                  <Video size={18} color="#ef4444" />
+                  <span style={styles.playerPlatform}>YouTube Integration</span>
+                </div>
+                <Tag
+                  label={youtubeConnected ? "Connected" : "Not Connected"}
+                  tone={youtubeConnected ? "green" : "orange"}
+                />
               </div>
-              <Tag label={youtubeConnected ? "Connected" : "Not Connected"} tone={youtubeConnected ? "green" : "orange"} />
+
+              <div style={styles.playerFrameWrap}>
+                <div ref={playerHostRef} style={styles.playerFrame} />
+                <button style={styles.focusModeBtn} onClick={() => setFocusMode(true)}>
+                  <Maximize2 size={14} />
+                </button>
+              </div>
+
+              <div style={styles.playerControlColumn}>
+                <div style={styles.playerMeta}>
+                  <h3 style={styles.playerTitle}>{selectedVideo?.title}</h3>
+                  <p style={styles.playerSub}>
+                    {selectedVideo?.channel} · {selectedVideo?.duration} · Queue {queueIndex + 1}/
+                    {queueTotal}
+                  </p>
+                </div>
+                <div style={styles.playerControlRow}>
+                  <button style={styles.miniActionButton("blue")} onClick={saveCurrentSession}>
+                    <Save size={12} /> Save
+                  </button>
+                  <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
+                    <SkipForward size={12} /> Skip
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          <div style={{ ...styles.playerFrameWrap, ...(focusMode ? styles.playerFrameWrapFocus : {}) }}>
-            <div ref={playerHostRef} style={styles.playerFrame} />
-            <button style={styles.focusModeBtn} onClick={() => setFocusMode((v) => !v)}>
-              {focusMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
-          </div>
+          {!focusMode && (
+            <div style={styles.innerTabsWrap}>
+              <div style={styles.innerTabsRow}>
+                {[
+                  { key: "account", label: "Account" },
+                  { key: "channels", label: "Subscribed Channels" },
+                  { key: "recommended", label: "Recommended" },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    style={styles.innerTabButton(workspaceTab === item.key)}
+                    onClick={() => setWorkspaceTab(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
 
-          <div style={focusMode ? styles.playerControlRowFocus : styles.playerControlColumn}>
-            <div style={styles.playerMeta}>
-              <h3 style={styles.playerTitle}>{selectedVideo?.title}</h3>
-              <p style={styles.playerSub}>
-                {selectedVideo?.channel} · {selectedVideo?.duration} · Que {queueIndex + 1}/{queueTotal}
-              </p>
+              <div style={styles.innerTabPanel}>
+                {workspaceTab === "account" && (
+                  <>
+                    <div style={styles.accountIdentity}>
+                      <UserCircle2 size={18} />
+                      <span>
+                        {youtubeConnected
+                          ? "Connected learner account"
+                          : "Sign in to connect YouTube"}
+                      </span>
+                    </div>
+                    <button
+                      style={styles.connectButton(youtubeConnected)}
+                      onClick={() => {
+                        setYoutubeConnected((v) => !v);
+                        setSubscribedChannels([...SEEDED_CHANNELS]);
+                      }}
+                    >
+                      <Link2 size={14} /> {youtubeConnected ? "Disconnect" : "Connect"}
+                    </button>
+                  </>
+                )}
+
+                {workspaceTab === "channels" && (
+                  <div style={styles.listStack}>
+                    {subscribedChannels.map((channel) => (
+                      <div key={channel.id} style={styles.simpleRow}>
+                        <span style={styles.simpleTitle}>{channel.name}</span>
+                        <Tag label={channel.category} tone="blue" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {workspaceTab === "recommended" && (
+                  <div style={styles.listStack}>
+                    {approvedFeed.map((video) => {
+                      const active = video.id === selectedVideo?.id;
+                      return (
+                        <button
+                          key={video.id}
+                          style={styles.videoFeedButton(active)}
+                          onClick={() => setSelectedVideoId(video.id)}
+                        >
+                          <div style={styles.videoFeedTop}>
+                            <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
+                            <span style={styles.videoFeedTitle(active)}>{video.title}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-            <div style={styles.playerControlRow}>
-              <button style={styles.miniActionButton("blue")} onClick={saveCurrentSession}>
-                <Save size={12} /> Save
-              </button>
-              <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
-                <SkipForward size={12} /> Skip
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
-        {!focusMode && (
-          <div style={styles.innerTabsWrap}>
-            <div style={styles.innerTabsRow}>
+        <div style={styles.sideColumn}>
+          <div style={styles.sideCard}>
+            <div style={styles.clockHeader}>
+              <h3 style={styles.sideTitle}>Live Session Timer</h3>
+              <PillSliderToggle
+                value={clockMode}
+                options={[
+                  { value: "stopwatch", label: "Stopwatch" },
+                  { value: "timer", label: "Timer" },
+                ]}
+                onChange={setClockMode}
+                width={200}
+                size="sm"
+              />
+            </div>
+
+            <div style={styles.timerContainer}>
+              <div style={styles.timerRingWrap}>
+                <ProgressRing
+                  radius={70}
+                  stroke={6}
+                  progress={
+                    ((((clockMode === "timer" ? 300 - timerSeconds : stopwatchSeconds) % 60) /
+                      60) *
+                      100)
+                  }
+                  color="#6366f1"
+                />
+                <div style={styles.timerRingValue}>
+                  {formatClock(clockMode === "timer" ? timerSeconds : stopwatchSeconds)
+                    .split(":")
+                    .slice(1)
+                    .join(":")}
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 500,
+                      color: "#64748b",
+                      opacity: 0.8,
+                    }}
+                  >
+                    MIN:SEC
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.timerActionRow}>
+                <button
+                  style={styles.iconActionButton(
+                    clockMode === "stopwatch" ? stopwatchRunning : timerRunning,
+                  )}
+                  onClick={toggleTimerStart}
+                >
+                  {clockMode === "stopwatch" ? stopwatchRunning : timerRunning ? (
+                    <Pause size={14} />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                </button>
+                <button
+                  style={styles.iconActionButton(false)}
+                  onClick={() => {
+                    if (clockMode === "stopwatch") {
+                      setStopwatchRunning(false);
+                      setStopwatchSeconds(0);
+                    } else {
+                      setTimerRunning(false);
+                      setTimerSeconds(300);
+                    }
+                  }}
+                >
+                  <RotateCcw size={14} />
+                </button>
+                <button
+                  style={styles.iconActionButton(false)}
+                  onClick={clockMode === "stopwatch" ? bankStopwatch : () => {}}
+                >
+                  <Check size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.sideCard}>
+            <div style={styles.visualHeader}>
+              <h3 style={styles.sideTitle}>Listening Visualisation</h3>
+              <div style={styles.visualTools}>
+                <button style={styles.iconBadgeBtn} onClick={() => setSettingsOpen((v) => !v)}>
+                  <Settings2 size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.visualMainStats}>
+              <div style={styles.visualLargeValue}>{formatHours(listeningHours)}</div>
+              <p
+                style={{
+                  textAlign: "center",
+                  fontSize: "11px",
+                  textTransform: "uppercase",
+                  color: "#64748b",
+                  margin: "-5px 0 10px 0",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Total Immersed
+              </p>
+            </div>
+
+            <div style={styles.quickAdjustGrid}>
               {[
-                { key: "account", label: "Account" },
-                { key: "channels", label: "Subscribed Channels" },
-                { key: "recommended", label: "Recommended" },
+                { label: "+1h", delta: 1 },
+                { label: "+30m", delta: 0.5 },
+                { label: "+5m", delta: 5 / 60 },
               ].map((item) => (
                 <button
-                  key={item.key}
-                  style={styles.innerTabButton(workspaceTab === item.key)}
-                  onClick={() => setWorkspaceTab(item.key)}
+                  key={item.label}
+                  style={styles.adjustBtn}
+                  onClick={() => setListeningHours((h) => Math.max(0, h + item.delta))}
                 >
                   {item.label}
                 </button>
               ))}
             </div>
 
-            <div style={styles.innerTabPanel}>
-              {workspaceTab === "account" && (
-                <>
-                  <div style={styles.accountIdentity}>
-                    <UserCircle2 size={18} />
-                    <span>
-                      {youtubeConnected ? "Connected learner account" : "Sign in to connect YouTube"}
-                    </span>
-                  </div>
-                  <button
-                    style={styles.connectButton(youtubeConnected)}
-                    onClick={() => {
-                      setYoutubeConnected((v) => !v);
-                      setSubscribedChannels([...SEEDED_CHANNELS]);
-                    }}
-                  >
-                    <Link2 size={14} /> {youtubeConnected ? "Disconnect" : "Connect"}
-                  </button>
-                </>
-              )}
+            {settingsOpen && (
+              <div style={styles.goalGrid}>
+                <NumberField
+                  label="Goal (hours)"
+                  value={listeningGoal}
+                  onChange={setListeningGoal}
+                  step={1}
+                />
+                <PillSliderToggle
+                  value={vizMode}
+                  options={[
+                    { value: "blocks", label: "Blocks" },
+                    { value: "bar", label: "Bar" },
+                  ]}
+                  onChange={setVizMode}
+                  width={200}
+                  size="sm"
+                />
+              </div>
+            )}
 
-              {workspaceTab === "channels" && (
-                <div style={styles.listStack}>
-                  {subscribedChannels.map((channel) => (
-                    <div key={channel.id} style={styles.simpleRow}>
-                      <span style={styles.simpleTitle}>{channel.name}</span>
-                      <Tag label={channel.category} tone="blue" />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {workspaceTab === "recommended" && (
-                <div style={styles.listStack}>
-                  {approvedFeed.map((video) => {
-                    const active = video.id === selectedVideo?.id;
-                    return (
-                      <button
-                        key={video.id}
-                        style={styles.videoFeedButton(active)}
-                        onClick={() => setSelectedVideoId(video.id)}
-                      >
-                        <div style={styles.videoFeedTop}>
-                          <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
-                          <span style={styles.videoFeedTitle(active)}>{video.title}</span>
+            {showVisualization && (
+              <div style={{ marginTop: "15px" }}>
+                {vizMode === "blocks" ? (
+                  <div style={styles.blockGrid}>
+                    {Array.from({ length: totalBlocks }).map((_, index) => {
+                      const fill = Math.max(0, Math.min(1, (listeningHours - index * 10) / 10));
+                      return (
+                        <div key={index} style={styles.progressBlockShell}>
+                          <div style={styles.progressBlockFill(fill)} />
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={styles.progressBarWrap}>
+                    <div style={styles.progressBarFill(listeningProgress)} />
+                    <div style={styles.progressBarLabel}>
+                      <BarChart3 size={14} /> {listeningProgress.toFixed(1)}%
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      <div style={styles.sideColumn}>
-        <div style={styles.sideCard}>
-          <div style={styles.clockHeader}>
-            <h3 style={styles.sideTitle}>Live Session Timer</h3>
-            <PillSliderToggle
-              value={clockMode}
-              options={[
-                { value: "stopwatch", label: "Stopwatch" },
-                { value: "timer", label: "Timer" },
-              ]}
-              onChange={setClockMode}
-              width={200}
-              size="sm"
-            />
-          </div>
+      {isMounted &&
+        focusMode &&
+        createPortal(
+          <div style={styles.focusOverlay}>
+            <div style={styles.focusBackdrop} onClick={() => setFocusMode(false)} />
 
-          <div style={styles.timerContainer}>
-            <div style={styles.timerRingWrap}>
-              <ProgressRing 
-                radius={70} 
-                stroke={6} 
-                progress={((clockMode === "timer" ? (300 - timerSeconds) : stopwatchSeconds) % 60) / 60 * 100}
-                color="#6366f1"
-              />
-              <div style={styles.timerRingValue}>
-                {formatClock(clockMode === "timer" ? timerSeconds : stopwatchSeconds).split(':').slice(1).join(':')}
-                <div style={{fontSize: '11px', fontWeight: 500, color: '#64748b', opacity: 0.8}}>MIN:SEC</div>
+            <div style={styles.focusContent}>
+              <div style={styles.playerShellFocus}>
+                <div style={styles.playerFrameWrapFocus}>
+                  <div ref={playerHostRef} style={styles.playerFrame} />
+                  <button style={styles.focusModeBtn} onClick={() => setFocusMode(false)}>
+                    <Minimize2 size={14} />
+                  </button>
+                </div>
+
+                <div style={styles.playerControlRowFocus}>
+                  <div style={styles.playerMeta}>
+                    <h3 style={styles.playerTitleFocus}>{selectedVideo?.title}</h3>
+                    <p style={styles.playerSub}>
+                      {selectedVideo?.channel} · {selectedVideo?.duration} · Queue {queueIndex + 1}/
+                      {queueTotal}
+                    </p>
+                  </div>
+
+                  <div style={styles.playerControlRow}>
+                    <button style={styles.miniActionButton("blue")} onClick={saveCurrentSession}>
+                      <Save size={12} /> Save
+                    </button>
+                    <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
+                      <SkipForward size={12} /> Skip
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-
-            <div style={styles.timerActionRow}>
-              <button
-                style={styles.iconActionButton((clockMode === "stopwatch" ? stopwatchRunning : timerRunning))}
-                onClick={toggleTimerStart}
-              >
-                {(clockMode === "stopwatch" ? stopwatchRunning : timerRunning) ? <Pause size={14} /> : <Play size={14} />}
-              </button>
-              <button
-                style={styles.iconActionButton(false)}
-                onClick={() => {
-                  if (clockMode === "stopwatch") { setStopwatchRunning(false); setStopwatchSeconds(0); }
-                  else { setTimerRunning(false); setTimerSeconds(300); }
-                }}
-              >
-                <RotateCcw size={14} />
-              </button>
-              <button
-                style={styles.iconActionButton(false)}
-                onClick={clockMode === "stopwatch" ? bankStopwatch : () => {}}
-              >
-                <Check size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div style={styles.sideCard}>
-          <div style={styles.visualHeader}>
-            <h3 style={styles.sideTitle}>Listening Visualisation</h3>
-            <div style={styles.visualTools}>
-              <button style={styles.iconBadgeBtn} onClick={() => setSettingsOpen((v) => !v)}>
-                <Settings2 size={14} />
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.visualMainStats}>
-             <div style={styles.visualLargeValue}>{formatHours(listeningHours)}</div>
-             <p style={{textAlign: 'center', fontSize: '11px', textTransform: 'uppercase', color: '#64748b', margin: '-5px 0 10px 0', letterSpacing: '0.05em'}}>Total Immersed</p>
-          </div>
-
-          <div style={styles.quickAdjustGrid}>
-            {[
-              { label: "+1h", delta: 1 },
-              { label: "+30m", delta: 0.5 },
-              { label: "+5m", delta: 5 / 60 },
-            ].map((item) => (
-              <button
-                key={item.label}
-                style={styles.adjustBtn}
-                onClick={() => setListeningHours((h) => Math.max(0, h + item.delta))}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          {settingsOpen && (
-            <div style={styles.goalGrid}>
-              <NumberField
-                label="Goal (hours)"
-                value={listeningGoal}
-                onChange={setListeningGoal}
-                step={1}
-              />
-              <PillSliderToggle
-                value={vizMode}
-                options={[
-                  { value: "blocks", label: "Blocks" },
-                  { value: "bar", label: "Bar" },
-                ]}
-                onChange={setVizMode}
-                width={200}
-                size="sm"
-              />
-            </div>
-          )}
-
-          {showVisualization && (
-            <div style={{marginTop: '15px'}}>
-              {vizMode === "blocks" ? (
-                <div style={styles.blockGrid}>
-                  {Array.from({ length: totalBlocks }).map((_, index) => {
-                    const fill = Math.max(0, Math.min(1, (listeningHours - index * 10) / 10));
-                    return (
-                      <div key={index} style={styles.progressBlockShell}>
-                        <div style={styles.progressBlockFill(fill)} />
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={styles.progressBarWrap}>
-                  <div style={styles.progressBarFill(listeningProgress)} />
-                  <div style={styles.progressBarLabel}>
-                    <BarChart3 size={14} /> {listeningProgress.toFixed(1)}%
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -1375,20 +1472,108 @@ function formatClock(totalSeconds) {
 
 function convertRomajiToKanaForSearch(value) {
   const map = {
-    kya: "きゃ", kyu: "きゅ", kyo: "きょ", gya: "ぎゃ", gyu: "ぎゅ", gyo: "ぎょ",
-    sha: "しゃ", shu: "しゅ", sho: "しょ", cha: "ちゃ", chu: "ちゅ", cho: "ちょ",
-    nya: "にゃ", nyu: "にゅ", nyo: "にょ", hya: "ひゃ", hyu: "ひゅ", hyo: "ひょ",
-    mya: "みゃ", myu: "みゅ", myo: "みょ", rya: "りゃ", ryu: "りゅ", ryo: "りょ",
-    bya: "びゃ", byu: "びゅ", byo: "びょ", pya: "ぴゃ", pyu: "ぴゅ", pyo: "ぴょ",
-    ja: "じゃ", ju: "じゅ", jo: "じょ", tsu: "つ", shi: "し", chi: "ち", fu: "ふ",
-    ka: "か", ki: "き", ku: "く", ke: "け", ko: "こ", sa: "さ", su: "す", se: "せ",
-    so: "そ", ta: "た", te: "て", to: "と", na: "な", ni: "に", nu: "ぬ", ne: "ね",
-    no: "の", ha: "は", hi: "ひ", he: "へ", ho: "ほ", ma: "ま", mi: "み", mu: "む",
-    me: "め", mo: "も", ya: "や", yu: "ゆ", yo: "よ", ra: "ら", ri: "り", ru: "る",
-    re: "れ", ro: "ろ", wa: "わ", wo: "を", ga: "が", gi: "ぎ", gu: "ぐ", ge: "げ",
-    go: "ご", za: "ざ", ji: "じ", zu: "ず", ze: "ぜ", zo: "ぞ", da: "だ", de: "で",
-    do: "ど", ba: "ば", bi: "び", bu: "ぶ", be: "べ", bo: "ぼ", pa: "ぱ", pi: "ぴ",
-    pu: "ぷ", pe: "ぺ", po: "ぽ", a: "あ", i: "い", u: "う", e: "え", o: "お", nn: "ん",
+    kya: "きゃ",
+    kyu: "きゅ",
+    kyo: "きょ",
+    gya: "ぎゃ",
+    gyu: "ぎゅ",
+    gyo: "ぎょ",
+    sha: "しゃ",
+    shu: "しゅ",
+    sho: "しょ",
+    cha: "ちゃ",
+    chu: "ちゅ",
+    cho: "ちょ",
+    nya: "にゃ",
+    nyu: "にゅ",
+    nyo: "にょ",
+    hya: "ひゃ",
+    hyu: "ひゅ",
+    hyo: "ひょ",
+    mya: "みゃ",
+    myu: "みゅ",
+    myo: "みょ",
+    rya: "りゃ",
+    ryu: "りゅ",
+    ryo: "りょ",
+    bya: "びゃ",
+    byu: "びゅ",
+    byo: "びょ",
+    pya: "ぴゃ",
+    pyu: "ぴゅ",
+    pyo: "ぴょ",
+    ja: "じゃ",
+    ju: "じゅ",
+    jo: "じょ",
+    tsu: "つ",
+    shi: "し",
+    chi: "ち",
+    fu: "ふ",
+    ka: "か",
+    ki: "き",
+    ku: "く",
+    ke: "け",
+    ko: "こ",
+    sa: "さ",
+    su: "す",
+    se: "せ",
+    so: "そ",
+    ta: "た",
+    te: "て",
+    to: "と",
+    na: "な",
+    ni: "に",
+    nu: "ぬ",
+    ne: "ね",
+    no: "の",
+    ha: "は",
+    hi: "ひ",
+    he: "へ",
+    ho: "ほ",
+    ma: "ま",
+    mi: "み",
+    mu: "む",
+    me: "め",
+    mo: "も",
+    ya: "や",
+    yu: "ゆ",
+    yo: "よ",
+    ra: "ら",
+    ri: "り",
+    ru: "る",
+    re: "れ",
+    ro: "ろ",
+    wa: "わ",
+    wo: "を",
+    ga: "が",
+    gi: "ぎ",
+    gu: "ぐ",
+    ge: "げ",
+    go: "ご",
+    za: "ざ",
+    ji: "じ",
+    zu: "ず",
+    ze: "ぜ",
+    zo: "ぞ",
+    da: "だ",
+    de: "で",
+    do: "ど",
+    ba: "ば",
+    bi: "び",
+    bu: "ぶ",
+    be: "べ",
+    bo: "ぼ",
+    pa: "ぱ",
+    pi: "ぴ",
+    pu: "ぷ",
+    pe: "ぺ",
+    po: "ぽ",
+    a: "あ",
+    i: "い",
+    u: "う",
+    e: "え",
+    o: "お",
+    nn: "ん",
   };
 
   const text = value.toLowerCase();
@@ -1398,16 +1583,35 @@ function convertRomajiToKanaForSearch(value) {
   while (i < text.length) {
     const char = text[i];
     const next = text[i + 1] ?? "";
-    if (/\s/.test(char)) { out += char; i++; continue; }
+    if (/\s/.test(char)) {
+      out += char;
+      i++;
+      continue;
+    }
     if (i + 1 < text.length && char === next && !["a", "i", "u", "e", "o", "n"].includes(char)) {
-      out += "っ"; i++; continue;
+      out += "っ";
+      i++;
+      continue;
     }
     const tri = text.slice(i, i + 3);
     const bi = text.slice(i, i + 2);
-    if (map[tri]) { out += map[tri]; i += 3; continue; }
-    if (map[bi]) { out += map[bi]; i += 2; continue; }
-    if (map[char]) { out += map[char]; i++; continue; }
-    out += char; i++;
+    if (map[tri]) {
+      out += map[tri];
+      i += 3;
+      continue;
+    }
+    if (map[bi]) {
+      out += map[bi];
+      i += 2;
+      continue;
+    }
+    if (map[char]) {
+      out += map[char];
+      i++;
+      continue;
+    }
+    out += char;
+    i++;
   }
   return out;
 }
@@ -1995,16 +2199,16 @@ const styles = {
     zIndex: 2,
   },
   playerShellFocus: {
-    position: "fixed",
-    top: "45%",
-    left: "50%",
-    width: "min(1100px, calc(100vw - 40px))",
-    transform: "translate(-50%, -50%)",
-    zIndex: 1001,
-    boxShadow: "0 40px 100px rgba(0,0,0,0.5)",
-    background: "rgba(255,255,255,0.95)",
+    width: "min(1200px, 100%)",
+    maxHeight: "100%",
+    borderRadius: "24px",
+    background: "rgba(255,255,255,0.96)",
+    boxShadow: "0 40px 120px rgba(0,0,0,0.45)",
     padding: "16px",
-    border: "none",
+    display: "grid",
+    gap: "14px",
+    position: "relative",
+    zIndex: 10000,
   },
   playerHeader: {
     display: "flex",
@@ -2034,7 +2238,12 @@ const styles = {
     background: "#000",
   },
   playerFrameWrapFocus: {
-    borderRadius: "16px",
+    position: "relative",
+    width: "100%",
+    paddingTop: "56.25%",
+    borderRadius: "18px",
+    overflow: "hidden",
+    background: "#000",
   },
   playerFrame: {
     position: "absolute",
@@ -2044,28 +2253,39 @@ const styles = {
     border: "none",
   },
   playerControlColumn: {
-    display: 'grid',
-    gap: '12px'
+    display: "grid",
+    gap: "12px",
   },
   playerControlRowFocus: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: "16px",
     padding: "8px 4px 0 4px",
+    flexWrap: "wrap",
   },
   playerMeta: {
     display: "grid",
     gap: "2px",
+    minWidth: 0,
+    flex: 1,
   },
   playerTitle: {
     margin: 0,
     fontSize: "16px",
     fontWeight: 700,
     letterSpacing: "-0.01em",
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    maxWidth: '400px'
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "400px",
+  },
+  playerTitleFocus: {
+    margin: 0,
+    fontSize: "18px",
+    fontWeight: 700,
+    letterSpacing: "-0.02em",
+    color: "#111827",
   },
   playerSub: {
     margin: 0,
@@ -2174,29 +2394,34 @@ const styles = {
     cursor: "pointer",
     textAlign: "left",
   }),
-  videoFeedTitle: (active) => ({
+  videoFeedTop: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  videoFeedTitle: () => ({
     fontSize: "13px",
     fontWeight: 700,
   }),
   timerContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '20px',
-    padding: '10px 0'
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "20px",
+    padding: "10px 0",
   },
   timerRingWrap: {
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   timerRingValue: {
-    position: 'absolute',
-    textAlign: 'center',
-    fontSize: '28px',
+    position: "absolute",
+    textAlign: "center",
+    fontSize: "28px",
     fontWeight: 800,
-    color: '#1e293b'
+    color: "#1e293b",
   },
   timerActionRow: {
     display: "flex",
@@ -2237,7 +2462,7 @@ const styles = {
     textAlign: "center",
   },
   visualMainStats: {
-    padding: '10px 0'
+    padding: "10px 0",
   },
   quickAdjustGrid: {
     display: "grid",
@@ -2255,12 +2480,12 @@ const styles = {
     cursor: "pointer",
   },
   goalGrid: {
-    background: 'rgba(255,255,255,0.4)',
-    padding: '12px',
-    borderRadius: '16px',
-    border: '1px solid rgba(0,0,0,0.05)',
-    display: 'grid',
-    gap: '12px'
+    background: "rgba(255,255,255,0.4)",
+    padding: "12px",
+    borderRadius: "16px",
+    border: "1px solid rgba(0,0,0,0.05)",
+    display: "grid",
+    gap: "12px",
   },
   blockGrid: {
     display: "grid",
@@ -2305,15 +2530,40 @@ const styles = {
     fontWeight: 800,
     gap: "4px",
   },
-  focusBackdrop: {
+  focusOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.5)",
-    zIndex: 1000,
+    zIndex: 9999,
+  },
+  focusBackdrop: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(2, 6, 23, 0.72)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+  },
+  focusContent: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "24px",
+  },
+  clockHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    alignItems: "flex-start",
   },
   controlGridSingle: { marginTop: "20px" },
   inputCard: { display: "grid", gap: "6px" },
-  inputLabel: { fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: 'uppercase' },
+  inputLabel: {
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#64748b",
+    textTransform: "uppercase",
+  },
   input: {
     padding: "10px",
     borderRadius: "10px",
