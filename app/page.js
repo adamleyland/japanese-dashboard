@@ -13,21 +13,18 @@ import {
   PlayCircle,
   Mic2,
   PenLine,
-  Pause,
-  RotateCcw,
-  Play,
   SkipForward,
-  Check,
   Maximize2,
   Minimize2,
   Save,
-  Settings2,
-  BarChart3,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import NavigationBar from "@/components/layout/NavigationBar";
 import MainTracker from "@/components/dashboard/MainTracker";
-import DictionaryCarousel, { PillSliderToggle, ProgressRing, Tag } from "@/components/dashboard/DictionaryCarousel";
+import DictionaryCarousel from "@/components/dashboard/DictionaryCarousel";
+import ListeningWorkspace from "@/components/features/listening/ListeningWorkspace";
+import TimerStopwatch from "@/components/features/listening/TimerStopwatch";
+import ListeningVisualization from "@/components/features/listening/ListeningVisualization";
 
 const MODULE_ACCENTS = {
   listening: { bg: "#eab308", soft: "rgba(234,179,8,0.18)", text: "#92400e" },
@@ -467,307 +464,67 @@ function ListeningTab({ listeningHours, setListeningHours, isMobile, isCompact }
           gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
         }}
       >
-        <div style={styles.largeCard}>
-          <div
-            style={{
-              ...styles.sectionHeader,
-              flexDirection: isCompact ? "column" : "row",
-            }}
-          >
-            <div>
-              <h2 style={styles.sectionTitle}>Listening Workspace</h2>
-              <p style={styles.sectionText}>
-                Approved-channel feed and immersion architecture.
-              </p>
-            </div>
-          </div>
-
-          {!focusMode && (
-            <div style={styles.playerShell}>
-              <div style={styles.playerHeader}>
-                <div style={styles.playerHeaderLeft}>
-                  <Video size={18} color="#ef4444" />
-                  <span style={styles.playerPlatform}>YouTube Integration</span>
-                </div>
-                <Tag
-                  label={youtubeConnected ? "Connected" : "Not Connected"}
-                  tone={youtubeConnected ? "green" : "orange"}
-                />
-              </div>
-
-              <div style={styles.playerFrameWrap}>
-                <div ref={playerHostRef} style={styles.playerFrame} />
-                <button style={styles.focusModeBtn} onClick={() => setFocusMode(true)}>
-                  <Maximize2 size={14} />
-                </button>
-              </div>
-
-              <div style={styles.playerControlColumn}>
-                <div style={styles.playerMeta}>
-                  <h3 style={styles.playerTitle}>{selectedVideo?.title}</h3>
-                  <p style={styles.playerSub}>
-                    {selectedVideo?.channel} · {selectedVideo?.duration} · Queue {queueIndex + 1}/
-                    {queueTotal}
-                  </p>
-                </div>
-                <div style={styles.playerControlRow}>
-                  <button style={styles.miniActionButton("blue")} onClick={saveCurrentSession}>
-                    <Save size={12} /> Save
-                  </button>
-                  <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
-                    <SkipForward size={12} /> Skip
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!focusMode && (
-            <div style={styles.innerTabsWrap}>
-              <div style={styles.innerTabsRow}>
-                {[
-                  { key: "account", label: "Account" },
-                  { key: "channels", label: "Subscribed Channels" },
-                  { key: "recommended", label: "Recommended" },
-                ].map((item) => (
-                  <button
-                    key={item.key}
-                    style={styles.innerTabButton(workspaceTab === item.key)}
-                    onClick={() => setWorkspaceTab(item.key)}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-
-              <div style={styles.innerTabPanel}>
-                {workspaceTab === "account" && (
-                  <>
-                    <div style={styles.accountIdentity}>
-                      <UserCircle2 size={18} />
-                      <span>
-                        {youtubeConnected
-                          ? "Connected learner account"
-                          : "Sign in to connect YouTube"}
-                      </span>
-                    </div>
-                    <button
-                      style={styles.connectButton(youtubeConnected)}
-                      onClick={() => {
-                        setYoutubeConnected((v) => !v);
-                        setSubscribedChannels([...SEEDED_CHANNELS]);
-                      }}
-                    >
-                      <Link2 size={14} /> {youtubeConnected ? "Disconnect" : "Connect"}
-                    </button>
-                  </>
-                )}
-
-                {workspaceTab === "channels" && (
-                  <div style={styles.listStack}>
-                    {subscribedChannels.map((channel) => (
-                      <div key={channel.id} style={styles.simpleRow}>
-                        <span style={styles.simpleTitle}>{channel.name}</span>
-                        <Tag label={channel.category} tone="blue" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {workspaceTab === "recommended" && (
-                  <div style={styles.listStack}>
-                    {approvedFeed.map((video) => {
-                      const active = video.id === selectedVideo?.id;
-                      return (
-                        <button
-                          key={video.id}
-                          style={styles.videoFeedButton(active)}
-                          onClick={() => setSelectedVideoId(video.id)}
-                        >
-                          <div style={styles.videoFeedTop}>
-                            <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
-                            <span style={styles.videoFeedTitle(active)}>{video.title}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <ListeningWorkspace
+          styles={styles}
+          isMobile={isMobile}
+          isCompact={isCompact}
+          focusMode={focusMode}
+          setFocusMode={setFocusMode}
+          isMounted={isMounted}
+          youtubeConnected={youtubeConnected}
+          setYoutubeConnected={setYoutubeConnected}
+          subscribedChannels={subscribedChannels}
+          approvedFeed={approvedFeed}
+          selectedVideo={selectedVideo}
+          selectedVideoId={selectedVideoId}
+          setSelectedVideoId={setSelectedVideoId}
+          queueTotal={queueTotal}
+          queueIndex={queueIndex}
+          saveCurrentSession={saveCurrentSession}
+          skipCurrentVideo={skipCurrentVideo}
+          workspaceTab={workspaceTab}
+          setWorkspaceTab={setWorkspaceTab}
+          playerHostRef={playerHostRef}
+          onToggleYoutubeConnection={() => {
+            setYoutubeConnected((v) => !v);
+            setSubscribedChannels([...SEEDED_CHANNELS]);
+          }}
+        />
 
         <div style={styles.sideColumn}>
-          <div style={styles.sideCard}>
-            <div style={styles.clockHeader}>
-              <h3 style={styles.sideTitle}>Live Session Timer</h3>
-              <PillSliderToggle
-                value={clockMode}
-                options={[
-                  { value: "stopwatch", label: "Stopwatch" },
-                  { value: "timer", label: "Timer" },
-                ]}
-                onChange={setClockMode}
-                width={200}
-                size="sm"
-              />
-            </div>
+          <TimerStopwatch
+            styles={styles}
+            clockMode={clockMode}
+            stopwatchSeconds={stopwatchSeconds}
+            stopwatchRunning={stopwatchRunning}
+            timerSeconds={timerSeconds}
+            timerRunning={timerRunning}
+            toggleTimerStart={toggleTimerStart}
+            bankStopwatch={bankStopwatch}
+            setClockMode={setClockMode}
+            setStopwatchRunning={setStopwatchRunning}
+            setStopwatchSeconds={setStopwatchSeconds}
+            setTimerRunning={setTimerRunning}
+            setTimerSeconds={setTimerSeconds}
+            liveSessionDisplay={formatClock(clockMode === "timer" ? timerSeconds : stopwatchSeconds)
+              .split(":")
+              .slice(1)
+              .join(":")}
+          />
 
-            <div style={styles.timerContainer}>
-              <div style={styles.timerRingWrap}>
-                <ProgressRing
-                  radius={70}
-                  stroke={6}
-                  progress={
-                    ((((clockMode === "timer" ? 300 - timerSeconds : stopwatchSeconds) % 60) /
-                      60) *
-                      100)
-                  }
-                  color="#6366f1"
-                />
-                <div style={styles.timerRingValue}>
-                  {formatClock(clockMode === "timer" ? timerSeconds : stopwatchSeconds)
-                    .split(":")
-                    .slice(1)
-                    .join(":")}
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 500,
-                      color: "#64748b",
-                      opacity: 0.8,
-                    }}
-                  >
-                    MIN:SEC
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.timerActionRow}>
-                <button
-                  style={styles.iconActionButton(
-                    clockMode === "stopwatch" ? stopwatchRunning : timerRunning,
-                  )}
-                  onClick={toggleTimerStart}
-                >
-                  {clockMode === "stopwatch" ? stopwatchRunning : timerRunning ? (
-                    <Pause size={14} />
-                  ) : (
-                    <Play size={14} />
-                  )}
-                </button>
-                <button
-                  style={styles.iconActionButton(false)}
-                  onClick={() => {
-                    if (clockMode === "stopwatch") {
-                      setStopwatchRunning(false);
-                      setStopwatchSeconds(0);
-                    } else {
-                      setTimerRunning(false);
-                      setTimerSeconds(300);
-                    }
-                  }}
-                >
-                  <RotateCcw size={14} />
-                </button>
-                <button
-                  style={styles.iconActionButton(false)}
-                  onClick={clockMode === "stopwatch" ? bankStopwatch : () => {}}
-                >
-                  <Check size={14} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.sideCard}>
-            <div style={styles.visualHeader}>
-              <h3 style={styles.sideTitle}>Listening Visualisation</h3>
-              <div style={styles.visualTools}>
-                <button style={styles.iconBadgeBtn} onClick={() => setSettingsOpen((v) => !v)}>
-                  <Settings2 size={14} />
-                </button>
-              </div>
-            </div>
-
-            <div style={styles.visualMainStats}>
-              <div style={styles.visualLargeValue}>{formatHours(listeningHours)}</div>
-              <p
-                style={{
-                  textAlign: "center",
-                  fontSize: "11px",
-                  textTransform: "uppercase",
-                  color: "#64748b",
-                  margin: "-5px 0 10px 0",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                Total Immersed
-              </p>
-            </div>
-
-            <div style={styles.quickAdjustGrid}>
-              {[
-                { label: "+1h", delta: 1 },
-                { label: "+30m", delta: 0.5 },
-                { label: "+5m", delta: 5 / 60 },
-              ].map((item) => (
-                <button
-                  key={item.label}
-                  style={styles.adjustBtn}
-                  onClick={() => setListeningHours((h) => Math.max(0, h + item.delta))}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            {settingsOpen && (
-              <div style={styles.goalGrid}>
-                <NumberField
-                  label="Goal (hours)"
-                  value={listeningGoal}
-                  onChange={setListeningGoal}
-                  step={1}
-                />
-                <PillSliderToggle
-                  value={vizMode}
-                  options={[
-                    { value: "blocks", label: "Blocks" },
-                    { value: "bar", label: "Bar" },
-                  ]}
-                  onChange={setVizMode}
-                  width={200}
-                  size="sm"
-                />
-              </div>
-            )}
-
-            {showVisualization && (
-              <div style={{ marginTop: "15px" }}>
-                {vizMode === "blocks" ? (
-                  <div style={styles.blockGrid}>
-                    {Array.from({ length: totalBlocks }).map((_, index) => {
-                      const fill = Math.max(0, Math.min(1, (listeningHours - index * 10) / 10));
-                      return (
-                        <div key={index} style={styles.progressBlockShell}>
-                          <div style={styles.progressBlockFill(fill)} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={styles.progressBarWrap}>
-                    <div style={styles.progressBarFill(listeningProgress)} />
-                    <div style={styles.progressBarLabel}>
-                      <BarChart3 size={14} /> {listeningProgress.toFixed(1)}%
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <ListeningVisualization
+            styles={styles}
+            listeningHours={listeningHours}
+            listeningGoal={listeningGoal}
+            setListeningGoal={setListeningGoal}
+            showVisualization={showVisualization}
+            vizMode={vizMode}
+            setVizMode={setVizMode}
+            settingsOpen={settingsOpen}
+            setSettingsOpen={setSettingsOpen}
+            totalBlocks={totalBlocks}
+            listeningProgress={listeningProgress}
+          />
         </div>
       </div>
 
