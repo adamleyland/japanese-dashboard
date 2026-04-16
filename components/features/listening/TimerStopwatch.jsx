@@ -1,14 +1,15 @@
 "use client";
 
+import React from "react";
 import { Pause, Play, RotateCcw, Check } from "lucide-react";
 import { PillSliderToggle, ProgressRing } from "@/components/dashboard/DictionaryCarousel";
 
 export default function TimerStopwatch({
   styles,
   clockMode,
-  stopwatchSeconds,
+  stopwatchSeconds, // Expecting decimal (e.g., 1.1, 1.2)
   stopwatchRunning,
-  timerSeconds,
+  timerSeconds,     // Expecting decimal
   timerRunning,
   toggleTimerStart,
   bankStopwatch,
@@ -19,6 +20,25 @@ export default function TimerStopwatch({
   setTimerSeconds,
   liveSessionDisplay,
 }) {
+  
+  // 1. Calculate raw progress within the current minute (0-100)
+  const currentSeconds = clockMode === "timer" ? (300 - timerSeconds) : stopwatchSeconds;
+  const progressPercent = ((currentSeconds % 60) / 60) * 100;
+
+  // 2. Determine "Lap" status for the color swapping
+  // Even minutes (0, 2, 4): Original Blue
+  // Odd minutes (1, 3, 5): Darker Blue
+  const totalMinutesPassed = Math.floor(currentSeconds / 60);
+  const isOddMinute = totalMinutesPassed % 2 !== 0;
+
+  const colorPrimary = "#6366f1";   // Original Blue
+  const colorSecondary = "#4338ca"; // Slightly Darker Blue (Indigo-700)
+  
+  // This logic makes the "filled" part of the previous minute 
+  // the background of the current minute
+  const ringColor = isOddMinute ? colorSecondary : colorPrimary;
+  const trackColor = isOddMinute ? colorPrimary : "#e2e8f0"; // e2e8f0 is a standard light gray
+
   return (
     <div style={styles.sideCard}>
       <div style={styles.clockHeader}>
@@ -40,12 +60,14 @@ export default function TimerStopwatch({
           <ProgressRing
             radius={70}
             stroke={6}
-            progress={
-              ((((clockMode === "timer" ? 300 - timerSeconds : stopwatchSeconds) % 60) /
-                60) *
-                100)
-            }
-            color="#6366f1"
+            progress={progressPercent}
+            color={ringColor}
+            // Add a trackColor prop if your ProgressRing supports it
+            // Otherwise, apply a background-color style to the SVG track
+            trackColor={trackColor} 
+            style={{
+              transition: "stroke-dashoffset 0.1s linear", // Key for smooth movement
+            }}
           />
           <div style={styles.timerRingValue}>
             {liveSessionDisplay}
@@ -65,11 +87,11 @@ export default function TimerStopwatch({
         <div style={styles.timerActionRow}>
           <button
             style={styles.iconActionButton(
-              clockMode === "stopwatch" ? stopwatchRunning : timerRunning,
+              clockMode === "stopwatch" ? stopwatchRunning : timerRunning
             )}
             onClick={toggleTimerStart}
           >
-            {clockMode === "stopwatch" ? stopwatchRunning : timerRunning ? (
+            {(clockMode === "stopwatch" ? stopwatchRunning : timerRunning) ? (
               <Pause size={14} />
             ) : (
               <Play size={14} />
