@@ -191,8 +191,25 @@ export default function DictionaryCarousel({ styles }) {
         query = query.ilike("meaning", `%${dictionaryValue}%`);
       }
 
-      const { data } = await query.order("is_common", { ascending: false }).limit(10);
-      setSearchResults(data || []);
+      const { data } = await query.order("is_common", { ascending: false }).limit(30);
+
+      const ranked = (data || [])
+        .map((entry) => ({
+          entry,
+          score: scoreDictionaryEntry(entry, dictionaryValue, dictionaryInputMode),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          if ((b.entry.is_common ? 1 : 0) !== (a.entry.is_common ? 1 : 0)) {
+            return (b.entry.is_common ? 1 : 0) - (a.entry.is_common ? 1 : 0);
+          }
+          return a.entry.term.localeCompare(b.entry.term, undefined, { sensitivity: "base" });
+        })
+        .slice(0, 10)
+        .map(({ entry }) => entry);
+
+      setSearchResults(ranked);
     };
 
     const timer = setTimeout(search, 300);
@@ -641,6 +658,45 @@ function convertRomajiToKanaForSearch(value) {
     i++;
   }
   return out;
+}
+
+function scoreDictionaryEntry(entry, query, mode) {
+  const normalizedQuery = query?.toLowerCase().trim();
+  if (!normalizedQuery) return 0;
+
+  const term = entry.term?.toLowerCase?.() ?? "";
+  const reading = entry.reading?.toLowerCase?.() ?? "";
+  const kanji = entry.kanji?.toLowerCase?.() ?? "";
+  const meaning = entry.meaning?.toLowerCase?.() ?? "";
+  const isCommon = entry.is_common ? 1 : 0;
+
+  const exactMatch = (value) => value === normalizedQuery;
+  const startsWith = (value) => value.startsWith(normalizedQuery);
+  const contains = (value) => value.includes(normalizedQuery);
+
+  let score = 0;
+
+  if (mode === "ja") {
+    if (exactMatch(term)) score += 100;
+    if (exactMatch(reading)) score += 90;
+    if (exactMatch(kanji)) score += 90;
+    if (startsWith(term)) score += 70;
+    if (startsWith(reading)) score += 60;
+    if (startsWith(kanji)) score += 50;
+    if (contains(term)) score += 40;
+    if (contains(reading)) score += 35;
+    if (contains(kanji)) score += 30;
+    if (contains(meaning)) score += 10;
+  } else {
+    if (exactMatch(meaning)) score += 100;
+    if (startsWith(meaning)) score += 70;
+    if (contains(meaning)) score += 50;
+    if (contains(term)) score += 20;
+    if (contains(reading)) score += 15;
+    if (contains(kanji)) score += 10;
+  }
+
+  return score + isCommon * 10;
 }
 
 const styles = {
