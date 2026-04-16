@@ -22,6 +22,7 @@ function NumberField({ label, value, onChange, step = 1, styles }) {
 export default function ListeningVisualization({
   styles,
   listeningHours,
+  setListeningHours,
   listeningGoal,
   setListeningGoal,
   showVisualization,
