@@ -306,7 +306,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.2)",
+    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.01)",
   },
   progressSeconds: {
     position: "absolute",

@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings2, BarChart3 } from "lucide-react";
+import { Settings2, BarChart3, Ear } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
 
 function NumberField({ label, value, onChange, step = 1, styles }) {
@@ -35,11 +35,52 @@ export default function ListeningVisualization({
 }) {
   return (
     <div style={styles.sideCard}>
-      <div style={styles.visualHeader}>
-        <h3 style={styles.sideTitle}>Listening Visualisation</h3>
-        <div style={styles.visualTools}>
-          <button style={styles.iconBadgeBtn} onClick={() => setSettingsOpen((v) => !v)}>
-            <Settings2 size={14} />
+      <div
+        style={{
+          ...styles.wordCardHeader,
+          marginBottom: "8px",
+          alignItems: "flex-start",
+          gap: "12px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
+          <div style={styles.progressContainer}>
+            <div
+              style={{
+                ...styles.dictionaryIconFootprint,
+                background: "linear-gradient(145deg, #f5cd55, #eab308)",
+                boxShadow: "0 10px 24px rgba(14,165,233,0.01)",
+              }}
+            >
+              <Ear size={14} color="#fff" strokeWidth={2.5} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: "3px", minWidth: 0 }}>
+            <div style={styles.eyebrow}>Listening Progress</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+          <button
+            type="button"
+            style={{
+              border: "1px solid rgba(15, 23, 42, 0.08)",
+              background: settingsOpen ? "rgba(14,165,233,0.12)" : "rgba(255,255,255,0.82)",
+              borderRadius: "12px",
+              width: "36px",
+              height: "36px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: settingsOpen ? "#0369a1" : "#475569",
+              cursor: "pointer",
+              boxShadow: "0 6px 18px rgba(15,23,42,0.06)",
+            }}
+            onClick={() => setSettingsOpen((value) => !value)}
+            aria-label="Toggle listening visualization settings"
+          >
+            <Settings2 size={15} />
           </button>
         </div>
       </div>
@@ -69,7 +110,7 @@ export default function ListeningVisualization({
           <button
             key={item.label}
             style={styles.adjustBtn}
-            onClick={() => setListeningHours((h) => Math.max(0, h + item.delta))}
+            onClick={() => setListeningHours((hours) => Math.max(0, hours + item.delta))}
           >
             {item.label}
           </button>
