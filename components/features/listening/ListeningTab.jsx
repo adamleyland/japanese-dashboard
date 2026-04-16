@@ -60,6 +60,8 @@ export default function ListeningTab({
   const initRef = useRef(false);
   const playerReadyRef = useRef(false);
 
+  const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
+
   const approvedChannelNames = useMemo(
     () => new Set(subscribedChannels.map((channel) => channel.name)),
     [subscribedChannels],
@@ -486,26 +488,28 @@ export default function ListeningTab({
 
   useEffect(() => {
     if (!stopwatchRunning) return;
-    const timer = setInterval(() => setStopwatchSeconds((s) => s + 1), 1000);
+    const timer = setInterval(() => {
+      setStopwatchSeconds((seconds) => roundToTenth(seconds + 0.1));
+    }, 100);
     return () => clearInterval(timer);
-  }, [stopwatchRunning]);
+  }, [stopwatchRunning, roundToTenth]);
 
   useEffect(() => {
     if (clockMode !== "timer" || !timerRunning) return;
 
     const timer = setInterval(() => {
       setTimerSeconds((seconds) => {
-        if (seconds <= 1) {
+        if (seconds <= 0.1) {
           setListeningHours((hours) => hours + 300 / 3600);
           setTimerRunning(false);
           return 0;
         }
-        return seconds - 1;
+        return roundToTenth(seconds - 0.1);
       });
-    }, 1000);
+    }, 100);
 
     return () => clearInterval(timer);
-  }, [clockMode, timerRunning, setListeningHours]);
+  }, [clockMode, timerRunning, setListeningHours, roundToTenth]);
 
   const bankStopwatch = () => {
     if (!stopwatchSeconds) return;
@@ -607,7 +611,9 @@ export default function ListeningTab({
             setStopwatchSeconds={setStopwatchSeconds}
             setTimerRunning={setTimerRunning}
             setTimerSeconds={setTimerSeconds}
-            liveSessionDisplay={formatClock(clockMode === "timer" ? timerSeconds : stopwatchSeconds)
+            liveSessionDisplay={formatClock(
+              Math.floor(clockMode === "timer" ? timerSeconds : stopwatchSeconds),
+            )
               .split(":")
               .slice(1)
               .join(":")}

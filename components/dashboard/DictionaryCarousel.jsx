@@ -37,7 +37,14 @@ export function PillSliderToggle({ value, options, onChange, width = 110, size =
   );
 }
 
-export function ProgressRing({ radius, stroke, progress, color = "#ef4444" }) {
+export function ProgressRing({
+  radius,
+  stroke,
+  progress,
+  color = "#ef4444",
+  trackColor = "rgba(15, 23, 42, 0.05)",
+  style,
+}) {
   const normalizedRadius = radius - stroke * 2;
   const circumference = normalizedRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -45,7 +52,7 @@ export function ProgressRing({ radius, stroke, progress, color = "#ef4444" }) {
   return (
     <svg height={radius * 2} width={radius * 2} style={styles.progressRing}>
       <circle
-        stroke="rgba(15, 23, 42, 0.05)"
+        stroke={trackColor}
         fill="transparent"
         strokeWidth={stroke}
         r={normalizedRadius}
@@ -57,7 +64,7 @@ export function ProgressRing({ radius, stroke, progress, color = "#ef4444" }) {
         fill="transparent"
         strokeWidth={stroke}
         strokeDasharray={`${circumference} ${circumference}`}
-        style={{ strokeDashoffset, transition: "stroke-dashoffset 0.1s linear" }}
+        style={{ strokeDashoffset, ...style }}
         strokeLinecap="round"
         r={normalizedRadius}
         cx={radius}

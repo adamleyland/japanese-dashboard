@@ -62,11 +62,10 @@ export default function TimerStopwatch({
             stroke={6}
             progress={progressPercent}
             color={ringColor}
-            // Add a trackColor prop if your ProgressRing supports it
-            // Otherwise, apply a background-color style to the SVG track
-            trackColor={trackColor} 
+            trackColor={trackColor}
             style={{
-              transition: "stroke-dashoffset 0.1s linear", // Key for smooth movement
+              transition:
+                progressPercent < 1 ? "none" : "stroke-dashoffset 0.1s linear",
             }}
           />
           <div style={styles.timerRingValue}>
