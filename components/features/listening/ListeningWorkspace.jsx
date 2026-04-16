@@ -35,6 +35,7 @@ export default function ListeningWorkspace({
   setWorkspaceTab,
   onToggleYoutubeConnection,
   playerHostRef,
+  focusPlayerHostRef,
 }) {
   return (
     <>
@@ -173,7 +174,7 @@ export default function ListeningWorkspace({
             <div style={styles.focusContent}>
               <div style={styles.playerShellFocus}>
                 <div style={styles.playerFrameWrapFocus}>
-                  <div ref={playerHostRef} style={styles.playerFrame} />
+                  <div ref={focusPlayerHostRef} style={styles.playerFrame} />
                   <button style={styles.focusModeBtn} onClick={() => setFocusMode(false)}>
                     <Minimize2 size={14} />
                   </button>
