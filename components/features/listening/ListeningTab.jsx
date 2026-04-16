@@ -30,7 +30,6 @@ export default function ListeningTab({
   const [youtubeAccessToken, setYoutubeAccessToken] = useState("");
   const [subscribedChannels, setSubscribedChannels] = useState(seededChannels);
   const [videoFeed] = useState(seededVideos);
-  const [accountVideos, setAccountVideos] = useState([]);
   const [selectedVideoId, setSelectedVideoId] = useState("M7lc1UVf-VE");
   const DEFAULT_VIDEO_ID = "M7lc1UVf-VE";
   const AUTH_STORAGE_KEY = "jp_dashboard_youtube_auth";
@@ -67,13 +66,12 @@ export default function ListeningTab({
     [videoFeed, approvedChannelNames],
   );
 
-  const activeFeed = accountVideos.length ? accountVideos : approvedFeed;
   const selectedVideo = useMemo(
-    () => activeFeed.find((video) => video.id === selectedVideoId) || activeFeed[0],
-    [activeFeed, selectedVideoId],
+    () => approvedFeed.find((video) => video.id === selectedVideoId) || approvedFeed[0],
+    [approvedFeed, selectedVideoId],
   );
-  const queueTotal = activeFeed.length;
-  const queueIndex = Math.max(0, activeFeed.findIndex((item) => item.id === selectedVideo?.id));
+  const queueTotal = approvedFeed.length;
+  const queueIndex = Math.max(0, approvedFeed.findIndex((item) => item.id === selectedVideo?.id));
 
   useEffect(() => {
     setIsMounted(true);
@@ -205,7 +203,7 @@ export default function ListeningTab({
   useEffect(() => {
     if (!youtubeAccessToken || !youtubeConnected) return;
 
-    const fetchSubscriptionVideos = async () => {
+    const fetchSubscriptionVideo = async () => {
       try {
         const subsResponse = await fetch(
           "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=5",
@@ -221,64 +219,40 @@ export default function ListeningTab({
         }
 
         const subsData = await subsResponse.json();
-        const channelIds = Array.from(
-          new Set(
-            subsData.items
-              ?.map((item) => item?.snippet?.resourceId?.channelId)
-              .filter(Boolean) || [],
-          ),
-        ).slice(0, 3);
+        const channelId =
+          subsData.items?.find((item) => item?.snippet?.resourceId?.channelId)?.snippet?.resourceId
+            ?.channelId || subsData.items?.[0]?.snippet?.resourceId?.channelId;
 
-        if (!channelIds.length) {
-          throw new Error("No subscribed channels found");
+        if (!channelId) {
+          throw new Error("No subscribed channel found");
         }
 
-        const fetchedVideos = [];
-        for (const channelId of channelIds) {
-          try {
-            const videosResponse = await fetch(
-              `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=5&order=date&type=video`,
-              {
-                headers: {
-                  Authorization: `Bearer ${youtubeAccessToken}`,
-                },
-              },
-            );
+        const videosResponse = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=5&order=date&type=video`,
+          {
+            headers: {
+              Authorization: `Bearer ${youtubeAccessToken}`,
+            },
+          },
+        );
 
-            if (!videosResponse.ok) {
-              console.warn(`Video fetch failed for channel ${channelId}: ${videosResponse.status}`);
-              continue;
-            }
-
-            const videosData = await videosResponse.json();
-            const channelVideos = (videosData.items || [])
-              .filter((item) => item?.id?.videoId)
-              .map((item) => ({
-                id: item.id.videoId,
-                title: item.snippet?.title || "YouTube video",
-                channel: item.snippet?.channelTitle || "YouTube",
-                duration: item.snippet?.publishedAt ? "Recent" : "Video",
-              }));
-
-            fetchedVideos.push(...channelVideos);
-          } catch (channelError) {
-            console.error(`Failed to load videos for channel ${channelId}`, channelError);
-          }
+        if (!videosResponse.ok) {
+          throw new Error(`Video fetch failed: ${videosResponse.status}`);
         }
 
-        if (fetchedVideos.length) {
-          setAccountVideos(fetchedVideos);
-          if (selectedVideoId === DEFAULT_VIDEO_ID) {
-            setSelectedVideoId(fetchedVideos[0].id);
-          }
+        const videosData = await videosResponse.json();
+        const videoId = videosData.items?.find((item) => item?.id?.videoId)?.id?.videoId;
+
+        if (videoId) {
+          setSelectedVideoId(videoId);
         }
       } catch (error) {
-        console.error("Unable to fetch YouTube subscription videos", error);
+        console.error("Unable to fetch YouTube subscription video", error);
       }
     };
 
-    fetchSubscriptionVideos();
-  }, [youtubeAccessToken, youtubeConnected, selectedVideoId]);
+    fetchSubscriptionVideo();
+  }, [youtubeAccessToken, youtubeConnected]);
 
   const bankSession = useCallback(() => {
     if (!sessionRef.current) return;
@@ -314,10 +288,10 @@ export default function ListeningTab({
     };
 
     const goNextVideo = () => {
-          if (!activeFeed.length || !selectedVideoId) return;
-          const index = activeFeed.findIndex((video) => video.id === selectedVideoId);
-          const next =
-            activeFeed[(index + 1) % activeFeed.length] || activeFeed[0];
+      if (!approvedFeed.length || !selectedVideoId) return;
+      const index = approvedFeed.findIndex((video) => video.id === selectedVideoId);
+      const next = approvedFeed[(index + 1) % approvedFeed.length];
+      if (next?.id) setSelectedVideoId(next.id);
     };
 
     const onPlayerState = (event) => {
@@ -468,10 +442,10 @@ export default function ListeningTab({
   };
 
   const skipCurrentVideo = () => {
-    if (!activeFeed.length || !selectedVideo?.id) return;
+    if (!approvedFeed.length || !selectedVideo?.id) return;
     bankSession();
-    const index = activeFeed.findIndex((video) => video.id === selectedVideo.id);
-    const next = activeFeed[(index + 1) % activeFeed.length] || activeFeed[0];
+    const index = approvedFeed.findIndex((video) => video.id === selectedVideo.id);
+    const next = approvedFeed[(index + 1) % approvedFeed.length];
     if (next?.id) setSelectedVideoId(next.id);
   };
 
