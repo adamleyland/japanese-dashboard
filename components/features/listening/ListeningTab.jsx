@@ -26,13 +26,16 @@ export default function ListeningTab({
   seededVideos,
   formatClock,
 }) {
+  const DEFAULT_VIDEO_ID = "M7lc1UVf-VE";
+  const ACCESS_TOKEN_STORAGE_KEY = "jp_dashboard_youtube_access_token";
+  const CONNECTED_STORAGE_KEY = "jp_dashboard_youtube_connected";
+  const LEGACY_AUTH_STORAGE_KEY = "jp_dashboard_youtube_auth";
   const [youtubeConnected, setYoutubeConnected] = useState(false);
   const [youtubeAccessToken, setYoutubeAccessToken] = useState("");
   const [subscribedChannels, setSubscribedChannels] = useState(seededChannels);
   const [videoFeed] = useState(seededVideos);
-  const [selectedVideoId, setSelectedVideoId] = useState("M7lc1UVf-VE");
-  const DEFAULT_VIDEO_ID = "M7lc1UVf-VE";
-  const AUTH_STORAGE_KEY = "jp_dashboard_youtube_auth";
+  const [accountVideos, setAccountVideos] = useState([]);
+  const [selectedVideoId, setSelectedVideoId] = useState(DEFAULT_VIDEO_ID);
   const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
   const [workspaceTab, setWorkspaceTab] = useState("account");
   const [focusMode, setFocusMode] = useState(false);
@@ -65,13 +68,17 @@ export default function ListeningTab({
     () => videoFeed.filter((video) => approvedChannelNames.has(video.channel)),
     [videoFeed, approvedChannelNames],
   );
+  const activeFeed = useMemo(
+    () => (accountVideos.length ? accountVideos : approvedFeed),
+    [accountVideos, approvedFeed],
+  );
 
   const selectedVideo = useMemo(
-    () => approvedFeed.find((video) => video.id === selectedVideoId) || approvedFeed[0],
-    [approvedFeed, selectedVideoId],
+    () => activeFeed.find((video) => video.id === selectedVideoId) || activeFeed[0],
+    [activeFeed, selectedVideoId],
   );
-  const queueTotal = approvedFeed.length;
-  const queueIndex = Math.max(0, approvedFeed.findIndex((item) => item.id === selectedVideo?.id));
+  const queueTotal = activeFeed.length;
+  const queueIndex = Math.max(0, activeFeed.findIndex((item) => item.id === selectedVideo?.id));
 
   useEffect(() => {
     setIsMounted(true);
@@ -146,8 +153,10 @@ export default function ListeningTab({
           setYoutubeAccessToken(response.access_token);
           setYoutubeConnected(true);
           if (typeof window !== "undefined") {
+            localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, response.access_token);
+            localStorage.setItem(CONNECTED_STORAGE_KEY, "true");
             localStorage.setItem(
-              AUTH_STORAGE_KEY,
+              LEGACY_AUTH_STORAGE_KEY,
               JSON.stringify({ youtubeAccessToken: response.access_token, youtubeConnected: true }),
             );
           }
@@ -158,7 +167,7 @@ export default function ListeningTab({
     });
 
     return googleTokenClientRef.current;
-  }, [setYoutubeAccessToken, setYoutubeConnected]);
+  }, []);
 
   const connectYoutube = useCallback(async () => {
     if (typeof window === "undefined") return;
@@ -177,23 +186,44 @@ export default function ListeningTab({
   }, [getGoogleTokenClient, loadGoogleIdentityScript]);
 
   const disconnectYoutube = useCallback(() => {
-    if (typeof window !== "undefined" && youtubeAccessToken) {
-      window.google?.accounts?.oauth2?.revoke?.(youtubeAccessToken, () => {});
-      localStorage.removeItem(AUTH_STORAGE_KEY);
+    if (typeof window !== "undefined") {
+      if (youtubeAccessToken) {
+        window.google?.accounts?.oauth2?.revoke?.(youtubeAccessToken, () => {});
+      }
+      localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+      localStorage.removeItem(CONNECTED_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
     }
+
     setYoutubeAccessToken("");
     setYoutubeConnected(false);
+    setAccountVideos([]);
+    setSubscribedChannels(seededChannels);
+    setSelectedVideoId((currentVideoId) =>
+      approvedFeed.some((video) => video.id === currentVideoId) ? currentVideoId : DEFAULT_VIDEO_ID,
+    );
     googleTokenClientRef.current = null;
-  }, [youtubeAccessToken]);
+  }, [youtubeAccessToken, approvedFeed, seededChannels]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
-      const stored = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || "null");
-      if (stored?.youtubeAccessToken) {
-        setYoutubeAccessToken(stored.youtubeAccessToken);
-        setYoutubeConnected(!!stored.youtubeConnected);
+      const storedAccessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+      const storedConnected = localStorage.getItem(CONNECTED_STORAGE_KEY);
+
+      if (storedAccessToken && storedConnected === "true") {
+        setYoutubeAccessToken(storedAccessToken);
+        setYoutubeConnected(true);
+        return;
+      }
+
+      const legacyStored = JSON.parse(localStorage.getItem(LEGACY_AUTH_STORAGE_KEY) || "null");
+      if (legacyStored?.youtubeAccessToken && legacyStored?.youtubeConnected) {
+        setYoutubeAccessToken(legacyStored.youtubeAccessToken);
+        setYoutubeConnected(true);
+        localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, legacyStored.youtubeAccessToken);
+        localStorage.setItem(CONNECTED_STORAGE_KEY, "true");
       }
     } catch (error) {
       console.error("Failed to restore YouTube auth state", error);
@@ -203,7 +233,9 @@ export default function ListeningTab({
   useEffect(() => {
     if (!youtubeAccessToken || !youtubeConnected) return;
 
-    const fetchSubscriptionVideo = async () => {
+    let cancelled = false;
+
+    const fetchAccountVideos = async () => {
       try {
         const subsResponse = await fetch(
           "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=5",
@@ -219,40 +251,91 @@ export default function ListeningTab({
         }
 
         const subsData = await subsResponse.json();
-        const channelId =
-          subsData.items?.find((item) => item?.snippet?.resourceId?.channelId)?.snippet?.resourceId
-            ?.channelId || subsData.items?.[0]?.snippet?.resourceId?.channelId;
+        const subscriptions =
+          subsData.items
+            ?.map((item) => ({
+              id: item?.snippet?.resourceId?.channelId,
+              name: item?.snippet?.title,
+              category: "Subscribed",
+            }))
+            .filter((channel) => channel.id && channel.name) || [];
+        const channelIds = [...new Set(subscriptions.map((channel) => channel.id))].slice(0, 3);
 
-        if (!channelId) {
-          throw new Error("No subscribed channel found");
+        if (!channelIds.length) {
+          if (!cancelled) {
+            setAccountVideos([]);
+          }
+          return;
         }
 
-        const videosResponse = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=5&order=date&type=video`,
-          {
-            headers: {
-              Authorization: `Bearer ${youtubeAccessToken}`,
-            },
-          },
+        const channelVideoGroups = await Promise.all(
+          channelIds.map(async (channelId) => {
+            try {
+              const videosResponse = await fetch(
+                `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=5&order=date&type=video`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${youtubeAccessToken}`,
+                  },
+                },
+              );
+
+              if (!videosResponse.ok) {
+                throw new Error(`Video fetch failed for ${channelId}: ${videosResponse.status}`);
+              }
+
+              const videosData = await videosResponse.json();
+              return (
+                videosData.items
+                  ?.filter((item) => item?.id?.videoId && item?.snippet)
+                  .map((item) => ({
+                    id: item.id.videoId,
+                    title: item.snippet.title || "Untitled video",
+                    channel: item.snippet.channelTitle || "YouTube",
+                    duration: "Recent upload",
+                    published: item.snippet.publishedAt || "",
+                  })) || []
+              );
+            } catch (error) {
+              console.error("Unable to fetch recent channel videos", error);
+              return [];
+            }
+          }),
         );
 
-        if (!videosResponse.ok) {
-          throw new Error(`Video fetch failed: ${videosResponse.status}`);
-        }
+        const nextAccountVideos = Array.from(
+          new Map(
+            channelVideoGroups
+              .flat()
+              .filter((video) => video?.id)
+              .map((video) => [video.id, video]),
+          ).values(),
+        );
 
-        const videosData = await videosResponse.json();
-        const videoId = videosData.items?.find((item) => item?.id?.videoId)?.id?.videoId;
-
-        if (videoId) {
-          setSelectedVideoId(videoId);
+        if (!cancelled) {
+          setAccountVideos(nextAccountVideos);
         }
       } catch (error) {
-        console.error("Unable to fetch YouTube subscription video", error);
+        console.error("Unable to fetch YouTube account videos", error);
+        if (!cancelled) {
+          setAccountVideos([]);
+        }
       }
     };
 
-    fetchSubscriptionVideo();
+    fetchAccountVideos();
+
+    return () => {
+      cancelled = true;
+    };
   }, [youtubeAccessToken, youtubeConnected]);
+
+  useEffect(() => {
+    if (!accountVideos.length) return;
+    if (!selectedVideoId || selectedVideoId === DEFAULT_VIDEO_ID) {
+      setSelectedVideoId(accountVideos[0].id);
+    }
+  }, [accountVideos, selectedVideoId]);
 
   const bankSession = useCallback(() => {
     if (!sessionRef.current) return;
@@ -288,9 +371,9 @@ export default function ListeningTab({
     };
 
     const goNextVideo = () => {
-      if (!approvedFeed.length || !selectedVideoId) return;
-      const index = approvedFeed.findIndex((video) => video.id === selectedVideoId);
-      const next = approvedFeed[(index + 1) % approvedFeed.length];
+      if (!activeFeed.length) return;
+      const index = activeFeed.findIndex((video) => video.id === selectedVideoId);
+      const next = activeFeed[(index + 1) % activeFeed.length];
       if (next?.id) setSelectedVideoId(next.id);
     };
 
@@ -384,7 +467,7 @@ export default function ListeningTab({
     return () => {
       window.onYouTubeIframeAPIReady = priorReady;
     };
-  }, [approvedFeed, selectedVideoId, safeVideoId, bankSession, focusMode]);
+  }, [activeFeed, selectedVideoId, safeVideoId, bankSession, focusMode]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -442,10 +525,10 @@ export default function ListeningTab({
   };
 
   const skipCurrentVideo = () => {
-    if (!approvedFeed.length || !selectedVideo?.id) return;
+    if (!activeFeed.length) return;
     bankSession();
-    const index = approvedFeed.findIndex((video) => video.id === selectedVideo.id);
-    const next = approvedFeed[(index + 1) % approvedFeed.length];
+    const index = activeFeed.findIndex((video) => video.id === selectedVideoId);
+    const next = activeFeed[(index + 1) % activeFeed.length];
     if (next?.id) setSelectedVideoId(next.id);
   };
 
@@ -488,7 +571,7 @@ export default function ListeningTab({
           youtubeConnected={youtubeConnected}
           setYoutubeConnected={setYoutubeConnected}
           subscribedChannels={subscribedChannels}
-          approvedFeed={approvedFeed}
+          approvedFeed={activeFeed}
           selectedVideo={selectedVideo}
           selectedVideoId={selectedVideoId}
           setSelectedVideoId={setSelectedVideoId}
