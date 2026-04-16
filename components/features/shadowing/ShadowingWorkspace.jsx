@@ -1,6 +1,8 @@
 "use client";
 
-export default function ShadowingWorkspace({ styles, shadowingHours, setShadowingHours, NumberField }) {
+import NumberField from "@/components/ui/NumberField";
+
+export default function ShadowingWorkspace({ styles, shadowingHours, setShadowingHours }) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Shadowing</h2>

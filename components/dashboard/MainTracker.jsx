@@ -1,4 +1,6 @@
 import { Blocks, Ear, BookOpenText, Gamepad2 } from "lucide-react";
+import MetricCard from "@/components/dashboard/MetricCard";
+import SubMetricCard from "@/components/dashboard/SubMetricCard";
 
 export default function MainTracker({
   overallHoursLabel,
@@ -88,14 +90,12 @@ export default function MainTracker({
           }}
         >
           <SubMetricCard
-            styles={styles}
             label="Shadowing"
             value={shadowingHoursLabel}
             onQuickAdd={() => setShadowingHours((v) => v + 0.5)}
             quickAddLabel="+0.5h"
           />
           <SubMetricCard
-            styles={styles}
             label="Written"
             value={wordsWrittenLabel}
             onQuickAdd={() => setWordsWritten((v) => v + 500)}
@@ -103,41 +103,6 @@ export default function MainTracker({
           />
         </div>
       </details>
-    </div>
-  );
-}
-
-function MetricCard({ styles, label, value, icon, onQuickAdd, quickAddLabel = "+1", featured = false }) {
-  return (
-    <div style={styles.metricCard(featured)}>
-      <div style={styles.metricTopRow}>
-        <div style={styles.metricIconWrap(featured)}>{icon}</div>
-        {onQuickAdd && (
-          <button onClick={onQuickAdd} style={styles.quickAddButton}>
-            {quickAddLabel}
-          </button>
-        )}
-      </div>
-
-      <div style={styles.metricLabel}>{label}</div>
-      <div style={styles.metricValue(featured)}>{value}</div>
-    </div>
-  );
-}
-
-function SubMetricCard({ styles, label, value, onQuickAdd, quickAddLabel = "+1" }) {
-  return (
-    <div style={styles.metricCard(false)}>
-      <div style={styles.metricTopRow}>
-        <div style={styles.metricLabel}>{label}</div>
-        {onQuickAdd && (
-          <button onClick={onQuickAdd} style={styles.quickAddButtonSub}>
-            {quickAddLabel}
-          </button>
-        )}
-      </div>
-
-      <div style={styles.metricValue(false)}>{value}</div>
     </div>
   );
 }

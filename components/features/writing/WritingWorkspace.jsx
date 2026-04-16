@@ -1,6 +1,8 @@
 "use client";
 
-export default function WritingWorkspace({ styles, wordsWritten, setWordsWritten, NumberField }) {
+import NumberField from "@/components/ui/NumberField";
+
+export default function WritingWorkspace({ styles, wordsWritten, setWordsWritten }) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Writing</h2>

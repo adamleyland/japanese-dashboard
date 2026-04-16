@@ -1,6 +1,8 @@
 "use client";
 
-export default function GamingWorkspace({ styles, gamingHours, setGamingHours, NumberField }) {
+import NumberField from "@/components/ui/NumberField";
+
+export default function GamingWorkspace({ styles, gamingHours, setGamingHours }) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Gaming</h2>

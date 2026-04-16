@@ -166,7 +166,6 @@ export default function Home() {
               styles={styles}
               wordsRead={wordsRead}
               setWordsRead={setWordsRead}
-              NumberField={NumberField}
             />
           )}
           {tab === "shadowing" && (
@@ -174,7 +173,6 @@ export default function Home() {
               styles={styles}
               shadowingHours={shadowingHours}
               setShadowingHours={setShadowingHours}
-              NumberField={NumberField}
             />
           )}
           {tab === "writing" && (
@@ -182,7 +180,6 @@ export default function Home() {
               styles={styles}
               wordsWritten={wordsWritten}
               setWordsWritten={setWordsWritten}
-              NumberField={NumberField}
             />
           )}
           {tab === "gaming" && (
@@ -190,7 +187,6 @@ export default function Home() {
               styles={styles}
               gamingHours={gamingHours}
               setGamingHours={setGamingHours}
-              NumberField={NumberField}
             />
           )}
         </section>
@@ -198,58 +194,6 @@ export default function Home() {
     </main>
   );
 }
-
-function MetricCard({ label, value, icon, onQuickAdd, quickAddLabel = "+1", featured = false }) {
-  return (
-    <div style={styles.metricCard(featured)}>
-      <div style={styles.metricTopRow}>
-        <div style={styles.metricIconWrap(featured)}>{icon}</div>
-        {onQuickAdd && (
-          <button onClick={onQuickAdd} style={styles.quickAddButton}>
-            {quickAddLabel}
-          </button>
-        )}
-      </div>
-
-      <div style={styles.metricLabel}>{label}</div>
-      <div style={styles.metricValue(featured)}>{value}</div>
-    </div>
-  );
-}
-
-function SubMetricCard({ label, value, onQuickAdd, quickAddLabel = "+1" }) {
-  return (
-    <div style={styles.metricCard(false)}>
-      <div style={styles.metricTopRow}>
-        <div style={styles.metricLabel}>{label}</div>
-        {onQuickAdd && (
-          <button onClick={onQuickAdd} style={styles.quickAddButtonSub}>
-            {quickAddLabel}
-          </button>
-        )}
-      </div>
-
-      <div style={styles.metricValue(false)}>{value}</div>
-    </div>
-  );
-}
-
-function NumberField({ label, value, onChange, step = 1 }) {
-  return (
-    <label style={styles.inputCard}>
-      <span style={styles.inputLabel}>{label}</span>
-      <input
-        type="number"
-        min={0}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
-        style={styles.input}
-      />
-    </label>
-  );
-}
-
 
 function formatHours(v) {
   return `${Number(v).toLocaleString(undefined, {

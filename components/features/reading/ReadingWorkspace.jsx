@@ -1,6 +1,8 @@
 "use client";
 
-export default function ReadingWorkspace({ styles, wordsRead, setWordsRead, NumberField }) {
+import NumberField from "@/components/ui/NumberField";
+
+export default function ReadingWorkspace({ styles, wordsRead, setWordsRead }) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Reading</h2>
