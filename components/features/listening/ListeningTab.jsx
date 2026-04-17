@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ListeningWorkspace from "@/components/features/listening/ListeningWorkspace";
 import TimerStopwatch from "@/components/features/listening/TimerStopwatch";
 import ListeningVisualization from "@/components/features/listening/ListeningVisualization";
+import { fetchListeningTotal } from "@/lib/listeningEvents";
 
 const DISCOVER_FILTERS = {
   ゲーム: "日本 ゲーム 実況",
@@ -15,6 +16,7 @@ export default function ListeningTab({
   styles,
   listeningHours,
   setListeningHours,
+  adjustListeningHours,
   isMobile,
   isCompact,
   seededChannels,
@@ -22,6 +24,7 @@ export default function ListeningTab({
   formatClock,
 }) {
   const DEFAULT_VIDEO_ID = "M7lc1UVf-VE";
+  const MINIMUM_VIDEO_LENGTH_SECONDS = 90;
   const ACCESS_TOKEN_STORAGE_KEY = "jp_dashboard_youtube_access_token";
   const CONNECTED_STORAGE_KEY = "jp_dashboard_youtube_connected";
   const LEGACY_AUTH_STORAGE_KEY = "jp_dashboard_youtube_auth";
@@ -79,6 +82,30 @@ export default function ListeningTab({
 
   const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+  const parseDurationToSeconds = useCallback((duration) => {
+    if (!duration || typeof duration !== "string") return 0;
+
+    const hours = Number(duration.match(/(\d+)H/)?.[1] || 0);
+    const minutes = Number(duration.match(/(\d+)M/)?.[1] || 0);
+    const seconds = Number(duration.match(/(\d+)S/)?.[1] || 0);
+
+    return hours * 3600 + minutes * 60 + seconds;
+  }, []);
+
+  const formatDurationLabel = useCallback((seconds) => {
+    const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const remainingSeconds = safeSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+    }
+
+    return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+  }, []);
 
   const getTodayKey = useCallback(() => new Date().toISOString().slice(0, 10), []);
   const chunkItems = useCallback((items, size) => {
@@ -90,6 +117,44 @@ export default function ListeningTab({
 
     return chunks;
   }, []);
+
+  const fetchVideoDetailsMap = useCallback(
+    async (videoIds) => {
+      const uniqueVideoIds = [...new Set(videoIds.filter(Boolean))];
+      const detailsMap = new Map();
+
+      for (const videoIdChunk of chunkItems(uniqueVideoIds, 50)) {
+        const params = new URLSearchParams({
+          part: "contentDetails",
+          id: videoIdChunk.join(","),
+          maxResults: String(videoIdChunk.length),
+        });
+        const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params.toString()}`, {
+          headers: {
+            Authorization: `Bearer ${youtubeAccessToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Video details fetch failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        for (const item of data.items || []) {
+          const durationSeconds = parseDurationToSeconds(item?.contentDetails?.duration);
+
+          detailsMap.set(item.id, {
+            durationSeconds,
+            durationLabel: formatDurationLabel(durationSeconds),
+          });
+        }
+      }
+
+      return detailsMap;
+    },
+    [chunkItems, formatDurationLabel, parseDurationToSeconds, youtubeAccessToken],
+  );
 
   const shuffleVideos = useCallback((videos) => {
     const nextVideos = [...videos];
@@ -248,6 +313,39 @@ export default function ListeningTab({
   const queueTotal = playbackList.length;
   const queueIndex = Math.max(0, playbackList.findIndex((item) => item.id === selectedVideo?.id));
 
+  const handleListeningHoursUpdate = useCallback(
+    (nextValueOrUpdater, metadata = {}) => {
+      const resolvedValue =
+        typeof nextValueOrUpdater === "function"
+          ? nextValueOrUpdater(listeningHours)
+          : nextValueOrUpdater;
+      const nextHours = Math.max(0, Number(resolvedValue) || 0);
+      const deltaHours = nextHours - listeningHours;
+
+      if (!deltaHours) return;
+
+      adjustListeningHours(deltaHours, metadata);
+    },
+    [adjustListeningHours, listeningHours],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateListeningHours = async () => {
+      const totalMinutes = await fetchListeningTotal();
+      if (cancelled || typeof totalMinutes !== "number") return;
+
+      setListeningHours(totalMinutes / 60);
+    };
+
+    hydrateListeningHours();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setListeningHours]);
+
   const getPlayerCurrentTime = useCallback(() => {
     const player = playerRef.current;
     if (!player || !playerReadyRef.current || typeof player.getCurrentTime !== "function") {
@@ -319,11 +417,16 @@ export default function ListeningTab({
 
     const gained = (Date.now() - sessionRef.current) / 3600000;
     if (gained > 0) {
-      setListeningHours((hours) => hours + gained);
+      adjustListeningHours(gained, {
+        kind: "session",
+        source: "youtube",
+        videoId: safeVideoId,
+        channelId: selectedVideo?.channelId,
+      });
     }
 
     sessionRef.current = 0;
-  }, [setListeningHours]);
+  }, [adjustListeningHours, safeVideoId, selectedVideo?.channelId]);
 
   const persistCurrentPlayerState = useCallback(() => {
     const snapshot = capturePlaybackSnapshot();
@@ -441,6 +544,14 @@ export default function ListeningTab({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusMode, togglePlayerPlayback]);
 
+  useEffect(() => {
+    if (googleClientId) return;
+
+    console.error(
+      "Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID. Set it in both local env and Vercel project env vars before using YouTube OAuth.",
+    );
+  }, [googleClientId]);
+
   const loadGoogleIdentityScript = useCallback(() => {
     if (typeof window === "undefined") {
       return Promise.reject(new Error("Window is not available"));
@@ -488,8 +599,17 @@ export default function ListeningTab({
     if (typeof window === "undefined" || !window.google?.accounts?.oauth2?.initTokenClient) {
       return null;
     }
+    if (!googleClientId) {
+      console.error(
+        "Google OAuth is unavailable because NEXT_PUBLIC_GOOGLE_CLIENT_ID is missing.",
+      );
+      return null;
+    }
 
     googleTokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+      // Google Cloud Authorized JavaScript origins must include:
+      // - http://localhost:3000
+      // - https://japanese-dashboard.vercel.app
       client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
       scope: "https://www.googleapis.com/auth/youtube.readonly",
       callback: (response) => {
@@ -511,10 +631,16 @@ export default function ListeningTab({
     });
 
     return googleTokenClientRef.current;
-  }, []);
+  }, [googleClientId]);
 
   const connectYoutube = useCallback(async () => {
     if (typeof window === "undefined") return;
+    if (!googleClientId) {
+      console.error(
+        "Cannot start Google OAuth because NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.",
+      );
+      return;
+    }
 
     try {
       await loadGoogleIdentityScript();
@@ -527,7 +653,7 @@ export default function ListeningTab({
     } catch (error) {
       console.error("Unable to connect YouTube via Google OAuth", error);
     }
-  }, [getGoogleTokenClient, loadGoogleIdentityScript]);
+  }, [getGoogleTokenClient, googleClientId, loadGoogleIdentityScript]);
 
   const disconnectYoutube = useCallback(() => {
     if (typeof window !== "undefined") {
@@ -700,7 +826,10 @@ export default function ListeningTab({
         if (
           storedDailyQueue?.date === getTodayKey() &&
           Array.isArray(storedDailyQueue.videos) &&
-          storedDailyQueue.videos.length
+          storedDailyQueue.videos.length &&
+          storedDailyQueue.videos.every(
+            (video) => Number(video?.durationSeconds || 0) >= MINIMUM_VIDEO_LENGTH_SECONDS,
+          )
         ) {
           if (!cancelled) {
             setAccountVideos(storedDailyQueue.videos);
@@ -744,7 +873,6 @@ export default function ListeningTab({
                     channelThumbnail: channelDetails?.thumbnail || "",
                     title: item.snippet.title || "Untitled video",
                     channel: item.snippet.channelTitle || "YouTube",
-                    duration: "Recent upload",
                     published: item.snippet.publishedAt || "",
                   })) || []
               );
@@ -755,16 +883,29 @@ export default function ListeningTab({
           }),
         );
 
-        const shuffledVideos = shuffleVideos(
-          Array.from(
-            new Map(
-              channelVideoGroups
-                .flat()
-                .filter((video) => video?.id)
-                .map((video) => [video.id, video]),
-            ).values(),
-          ),
-        ).slice(0, 15);
+        const queueCandidates = Array.from(
+          new Map(
+            channelVideoGroups
+              .flat()
+              .filter((video) => video?.id)
+              .map((video) => [video.id, video]),
+          ).values(),
+        );
+        const queueVideoDetails = await fetchVideoDetailsMap(
+          queueCandidates.map((video) => video.id),
+        );
+        const filteredQueueVideos = queueCandidates
+          .map((video) => {
+            const videoDetails = queueVideoDetails.get(video.id);
+
+            return {
+              ...video,
+              duration: videoDetails?.durationLabel || "Recent upload",
+              durationSeconds: videoDetails?.durationSeconds || 0,
+            };
+          })
+          .filter((video) => video.durationSeconds >= MINIMUM_VIDEO_LENGTH_SECONDS);
+        const shuffledVideos = shuffleVideos(filteredQueueVideos).slice(0, 15);
 
         persistDailyQueue(shuffledVideos);
 
@@ -791,11 +932,13 @@ export default function ListeningTab({
     normalizeSeededChannels,
     persistChannelPreferences,
     persistDailyQueue,
+    fetchVideoDetailsMap,
     readStoredChannelPreferences,
     readStoredDailyQueue,
     shuffleVideos,
     youtubeAccessToken,
     youtubeConnected,
+    MINIMUM_VIDEO_LENGTH_SECONDS,
   ]);
 
   useEffect(() => {
@@ -837,6 +980,9 @@ export default function ListeningTab({
         const data = await response.json();
         const discoverResults =
           data.items?.filter((item) => item?.id?.videoId && item?.snippet) || [];
+        const discoverVideoDetails = await fetchVideoDetailsMap(
+          discoverResults.map((item) => item?.id?.videoId),
+        );
         const discoverChannelIds = [
           ...new Set(discoverResults.map((item) => item?.snippet?.channelId).filter(Boolean)),
         ];
@@ -868,19 +1014,27 @@ export default function ListeningTab({
           }
         }
 
-        const videos = discoverResults.map((item) => ({
-          id: item.id.videoId,
-          channelId: item.snippet.channelId || "",
-          channelThumbnail:
-            discoverChannelMap.get(item.snippet.channelId || "")?.thumbnail || "",
-          title: item.snippet.title || "Untitled video",
-          channel: item.snippet.channelTitle || "YouTube",
-          thumbnail:
-            item.snippet.thumbnails?.medium?.url ||
-            item.snippet.thumbnails?.default?.url ||
-            "",
-          duration: "Discover",
-        }));
+        const videos = discoverResults
+          .map((item) => {
+            const videoId = item.id.videoId;
+            const videoDetails = discoverVideoDetails.get(videoId);
+
+            return {
+              id: videoId,
+              channelId: item.snippet.channelId || "",
+              channelThumbnail:
+                discoverChannelMap.get(item.snippet.channelId || "")?.thumbnail || "",
+              title: item.snippet.title || "Untitled video",
+              channel: item.snippet.channelTitle || "YouTube",
+              thumbnail:
+                item.snippet.thumbnails?.medium?.url ||
+                item.snippet.thumbnails?.default?.url ||
+                "",
+              duration: videoDetails?.durationLabel || "Discover",
+              durationSeconds: videoDetails?.durationSeconds || 0,
+            };
+          })
+          .filter((video) => video.durationSeconds >= MINIMUM_VIDEO_LENGTH_SECONDS);
 
         if (!cancelled) {
           setDiscoverVideos(videos);
@@ -902,7 +1056,14 @@ export default function ListeningTab({
     return () => {
       cancelled = true;
     };
-  }, [chunkItems, discoverFilter, youtubeAccessToken, youtubeConnected]);
+  }, [
+    chunkItems,
+    discoverFilter,
+    fetchVideoDetailsMap,
+    youtubeAccessToken,
+    youtubeConnected,
+    MINIMUM_VIDEO_LENGTH_SECONDS,
+  ]);
 
   useEffect(() => {
     if (isDiscoverVideoSelected) return;
@@ -1117,23 +1278,35 @@ export default function ListeningTab({
     if (clockMode !== "timer" || !timerRunning) return;
 
     const timer = setInterval(() => {
+      let shouldBankTimerSession = false;
+
       setTimerSeconds((seconds) => {
         if (seconds <= 0.1) {
-          setListeningHours((hours) => hours + timerDurationSeconds / 3600);
+          shouldBankTimerSession = true;
           setTimerRunning(false);
           return 0;
         }
         return roundToTenth(seconds - 0.1);
       });
+
+      if (shouldBankTimerSession) {
+        adjustListeningHours(timerDurationSeconds / 3600, {
+          kind: "session",
+          source: "timer",
+        });
+      }
     }, 100);
 
     return () => clearInterval(timer);
-  }, [clockMode, roundToTenth, setListeningHours, timerDurationSeconds, timerRunning]);
+  }, [adjustListeningHours, clockMode, roundToTenth, timerDurationSeconds, timerRunning]);
 
   const bankStopwatch = () => {
     if (!stopwatchSeconds) return;
     const bankedHours = stopwatchSeconds / 3600;
-    setListeningHours((hours) => hours + bankedHours);
+    adjustListeningHours(bankedHours, {
+      kind: "session",
+      source: "timer",
+    });
     setStopwatchSeconds(0);
   };
 
@@ -1237,7 +1410,7 @@ export default function ListeningTab({
         <ListeningVisualization
           styles={styles}
           listeningHours={listeningHours}
-          setListeningHours={setListeningHours}
+          setListeningHours={handleListeningHoursUpdate}
           listeningGoal={listeningGoal}
           setListeningGoal={setListeningGoal}
           showVisualization={showVisualization}

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Blocks,
@@ -18,7 +18,7 @@ import {
   Minimize2,
   Save,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { addListeningMinutes, reduceListeningMinutes } from "@/lib/listeningEvents";
 import NavigationBar from "@/components/layout/NavigationBar";
 import MainTracker from "@/components/dashboard/MainTracker";
 import DictionaryCarousel from "@/components/dashboard/DictionaryCarousel";
@@ -96,10 +96,60 @@ export default function Home() {
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
+  const listeningHoursRef = useRef(listeningHours);
 
   const overallHours = useMemo(
     () => listeningHours + gamingHours + shadowingHours,
     [listeningHours, gamingHours, shadowingHours],
+  );
+
+  useEffect(() => {
+    listeningHoursRef.current = listeningHours;
+  }, [listeningHours]);
+
+  const updateListeningHours = useCallback((nextValueOrUpdater, metadata = {}) => {
+    const currentHours = listeningHoursRef.current;
+    const resolvedValue =
+      typeof nextValueOrUpdater === "function"
+        ? nextValueOrUpdater(currentHours)
+        : nextValueOrUpdater;
+    const nextHours = Math.max(0, Number(resolvedValue) || 0);
+    const deltaHours = nextHours - currentHours;
+
+    listeningHoursRef.current = nextHours;
+    setListeningHours(nextHours);
+
+    const minutes = Math.round(Math.abs(deltaHours) * 60 * 1000) / 1000;
+    if (!minutes) return;
+
+    if (deltaHours > 0) {
+      void addListeningMinutes(minutes, {
+        kind: metadata.kind || "adjustment",
+        source: metadata.source || "manual",
+        videoId: metadata.videoId,
+        channelId: metadata.channelId,
+      });
+      return;
+    }
+
+    void reduceListeningMinutes(minutes, {
+      kind: metadata.kind || "adjustment",
+      source: metadata.source || "adjustment",
+      videoId: metadata.videoId,
+      channelId: metadata.channelId,
+    });
+  }, []);
+
+  const adjustListeningHours = useCallback(
+    (deltaHours, metadata = {}) => {
+      if (!Number.isFinite(deltaHours) || !deltaHours) return;
+
+      updateListeningHours(
+        (currentHours) => Math.max(0, currentHours + deltaHours),
+        metadata,
+      );
+    },
+    [updateListeningHours],
   );
 
   useEffect(() => {
@@ -136,7 +186,7 @@ export default function Home() {
             isCompact={isCompact}
             isAdditionalOpen={isAdditionalOpen}
             setIsAdditionalOpen={setIsAdditionalOpen}
-            setListeningHours={setListeningHours}
+            setListeningHours={updateListeningHours}
             setWordsRead={setWordsRead}
             setGamingHours={setGamingHours}
             setShadowingHours={setShadowingHours}
@@ -154,6 +204,7 @@ export default function Home() {
               styles={styles}
               listeningHours={listeningHours}
               setListeningHours={setListeningHours}
+              adjustListeningHours={adjustListeningHours}
               isMobile={isMobile}
               isCompact={isCompact}
               seededChannels={SEEDED_CHANNELS}
@@ -913,8 +964,22 @@ const styles = {
     gap: "8px",
   },
   miniActionButton: (tone) => ({
-    background: tone === "blue" ? "rgba(59,130,246,0.1)" : "rgba(249,115,22,0.1)",
-    color: tone === "blue" ? "#1d4ed8" : "#c2410c",
+    background:
+      tone === "blue"
+        ? "rgba(59,130,246,0.1)"
+        : tone === "orange"
+        ? "rgba(249,115,22,0.1)"
+        : tone === "grey"
+        ? "rgba(148,163,184,0.12)"
+        : "transparent",
+    color:
+      tone === "blue"
+        ? "#1d4ed8"
+        : tone === "orange"
+        ? "#c2410c"
+        : tone === "grey"
+        ? "#475569"
+        : "#111827",
     border: "1px solid transparent",
     borderRadius: "8px",
     padding: "6px 12px",

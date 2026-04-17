@@ -12,6 +12,7 @@ import {
   SkipForward,
   Power,
   Search,
+  LampDesk,
 } from "lucide-react";
 
 export default function ListeningWorkspace({
@@ -240,8 +241,8 @@ export default function ListeningWorkspace({
       <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
         <SkipForward size={12} /> Skip
       </button>
-      <button style={styles.miniActionButton("blue")} onClick={() => setFocusMode(!focusMode)}>
-        {focusMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+      <button style={styles.miniActionButton("grey")} onClick={() => setFocusMode(!focusMode)}>
+        {focusMode ? <LampDesk size={12} /> : <LampDesk size={12} />}
         {focusMode ? "Exit Focus" : "Deep Focus"}
       </button>
       {showDiscoverSubscribe && (
