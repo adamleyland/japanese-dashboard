@@ -739,6 +739,33 @@ export default function ListeningTab({
     ],
   );
 
+  function getPreferredSelectedVideoId(videos, fallbackReason) {
+    const storedWatchState = readStoredWatchState();
+    const restoredVideo = videos.find((video) => video.id === storedWatchState?.selectedVideoId);
+
+    if (restoredVideo?.id) {
+      logYouTubeDebug("Using stored watch state to restore selected video.", {
+        selectedVideoId: restoredVideo.id,
+        fallbackReason,
+      });
+      return restoredVideo.id;
+    }
+
+    if (videos[0]?.id) {
+      logYouTubeDebug("Using the first available fetched video as the selected video.", {
+        selectedVideoId: videos[0].id,
+        fallbackReason,
+      });
+      return videos[0].id;
+    }
+
+    console.warn("[ListeningTab:YouTube] No usable fetched videos were available. Falling back to DEFAULT_VIDEO_ID.", {
+      fallbackReason,
+      defaultVideoId: DEFAULT_VIDEO_ID,
+    });
+    return DEFAULT_VIDEO_ID;
+  }
+
   const initializeYoutubeData = useCallback(
     async (accessToken) => {
       logYouTubeDebug("Initializing YouTube data.", {
@@ -912,36 +939,6 @@ export default function ListeningTab({
       adjustListeningHours(deltaHours, metadata);
     },
     [adjustListeningHours, listeningHours],
-  );
-
-  const getPreferredSelectedVideoId = useCallback(
-    (videos, fallbackReason) => {
-      const storedWatchState = readStoredWatchState();
-      const restoredVideo = videos.find((video) => video.id === storedWatchState?.selectedVideoId);
-
-      if (restoredVideo?.id) {
-        logYouTubeDebug("Using stored watch state to restore selected video.", {
-          selectedVideoId: restoredVideo.id,
-          fallbackReason,
-        });
-        return restoredVideo.id;
-      }
-
-      if (videos[0]?.id) {
-        logYouTubeDebug("Using the first available fetched video as the selected video.", {
-          selectedVideoId: videos[0].id,
-          fallbackReason,
-        });
-        return videos[0].id;
-      }
-
-      console.warn("[ListeningTab:YouTube] No usable fetched videos were available. Falling back to DEFAULT_VIDEO_ID.", {
-        fallbackReason,
-        defaultVideoId: DEFAULT_VIDEO_ID,
-      });
-      return DEFAULT_VIDEO_ID;
-    },
-    [logYouTubeDebug, readStoredWatchState],
   );
 
   useEffect(() => {
