@@ -30,48 +30,6 @@ const TRACKING_SOURCE_DEFAULTS = {
   gaming: { positive: "gaming", negative: "adjustment" },
 };
 
-const SEEDED_CHANNELS = [
-  { id: "c1", name: "Nihongo no Mori", category: "JLPT" },
-  { id: "c2", name: "Comprehensible Japanese", category: "Immersion" },
-  { id: "c3", name: "Japanese Ammo with Misa", category: "Grammar" },
-  { id: "c4", name: "YUYUの日本語Podcast", category: "Podcast" },
-];
-
-const SEEDED_VIDEOS = [
-  {
-    id: "nBJ5dhjR3mY",
-    title: "Learn Japanese with Real Conversations",
-    channel: "Comprehensible Japanese",
-    duration: "18:43",
-    level: "N4-N3",
-    published: "2 weeks ago",
-  },
-  {
-    id: "B4fI6UC6W8A",
-    title: "Shadowing Japanese: Daily Routine",
-    channel: "Nihongo no Mori",
-    duration: "12:08",
-    level: "N3",
-    published: "1 month ago",
-  },
-  {
-    id: "M4g8QHkM4mY",
-    title: "Japanese Listening Practice for Beginners",
-    channel: "Japanese Ammo with Misa",
-    duration: "22:31",
-    level: "N5-N4",
-    published: "3 days ago",
-  },
-  {
-    id: "YfS0xvAcf3Q",
-    title: "Slow Japanese Podcast - Tokyo Life",
-    channel: "YUYUの日本語Podcast",
-    duration: "16:19",
-    level: "N4",
-    published: "6 days ago",
-  },
-];
-
 export default function Home() {
   const [tab, setTab] = useState("listening");
   const [listeningHours, setListeningHours] = useState(1030);
@@ -381,8 +339,6 @@ export default function Home() {
               adjustListeningHours={adjustListeningHours}
               isMobile={isMobile}
               isCompact={isCompact}
-              seededChannels={SEEDED_CHANNELS}
-              seededVideos={SEEDED_VIDEOS}
               formatClock={formatClock}
             />
           )}
