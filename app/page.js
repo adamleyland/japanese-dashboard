@@ -1,25 +1,9 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import {
-  Blocks,
-  Ear,
-  BookOpenText,
-  Gamepad2,
-  Video,
-  Link2,
-  UserCircle2,
-  PlayCircle,
-  Mic2,
-  PenLine,
-  SkipForward,
-  Maximize2,
-  Minimize2,
-  Save,
-} from "lucide-react";
-import { addListeningMinutes, reduceListeningMinutes } from "@/lib/listeningEvents";
+import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { addTrackingEvent, fetchTrackingTotals, reduceTrackingEvent } from "@/lib/trackingEvents";
 import NavigationBar from "@/components/layout/NavigationBar";
 import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
 import MainTracker from "@/components/dashboard/MainTracker";
@@ -30,14 +14,6 @@ import ShadowingWorkspace from "@/components/features/shadowing/ShadowingWorkspa
 import WritingWorkspace from "@/components/features/writing/WritingWorkspace";
 import GamingWorkspace from "@/components/features/gaming/GamingWorkspace";
 
-const MODULE_ACCENTS = {
-  listening: { bg: "#eab308", soft: "rgba(234,179,8,0.18)", text: "#92400e" },
-  reading: { bg: "#3b82f6", soft: "rgba(59,130,246,0.18)", text: "#1d4ed8" },
-  shadowing: { bg: "#ef4444", soft: "rgba(239,68,68,0.18)", text: "#b91c1c" },
-  writing: { bg: "#10b981", soft: "rgba(16,185,129,0.18)", text: "#047857" },
-  gaming: { bg: "#8b5cf6", soft: "rgba(139,92,246,0.18)", text: "#6d28d9" },
-};
-
 const MODULE_TABS = [
   { key: "listening", label: "Listening", icon: Ear },
   { key: "reading", label: "Reading", icon: BookOpenText },
@@ -45,6 +21,14 @@ const MODULE_TABS = [
   { key: "writing", label: "Writing", icon: PenLine },
   { key: "gaming", label: "Gaming", icon: Gamepad2 },
 ];
+
+const TRACKING_SOURCE_DEFAULTS = {
+  listening: { positive: "manual", negative: "adjustment" },
+  reading: { positive: "reading", negative: "adjustment" },
+  shadowing: { positive: "manual", negative: "adjustment" },
+  writing: { positive: "manual", negative: "adjustment" },
+  gaming: { positive: "gaming", negative: "adjustment" },
+};
 
 const SEEDED_CHANNELS = [
   { id: "c1", name: "Nihongo no Mori", category: "JLPT" },
@@ -101,7 +85,12 @@ export default function Home() {
   const [authSession, setAuthSession] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const authUserId = authUser?.id || "";
   const listeningHoursRef = useRef(listeningHours);
+  const shadowingHoursRef = useRef(shadowingHours);
+  const gamingHoursRef = useRef(gamingHours);
+  const wordsReadRef = useRef(wordsRead);
+  const wordsWrittenRef = useRef(wordsWritten);
 
   const overallHours = useMemo(
     () => listeningHours + gamingHours + shadowingHours,
@@ -110,40 +99,105 @@ export default function Home() {
 
   useEffect(() => {
     listeningHoursRef.current = listeningHours;
-  }, [listeningHours]);
+    shadowingHoursRef.current = shadowingHours;
+    gamingHoursRef.current = gamingHours;
+    wordsReadRef.current = wordsRead;
+    wordsWrittenRef.current = wordsWritten;
+  }, [gamingHours, listeningHours, shadowingHours, wordsRead, wordsWritten]);
 
-  const updateListeningHours = useCallback((nextValueOrUpdater, metadata = {}) => {
-    const currentHours = listeningHoursRef.current;
-    const resolvedValue =
-      typeof nextValueOrUpdater === "function"
-        ? nextValueOrUpdater(currentHours)
-        : nextValueOrUpdater;
-    const nextHours = Math.max(0, Number(resolvedValue) || 0);
-    const deltaHours = nextHours - currentHours;
+  const persistMetricDelta = useCallback(
+    async ({ metric, delta, metadata = {}, previousValue, nextValue, ref, setValue }) => {
+      if (!authUserId || !delta) {
+        return true;
+      }
 
-    listeningHoursRef.current = nextHours;
-    setListeningHours(nextHours);
-
-    const minutes = Math.round(Math.abs(deltaHours) * 60 * 1000) / 1000;
-    if (!minutes) return;
-
-    if (deltaHours > 0) {
-      void addListeningMinutes(minutes, {
+      const sourceDefaults = TRACKING_SOURCE_DEFAULTS[metric];
+      const persistEvent = delta > 0 ? addTrackingEvent : reduceTrackingEvent;
+      const success = await persistEvent(metric, Math.abs(delta), {
+        ...metadata,
+        userId: authUserId,
         kind: metadata.kind || "adjustment",
-        source: metadata.source || "manual",
-        videoId: metadata.videoId,
-        channelId: metadata.channelId,
+        source: metadata.source || (delta > 0 ? sourceDefaults.positive : sourceDefaults.negative),
       });
-      return;
-    }
 
-    void reduceListeningMinutes(minutes, {
-      kind: metadata.kind || "adjustment",
-      source: metadata.source || "adjustment",
-      videoId: metadata.videoId,
-      channelId: metadata.channelId,
-    });
-  }, []);
+      if (success) {
+        return true;
+      }
+
+      if (ref.current === nextValue) {
+        ref.current = previousValue;
+        setValue(previousValue);
+      }
+
+      return false;
+    },
+    [authUserId],
+  );
+
+  const updateTrackedMetric = useCallback(
+    (metric, ref, setValue, nextValueOrUpdater, metadata = {}) => {
+      const previousValue = ref.current;
+      const resolvedValue =
+        typeof nextValueOrUpdater === "function"
+          ? nextValueOrUpdater(previousValue)
+          : nextValueOrUpdater;
+      const nextValue = Math.max(0, Number(resolvedValue) || 0);
+      const delta = nextValue - previousValue;
+
+      if (!delta) {
+        return;
+      }
+
+      ref.current = nextValue;
+      setValue(nextValue);
+
+      void persistMetricDelta({
+        metric,
+        delta,
+        metadata,
+        previousValue,
+        nextValue,
+        ref,
+        setValue,
+      });
+    },
+    [persistMetricDelta],
+  );
+
+  const updateListeningHours = useCallback(
+    (nextValueOrUpdater, metadata = {}) => {
+      updateTrackedMetric("listening", listeningHoursRef, setListeningHours, nextValueOrUpdater, metadata);
+    },
+    [updateTrackedMetric],
+  );
+
+  const updateWordsRead = useCallback(
+    (nextValueOrUpdater, metadata = {}) => {
+      updateTrackedMetric("reading", wordsReadRef, setWordsRead, nextValueOrUpdater, metadata);
+    },
+    [updateTrackedMetric],
+  );
+
+  const updateShadowingHours = useCallback(
+    (nextValueOrUpdater, metadata = {}) => {
+      updateTrackedMetric("shadowing", shadowingHoursRef, setShadowingHours, nextValueOrUpdater, metadata);
+    },
+    [updateTrackedMetric],
+  );
+
+  const updateWordsWritten = useCallback(
+    (nextValueOrUpdater, metadata = {}) => {
+      updateTrackedMetric("writing", wordsWrittenRef, setWordsWritten, nextValueOrUpdater, metadata);
+    },
+    [updateTrackedMetric],
+  );
+
+  const updateGamingHours = useCallback(
+    (nextValueOrUpdater, metadata = {}) => {
+      updateTrackedMetric("gaming", gamingHoursRef, setGamingHours, nextValueOrUpdater, metadata);
+    },
+    [updateTrackedMetric],
+  );
 
   const adjustListeningHours = useCallback(
     (deltaHours, metadata = {}) => {
@@ -203,6 +257,39 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateTrackingState = async () => {
+      if (!authUserId) {
+        return;
+      }
+
+      const totals = await fetchTrackingTotals(authUserId);
+      if (cancelled || !totals) {
+        return;
+      }
+
+      listeningHoursRef.current = totals.listening;
+      shadowingHoursRef.current = totals.shadowing;
+      gamingHoursRef.current = totals.gaming;
+      wordsReadRef.current = totals.reading;
+      wordsWrittenRef.current = totals.writing;
+
+      setListeningHours(totals.listening);
+      setShadowingHours(totals.shadowing);
+      setGamingHours(totals.gaming);
+      setWordsRead(totals.reading);
+      setWordsWritten(totals.writing);
+    };
+
+    void hydrateTrackingState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUserId]);
+
   return (
     <main style={styles.page}>
       <div style={styles.bgOrb1} />
@@ -223,25 +310,26 @@ export default function Home() {
             gamingHoursLabel={formatHours(gamingHours)}
             shadowingHoursLabel={formatHours(shadowingHours)}
             wordsWrittenLabel={formatWords(wordsWritten)}
+            authControl={
+              <MagicLinkAuth
+                session={authSession}
+                user={authUser}
+                isCompact={isCompact}
+                isLoading={authLoading}
+              />
+            }
             isCompact={isCompact}
             isAdditionalOpen={isAdditionalOpen}
             setIsAdditionalOpen={setIsAdditionalOpen}
             setListeningHours={updateListeningHours}
-            setWordsRead={setWordsRead}
-            setGamingHours={setGamingHours}
-            setShadowingHours={setShadowingHours}
-            setWordsWritten={setWordsWritten}
+            setWordsRead={updateWordsRead}
+            setGamingHours={updateGamingHours}
+            setShadowingHours={updateShadowingHours}
+            setWordsWritten={updateWordsWritten}
           />
 
           <DictionaryCarousel styles={styles} />
         </section>
-
-        <MagicLinkAuth
-          session={authSession}
-          user={authUser}
-          isCompact={isCompact}
-          isLoading={authLoading}
-        />
 
         <NavigationBar activeTab={tab} onChange={setTab} moduleTabs={MODULE_TABS} styles={styles} />
 
@@ -250,9 +338,7 @@ export default function Home() {
             <ListeningTab
               styles={styles}
               listeningHours={listeningHours}
-              setListeningHours={setListeningHours}
               adjustListeningHours={adjustListeningHours}
-              authUserId={authUser?.id || ""}
               isMobile={isMobile}
               isCompact={isCompact}
               seededChannels={SEEDED_CHANNELS}
@@ -260,32 +346,32 @@ export default function Home() {
               formatClock={formatClock}
             />
           )}
-            {tab === "reading" && (
+          {tab === "reading" && (
             <ReadingWorkspace
               styles={styles}
               wordsRead={wordsRead}
-              setWordsRead={setWordsRead}
+              setWordsRead={updateWordsRead}
             />
           )}
           {tab === "shadowing" && (
             <ShadowingWorkspace
               styles={styles}
               shadowingHours={shadowingHours}
-              setShadowingHours={setShadowingHours}
+              setShadowingHours={updateShadowingHours}
             />
           )}
           {tab === "writing" && (
             <WritingWorkspace
               styles={styles}
               wordsWritten={wordsWritten}
-              setWordsWritten={setWordsWritten}
+              setWordsWritten={updateWordsWritten}
             />
           )}
           {tab === "gaming" && (
             <GamingWorkspace
               styles={styles}
               gamingHours={gamingHours}
-              setGamingHours={setGamingHours}
+              setGamingHours={updateGamingHours}
             />
           )}
         </section>

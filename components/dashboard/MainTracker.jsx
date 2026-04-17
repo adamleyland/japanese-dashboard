@@ -9,6 +9,7 @@ export default function MainTracker({
   gamingHoursLabel,
   shadowingHoursLabel,
   wordsWrittenLabel,
+  authControl,
   isCompact,
   isAdditionalOpen,
   setIsAdditionalOpen,
@@ -21,15 +22,27 @@ export default function MainTracker({
 }) {
   return (
     <div style={styles.heroCard}>
-      <h1
+      <div
         style={{
-          ...styles.title,
-          fontSize: isCompact ? "34px" : "44px",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
           marginBottom: isCompact ? "24px" : "35px",
         }}
       >
-        Japanese Progress
-      </h1>
+        <h1
+          style={{
+            ...styles.title,
+            fontSize: isCompact ? "34px" : "44px",
+            margin: 0,
+          }}
+        >
+          Japanese Progress
+        </h1>
+
+        {authControl}
+      </div>
 
       <div style={styles.overallRow}>
         <MetricCard

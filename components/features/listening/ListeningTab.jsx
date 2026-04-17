@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ListeningWorkspace from "@/components/features/listening/ListeningWorkspace";
 import TimerStopwatch from "@/components/features/listening/TimerStopwatch";
 import ListeningVisualization from "@/components/features/listening/ListeningVisualization";
-import { fetchListeningTotal } from "@/lib/listeningEvents";
 
 const DISCOVER_FILTERS = {
   ゲーム: "日本 ゲーム 実況",
@@ -15,9 +14,7 @@ const DISCOVER_FILTERS = {
 export default function ListeningTab({
   styles,
   listeningHours,
-  setListeningHours,
   adjustListeningHours,
-  authUserId,
   isMobile,
   isCompact,
   seededChannels,
@@ -1341,25 +1338,6 @@ export default function ListeningTab({
     },
     [adjustListeningHours, listeningHours],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const hydrateListeningHours = async () => {
-      if (!authUserId) return;
-
-      const totalMinutes = await fetchListeningTotal();
-      if (cancelled || typeof totalMinutes !== "number") return;
-
-      setListeningHours(totalMinutes / 60);
-    };
-
-    hydrateListeningHours();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authUserId, setListeningHours]);
 
   useEffect(() => {
     logYouTubeDebug("selectedVideoId updated.", { selectedVideoId });

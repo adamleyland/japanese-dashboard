@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LogOut, Mail, UserCircle2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
   const [email, setEmail] = useState(user?.email || "");
+  const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [statusTone, setStatusTone] = useState("neutral");
+  const popupRef = useRef(null);
 
   useEffect(() => {
     if (user?.email) {
@@ -14,27 +18,55 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
     }
   }, [user?.email]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (popupRef.current && !popupRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
+
   const sendMagicLink = async () => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
-      setStatusMessage("Enter an email address to send a magic link.");
+      setStatusTone("error");
+      setStatusMessage("Enter an email.");
       return;
     }
 
     if (typeof window === "undefined") {
-      setStatusMessage("Magic Link sign-in is only available in the browser.");
+      setStatusTone("error");
+      setStatusMessage("Browser sign-in only.");
       return;
     }
 
     setIsSubmitting(true);
     setStatusMessage("");
+    setStatusTone("neutral");
 
     try {
-      // Supabase Auth config must include:
-      // Site URL: https://japanese-dashboard.vercel.app
-      // Redirect URLs:
-      // - http://localhost:3000
-      // - https://japanese-dashboard.vercel.app
+      // Supabase Auth > URL Configuration must include this origin in Redirect URLs.
+      // detectSessionInUrl is enabled in lib/supabase.js so magic-link callbacks restore auth state in-place.
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {
@@ -46,10 +78,12 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
         throw error;
       }
 
-      setStatusMessage("Magic link sent. Open it on this device or another device to sign in.");
+      setStatusTone("success");
+      setStatusMessage("Magic link sent.");
     } catch (error) {
       console.error("Failed to send Supabase magic link", error);
-      setStatusMessage(error.message || "Unable to send magic link right now.");
+      setStatusTone("error");
+      setStatusMessage(error.message || "Unable to send link.");
     } finally {
       setIsSubmitting(false);
     }
@@ -58,6 +92,7 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
   const signOut = async () => {
     setIsSubmitting(true);
     setStatusMessage("");
+    setStatusTone("neutral");
 
     try {
       const { error } = await supabase.auth.signOut();
@@ -65,149 +100,231 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
         throw error;
       }
 
-      setStatusMessage("Signed out.");
+      setIsOpen(false);
     } catch (error) {
       console.error("Failed to sign out from Supabase", error);
-      setStatusMessage(error.message || "Unable to sign out right now.");
+      setStatusTone("error");
+      setStatusMessage(error.message || "Unable to sign out.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const signedIn = !!session?.user;
+
   return (
-    <section style={cardStyle}>
-      <div style={headerRowStyle(isCompact)}>
-        <div style={{ minWidth: 0 }}>
-          <div style={eyebrowStyle}>Sync</div>
-          <div style={titleStyle}>Cross-device tracking</div>
-          <div style={subtitleStyle}>
-            {isLoading
-              ? "Checking your session..."
-              : session?.user
-              ? `Signed in as ${user?.email || "your account"}`
-              : "Sign in with a Supabase magic link to sync listening data."}
+    <div ref={popupRef} style={styles.wrapper}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        style={styles.triggerButton(signedIn)}
+        aria-label={signedIn ? `Signed in as ${user?.email || "your account"}` : "Open sign-in"}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+      >
+        <span style={styles.triggerDot(signedIn, isLoading)} />
+        <UserCircle2 size={16} strokeWidth={2} />
+      </button>
+
+      {isOpen && (
+        <div style={styles.popup(isCompact)} role="dialog" aria-modal="false">
+          <div style={styles.popupHeader}>
+            <div style={styles.popupTitleWrap}>
+              <div style={styles.eyebrow}>Sync</div>
+              <div style={styles.title}>{signedIn ? "Signed in" : "Cross-device sign in"}</div>
+            </div>
+
+            <button type="button" onClick={() => setIsOpen(false)} style={styles.closeButton} aria-label="Close sign-in">
+              <X size={14} strokeWidth={2} />
+            </button>
           </div>
-        </div>
 
-        {session?.user && (
-          <button type="button" onClick={signOut} disabled={isSubmitting} style={secondaryButtonStyle}>
-            Sign out
-          </button>
-        )}
-      </div>
+          {signedIn ? (
+            <>
+              <div style={styles.accountRow}>
+                <span style={styles.accountDot} />
+                <span style={styles.accountLabel}>{user?.email || "Signed in"}</span>
+              </div>
 
-      {!session?.user && (
-        <div style={controlsStyle(isCompact)}>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
-            autoComplete="email"
-            style={inputStyle}
-          />
-          <button type="button" onClick={sendMagicLink} disabled={isSubmitting} style={primaryButtonStyle}>
-            {isSubmitting ? "Sending..." : "Send magic link"}
-          </button>
+              {!!statusMessage && <div style={styles.message(statusTone)}>{statusMessage}</div>}
+
+              <button type="button" onClick={signOut} disabled={isSubmitting} style={styles.secondaryButton}>
+                <LogOut size={14} strokeWidth={2} />
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <label style={styles.inputWrap}>
+                <Mail size={14} strokeWidth={2} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  style={styles.input}
+                />
+              </label>
+
+              <button type="button" onClick={sendMagicLink} disabled={isSubmitting || isLoading} style={styles.primaryButton}>
+                {isSubmitting ? "Sending..." : "Send magic link"}
+              </button>
+
+              {!!statusMessage && <div style={styles.message(statusTone)}>{statusMessage}</div>}
+            </>
+          )}
         </div>
       )}
-
-      {!!user?.id && (
-        <div style={metaStyle}>
-          Tracking ready for user <code>{user.id}</code>
-        </div>
-      )}
-
-      {!!statusMessage && <div style={messageStyle}>{statusMessage}</div>}
-    </section>
+    </div>
   );
 }
 
-const cardStyle = {
-  background: "rgba(255,255,255,0.72)",
-  border: "1px solid rgba(255,255,255,0.8)",
-  boxShadow: "0 18px 40px rgba(15,23,42,0.08)",
-  backdropFilter: "blur(18px)",
-  WebkitBackdropFilter: "blur(18px)",
-  borderRadius: "20px",
-  padding: "16px",
-  marginBottom: "16px",
-  display: "grid",
-  gap: "12px",
-};
-
-const headerRowStyle = (isCompact) => ({
-  display: "flex",
-  flexDirection: isCompact ? "column" : "row",
-  gap: "12px",
-  alignItems: isCompact ? "stretch" : "center",
-  justifyContent: "space-between",
-});
-
-const eyebrowStyle = {
-  fontSize: "11px",
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#64748b",
-};
-
-const titleStyle = {
-  fontSize: "16px",
-  fontWeight: 700,
-  color: "#111827",
-};
-
-const subtitleStyle = {
-  fontSize: "13px",
-  color: "#475569",
-  marginTop: "4px",
-};
-
-const controlsStyle = (isCompact) => ({
-  display: "grid",
-  gridTemplateColumns: isCompact ? "1fr" : "minmax(0, 1fr) auto",
-  gap: "10px",
-});
-
-const inputStyle = {
-  padding: "10px 12px",
-  borderRadius: "12px",
-  border: "1px solid rgba(15,23,42,0.12)",
-  background: "#fff",
-  fontSize: "14px",
-  color: "#111827",
-};
-
-const primaryButtonStyle = {
-  border: "none",
-  borderRadius: "12px",
-  padding: "10px 14px",
-  background: "#111827",
-  color: "#fff",
-  fontSize: "13px",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle = {
-  border: "1px solid rgba(15,23,42,0.12)",
-  borderRadius: "12px",
-  padding: "10px 14px",
-  background: "#fff",
-  color: "#111827",
-  fontSize: "13px",
-  fontWeight: 700,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-const metaStyle = {
-  fontSize: "12px",
-  color: "#334155",
-};
-
-const messageStyle = {
-  fontSize: "12px",
-  color: "#475569",
+const styles = {
+  wrapper: {
+    position: "relative",
+    flexShrink: 0,
+  },
+  triggerButton: (signedIn) => ({
+    width: "38px",
+    height: "38px",
+    borderRadius: "999px",
+    border: signedIn ? "1px solid rgba(16,185,129,0.25)" : "1px solid rgba(15,23,42,0.1)",
+    background: "rgba(255,255,255,0.86)",
+    color: signedIn ? "#047857" : "#475569",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    position: "relative",
+  }),
+  triggerDot: (signedIn, isLoading) => ({
+    position: "absolute",
+    top: "7px",
+    right: "7px",
+    width: "8px",
+    height: "8px",
+    borderRadius: "999px",
+    background: isLoading ? "#cbd5e1" : signedIn ? "#10b981" : "#cbd5e1",
+    boxShadow: "0 0 0 2px rgba(255,255,255,0.95)",
+  }),
+  popup: (isCompact) => ({
+    position: "absolute",
+    top: "calc(100% + 10px)",
+    right: 0,
+    width: isCompact ? "min(260px, calc(100vw - 56px))" : "280px",
+    borderRadius: "18px",
+    border: "1px solid rgba(255,255,255,0.82)",
+    background: "rgba(255,255,255,0.95)",
+    boxShadow: "0 22px 50px rgba(15,23,42,0.14)",
+    backdropFilter: "blur(18px)",
+    WebkitBackdropFilter: "blur(18px)",
+    padding: "14px",
+    display: "grid",
+    gap: "10px",
+    zIndex: 20,
+  }),
+  popupHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "12px",
+  },
+  popupTitleWrap: {
+    minWidth: 0,
+  },
+  eyebrow: {
+    fontSize: "10px",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#94a3b8",
+  },
+  title: {
+    fontSize: "13px",
+    fontWeight: 700,
+    color: "#111827",
+    marginTop: "2px",
+  },
+  closeButton: {
+    width: "26px",
+    height: "26px",
+    borderRadius: "999px",
+    border: "1px solid rgba(15,23,42,0.08)",
+    background: "rgba(255,255,255,0.9)",
+    color: "#64748b",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  inputWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    borderRadius: "12px",
+    border: "1px solid rgba(15,23,42,0.1)",
+    background: "#fff",
+    padding: "10px 12px",
+    color: "#64748b",
+  },
+  input: {
+    width: "100%",
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    fontSize: "13px",
+    color: "#111827",
+  },
+  primaryButton: {
+    border: "none",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    background: "#111827",
+    color: "#fff",
+    fontSize: "12px",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  secondaryButton: {
+    border: "1px solid rgba(15,23,42,0.1)",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    background: "#fff",
+    color: "#111827",
+    fontSize: "12px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+  },
+  accountRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "12px",
+    color: "#0f172a",
+    minWidth: 0,
+  },
+  accountDot: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "999px",
+    background: "#10b981",
+    flexShrink: 0,
+  },
+  accountLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  message: (tone) => ({
+    fontSize: "12px",
+    color: tone === "error" ? "#b91c1c" : tone === "success" ? "#047857" : "#64748b",
+    lineHeight: 1.4,
+  }),
 };
