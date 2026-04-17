@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { addTrackingEvent, fetchTrackingTotals, reduceTrackingEvent } from "@/lib/trackingEvents";
-import NavigationBar from "@/components/layout/NavigationBar";
+import TopNav from "@/components/layout/TopNav";
 import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
 import MainTracker from "@/components/dashboard/MainTracker";
 import DictionaryCarousel from "@/components/dashboard/DictionaryCarousel";
@@ -38,6 +38,7 @@ export default function Home() {
   const [wordsRead, setWordsRead] = useState(3050000);
   const [wordsWritten, setWordsWritten] = useState(260000);
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [authSession, setAuthSession] = useState(null);
@@ -293,43 +294,54 @@ export default function Home() {
       <div style={styles.bgOrb2} />
 
       <div style={styles.container}>
-        <section
-          style={{
-            ...styles.heroGrid,
-            gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
-          }}
-        >
-          <MainTracker
-            overallHoursLabel={formatHours(overallHours)}
-            listeningHoursLabel={formatHours(listeningHours)}
-            listeningHours={listeningHours}
-            wordsReadLabel={formatWords(wordsRead)}
-            wordsRead={wordsRead}
-            gamingHoursLabel={formatHours(gamingHours)}
-            gamingHours={gamingHours}
-            shadowingHoursLabel={formatHours(shadowingHours)}
-            shadowingHours={shadowingHours}
-            wordsWrittenLabel={formatWords(wordsWritten)}
-            wordsWritten={wordsWritten}
-            authControl={
-              <MagicLinkAuth
-                session={authSession}
-                user={authUser}
-                isCompact={isCompact}
-                isLoading={authLoading}
-              />
-            }
-            onAdjustMetric={adjustMetricByDelta}
-            isCompact={isCompact}
-            isAdditionalOpen={isAdditionalOpen}
-            setIsAdditionalOpen={setIsAdditionalOpen}
-            styles={styles}
-          />
+        <TopNav
+          activeTab={tab}
+          authControl={
+            <MagicLinkAuth
+              session={authSession}
+              user={authUser}
+              isCompact={isCompact}
+              isLoading={authLoading}
+            />
+          }
+          authUserId={authUserId}
+          isCompact={isCompact}
+          moduleTabs={MODULE_TABS}
+          onChange={setTab}
+          onToggleDashboard={() => setShowDashboard((visible) => !visible)}
+          showDashboard={showDashboard}
+          styles={styles}
+        />
 
-          <DictionaryCarousel styles={styles} />
-        </section>
+        {showDashboard && (
+          <section
+            style={{
+              ...styles.heroGrid,
+              gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
+            }}
+          >
+            <MainTracker
+              overallHoursLabel={formatHours(overallHours)}
+              listeningHoursLabel={formatHours(listeningHours)}
+              listeningHours={listeningHours}
+              wordsReadLabel={formatWords(wordsRead)}
+              wordsRead={wordsRead}
+              gamingHoursLabel={formatHours(gamingHours)}
+              gamingHours={gamingHours}
+              shadowingHoursLabel={formatHours(shadowingHours)}
+              shadowingHours={shadowingHours}
+              wordsWrittenLabel={formatWords(wordsWritten)}
+              wordsWritten={wordsWritten}
+              onAdjustMetric={adjustMetricByDelta}
+              isCompact={isCompact}
+              isAdditionalOpen={isAdditionalOpen}
+              setIsAdditionalOpen={setIsAdditionalOpen}
+              styles={styles}
+            />
 
-        <NavigationBar activeTab={tab} onChange={setTab} moduleTabs={MODULE_TABS} styles={styles} />
+            <DictionaryCarousel styles={styles} />
+          </section>
+        )}
 
         <section style={styles.contentWrap}>
           {tab === "listening" && (
@@ -397,9 +409,9 @@ function formatClock(totalSeconds) {
 
 
 const glass = {
-  background: "rgba(255,255,255,0.6)",
-  border: "1px solid rgba(255,255,255,0.7)",
-  boxShadow: "0 20px 60px rgba(15,23,42,0.12)",
+  background: "var(--app-glass-bg)",
+  border: "var(--app-glass-border)",
+  boxShadow: "var(--app-glass-shadow)",
   backdropFilter: "blur(18px)",
   WebkitBackdropFilter: "blur(18px)",
 };
@@ -407,9 +419,9 @@ const glass = {
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg, #eef2ff 0%, #f8fafc 45%, #ecfeff 100%)",
+    background: "var(--app-page-bg)",
     fontFamily: "Inter, system-ui, -apple-system, sans-serif",
-    color: "#111827",
+    color: "var(--app-page-text)",
     padding: "16px",
     position: "relative",
     overflowX: "hidden",
@@ -419,7 +431,7 @@ const styles = {
     width: "420px",
     height: "420px",
     borderRadius: "999px",
-    background: "rgba(186,230,253,0.8)",
+    background: "var(--app-orb-1)",
     filter: "blur(80px)",
     top: "-120px",
     left: "-80px",
@@ -430,7 +442,7 @@ const styles = {
     width: "420px",
     height: "420px",
     borderRadius: "999px",
-    background: "rgba(221,214,254,0.7)",
+    background: "var(--app-orb-2)",
     filter: "blur(80px)",
     top: "-120px",
     right: "-80px",
@@ -483,24 +495,25 @@ const styles = {
     width: "28px",
     height: "28px",
     borderRadius: "50%",
-    background: "#ef4444",
+    background: "rgba(239, 68, 68, 0.16)",
+    border: "1px solid rgba(239, 68, 68, 0.18)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.01)",
+    boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
   },
   progressSeconds: {
     position: "absolute",
     fontSize: "10px",
     fontWeight: 700,
-    color: "#64748b",
+    color: "var(--app-text-muted)",
   },
   progressRing: { transform: "rotate(-90deg)" },
   eyebrow: {
     fontSize: "12px",
     letterSpacing: "0.08em",
     textTransform: "uppercase",
-    color: "#667085",
+    color: "var(--app-text-muted)",
   },
   tagBase: {
     display: "inline-flex",
@@ -520,8 +533,8 @@ const styles = {
     maxWidth: "100%",
     height: `${h}px`,
     padding: `${i}px`,
-    background: "rgba(255,255,255,0.45)",
-    border: "1px solid rgba(0,0,0,0.05)",
+    background: "var(--app-pill-track)",
+    border: "1px solid var(--app-border)",
     borderRadius: "999px",
     boxSizing: "border-box",
   }),
@@ -532,7 +545,7 @@ const styles = {
     left: `calc(${i}px + (${idx} * (100% - ${i * 2}px) / ${cnt}))`,
     width: `calc((100% - ${i * 2}px) / ${cnt})`,
     borderRadius: "999px",
-    background: "#fff",
+    background: "var(--app-pill-slider)",
     boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
     transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
     zIndex: 0,
@@ -550,7 +563,7 @@ const styles = {
     justifyContent: "center",
     fontSize: h < 40 ? "12px" : "13px",
     fontWeight: 600,
-    color: active ? "#111827" : "#64748b",
+    color: active ? "var(--app-text)" : "var(--app-text-muted)",
     transition: "color 0.2s ease",
   }),
   wordCarouselBody: {
@@ -570,11 +583,11 @@ const styles = {
     letterSpacing: "-0.05em",
     lineHeight: 1,
   },
-  wordReading: { color: "#64748b", fontSize: "18px" },
+  wordReading: { color: "var(--app-text-muted)", fontSize: "18px" },
   wordMeaning: {
     marginTop: "4px",
     fontSize: "16px",
-    color: "#0f172a",
+    color: "var(--app-text)",
     lineHeight: 1.4,
   },
   metadataRow: {
@@ -586,8 +599,8 @@ const styles = {
   contextSectionBox: {
     marginTop: "auto",
     borderRadius: "20px",
-    border: "1px solid rgba(15, 23, 42, 0.12)",
-    background: "rgba(255, 255, 255, 0.3)",
+    border: "1px solid var(--app-border-strong)",
+    background: "var(--app-surface-soft)",
     padding: "16px",
     display: "grid",
     gap: "12px",
@@ -604,15 +617,15 @@ const styles = {
     fontSize: "11px",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
   },
   wordSentence: {
     fontSize: "14px",
     lineHeight: 1.6,
-    color: "#111827",
+    color: "var(--app-text)",
   },
   wordSentenceTranslation: {
-    color: "#64748b",
+    color: "var(--app-text-muted)",
     fontSize: "13px",
     lineHeight: 1.5,
   },
@@ -642,8 +655,8 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     borderRadius: "12px",
-    border: "1px solid rgba(15, 23, 42, 0.12)",
-    background: "rgba(255, 255, 255, 0.8)",
+    border: "1px solid var(--app-border-strong)",
+    background: "var(--app-surface)",
     padding: "8px 12px",
     position: "relative",
   },
@@ -653,7 +666,7 @@ const styles = {
     border: "none",
     outline: "none",
     fontSize: "14px",
-    color: "#111827",
+    color: "var(--app-text)",
   },
   clearSearchBtn: {
     background: "none",
@@ -681,8 +694,8 @@ const styles = {
     gap: "8px",
   },
   secondaryAction: {
-    border: "1px solid rgba(15,23,42,0.12)",
-    background: "rgba(255,255,255,0.86)",
+    border: "1px solid var(--app-border-strong)",
+    background: "var(--app-surface)",
     borderRadius: "12px",
     padding: "8px 10px",
     display: "inline-flex",
@@ -691,7 +704,7 @@ const styles = {
     gap: "5px",
     fontSize: "12px",
     fontWeight: 700,
-    color: "#334155",
+    color: "var(--app-text-soft)",
     cursor: "pointer",
   },
   masteredAction: {
@@ -705,22 +718,22 @@ const styles = {
     gap: "5px",
     fontSize: "12px",
     fontWeight: 700,
-    color: "#047857",
+    color: "#48cba6",
     cursor: "pointer",
   },
   dictionaryPlaceholder: {
     borderRadius: "14px",
-    border: "1px dashed rgba(15,23,42,0.15)",
-    background: "rgba(255,255,255,0.35)",
+    border: "1px dashed var(--app-border-strong)",
+    background: "var(--app-surface-soft)",
     padding: "16px",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
     fontSize: "13px",
     textAlign: "center",
   },
   dictionaryResultCard: {
     borderRadius: "20px",
-    border: "1px solid rgba(15, 23, 42, 0.1)",
-    background: "rgba(255, 255, 255, 0.65)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-card)",
     padding: "16px",
     boxShadow: "0 4px 12px rgba(15,23,42,0.03)",
     display: "grid",
@@ -741,11 +754,11 @@ const styles = {
   dictionaryResultReading: {
     marginTop: "2px",
     fontSize: "13px",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
   },
   dictionaryResultDefinitions: {
     fontSize: "14px",
-    color: "#0f172a",
+    color: "var(--app-text)",
     lineHeight: 1.4,
   },
   addButton: {
@@ -755,9 +768,9 @@ const styles = {
     width: "32px",
     height: "32px",
     borderRadius: "10px",
-    border: "1px solid rgba(15, 23, 42, 0.1)",
-    background: "#fff",
-    color: "#111827",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text)",
     cursor: "pointer",
   },
   removeButton: {
@@ -773,8 +786,8 @@ const styles = {
     cursor: "pointer",
   },
   audioActionBtn: {
-    background: "#fff",
-    border: "1px solid rgba(15, 23, 42, 0.1)",
+    background: "var(--app-surface)",
+    border: "1px solid var(--app-border)",
     borderRadius: "12px",
     width: "44px",
     height: "44px",
@@ -784,8 +797,8 @@ const styles = {
     cursor: "pointer",
   },
   miniAudioBtn: {
-    background: "#fff",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "var(--app-surface)",
+    border: "1px solid var(--app-border-soft)",
     borderRadius: "8px",
     width: "28px",
     height: "28px",
@@ -812,7 +825,7 @@ const styles = {
     gap: "12px",
   },
   metricCard: (f) => ({
-    background: f ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.58)",
+    background: f ? "var(--app-card)" : "var(--app-card-muted)",
     border: "1px solid rgba(255,255,255,0.82)",
     boxShadow: f
       ? "0 16px 36px rgba(15,23,42,0.14)"
@@ -831,38 +844,38 @@ const styles = {
     width: f ? "40px" : "34px",
     height: f ? "40px" : "34px",
     borderRadius: "12px",
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.85)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: f ? "20px" : "18px",
   }),
   quickAddButton: {
-    border: "1px solid rgba(15,23,42,0.14)",
-    background: "rgba(255,255,255,0.9)",
+    border: "1px solid var(--app-border-strong)",
+    background: "var(--app-surface)",
     borderRadius: "999px",
     padding: "6px 10px",
     fontSize: "12px",
     fontWeight: 700,
-    color: "#111827",
+    color: "var(--app-text)",
     cursor: "pointer",
   },
   quickAddButtonSub: {
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.85)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
     borderRadius: "999px",
     padding: "5px 9px",
     fontSize: "11px",
     fontWeight: 700,
-    color: "#111827",
+    color: "var(--app-text)",
     cursor: "pointer",
   },
   metricLabel: {
     fontSize: "12px",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "#667085",
+    color: "var(--app-text-muted)",
     marginBottom: "8px",
   },
   metricValue: (f) => ({
@@ -874,8 +887,8 @@ const styles = {
   expandableWrap: {
     marginTop: "12px",
     borderRadius: "18px",
-    background: "rgba(255,255,255,0.32)",
-    border: "1px solid rgba(255,255,255,0.62)",
+    background: "var(--app-surface-soft)",
+    border: "1px solid var(--app-border-soft)",
     padding: "12px",
   },
   expandableSummary: {
@@ -889,12 +902,12 @@ const styles = {
     fontWeight: 700,
     letterSpacing: "0.08em",
     textTransform: "uppercase",
-    color: "#667085",
+    color: "var(--app-text-muted)",
   },
   expandableArrow: {
     fontSize: "20px",
     lineHeight: 1,
-    color: "#cbd5e1",
+    color: "var(--app-text-faint)",
   },
   tabsWrap: {
     ...glass,
@@ -903,20 +916,84 @@ const styles = {
     display: "flex",
     justifyContent: "center",
   },
+  topNavShell: (isCompact) => ({
+    ...glass,
+    borderRadius: "26px",
+    padding: isCompact ? "10px 12px" : "12px 14px",
+    display: "grid",
+    gridTemplateColumns: isCompact ? "minmax(0, 1fr) auto auto" : "1fr auto 1fr",
+    alignItems: "center",
+    gap: isCompact ? "8px" : "14px",
+    position: "relative",
+    zIndex: 12,
+  }),
+  topNavLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+    justifySelf: "start",
+  },
+  topNavCenter: {
+    display: "flex",
+    justifyContent: "center",
+    minWidth: 0,
+    overflow: "visible",
+  },
+  topNavRight: {
+    display: "flex",
+    justifyContent: "flex-end",
+    minWidth: 0,
+    justifySelf: "end",
+  },
+  topNavIconButton: (active) => ({
+    width: "38px",
+    height: "38px",
+    borderRadius: "999px",
+    border: active ? "1px solid var(--app-selected-border)" : "1px solid var(--app-border-soft)",
+    background: active ? "var(--app-selected-surface)" : "var(--app-surface-elevated)",
+    color: active ? "var(--app-selected-text)" : "var(--app-text-soft)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    boxShadow: active ? "0 10px 24px rgba(15,23,42,0.14)" : "0 10px 24px rgba(15,23,42,0.08)",
+    flexShrink: 0,
+  }),
+  topNavCalendarWrap: {
+    position: "relative",
+    minWidth: 0,
+  },
+  topNavDateButton: {
+    border: "none",
+    background: "transparent",
+    color: "var(--app-text)",
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "6px 2px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
   contentWrap: { minWidth: 0 },
   moduleNavTrack: {
     display: "flex",
     gap: "10px",
     padding: "4px",
     borderRadius: "999px",
-    background: "rgba(255,255,255,0.4)",
-    border: "1px solid rgba(255,255,255,0.7)",
+    background: "var(--app-pill-track)",
+    border: "1px solid var(--app-border-soft)",
+    width: "fit-content",
+    maxWidth: "100%",
+    overflowX: "auto",
+    scrollbarWidth: "none",
   },
   moduleNavButton: (active) => ({
     border: "none",
     borderRadius: "999px",
-    background: active ? "#111827" : "transparent",
-    color: active ? "#fff" : "#475569",
+    background: active ? "var(--app-selected-surface)" : "transparent",
+    color: active ? "var(--app-selected-text)" : "var(--app-text-muted)",
     cursor: "pointer",
     padding: active ? "10px 20px" : "10px",
     display: "inline-flex",
@@ -925,7 +1002,9 @@ const styles = {
     fontWeight: 700,
     fontSize: "13px",
     transition: "all 300ms cubic-bezier(0.23, 1, 0.32, 1)",
-    boxShadow: active ? "0 8px 20px rgba(15,23,42,0.15)" : "none",
+    boxShadow: active
+      ? "0 4px 12px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.04)"
+      : "none",
   }),
   listeningMainGrid: {
     display: "grid",
@@ -965,13 +1044,13 @@ const styles = {
   },
   sectionText: {
     margin: "8px 0 0 0",
-    color: "#667085",
+    color: "var(--app-text-muted)",
     fontSize: "14px",
   },
   playerShell: {
     borderRadius: "20px",
-    border: "1px solid rgba(15,23,42,0.12)",
-    background: "rgba(255,255,255,0.56)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-card)",
     padding: "12px",
     display: "grid",
     gap: "12px",
@@ -982,7 +1061,8 @@ const styles = {
     width: "min(1200px, 100%)",
     maxHeight: "100%",
     borderRadius: "24px",
-    background: "rgba(255,255,255,0.96)",
+    background: "var(--app-surface-strong)",
+    border: "1px solid var(--app-border-soft)",
     boxShadow: "0 40px 120px rgba(0,0,0,0.45)",
     padding: "16px",
     display: "grid",
@@ -1005,7 +1085,7 @@ const styles = {
     fontSize: "11px",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
     fontWeight: 700,
   },
   playerFrameWrap: {
@@ -1065,22 +1145,22 @@ const styles = {
     fontSize: "18px",
     fontWeight: 700,
     letterSpacing: "-0.02em",
-    color: "#111827",
+    color: "var(--app-text)",
   },
   playerSub: {
     margin: 0,
     fontSize: "12px",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
   },
   focusModeBtn: {
     position: "absolute",
     top: "12px",
     right: "12px",
     zIndex: 10,
-    background: "rgba(0,0,0,0.4)",
+    background: "rgba(15, 23, 42, 0.54)",
     backdropFilter: "blur(4px)",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,0.1)",
+    color: "var(--app-selected-text)",
+    border: "1px solid var(--app-border-soft)",
     borderRadius: "8px",
     width: "32px",
     height: "32px",
@@ -1100,17 +1180,17 @@ const styles = {
         : tone === "orange"
         ? "rgba(249,115,22,0.1)"
         : tone === "grey"
-        ? "rgba(148,163,184,0.12)"
+        ? "var(--app-surface-soft)"
         : "transparent",
     color:
       tone === "blue"
-        ? "#1d4ed8"
+        ? "#5579d9"
         : tone === "orange"
-        ? "#c2410c"
+        ? "#d05423"
         : tone === "grey"
-        ? "#475569"
-        : "#111827",
-    border: "1px solid transparent",
+        ? "var(--app-text-soft)"
+        : "var(--app-text)",
+    border: tone === "grey" ? "1px solid var(--app-border-soft)" : "1px solid transparent",
     borderRadius: "8px",
     padding: "6px 12px",
     fontSize: "12px",
@@ -1140,8 +1220,8 @@ const styles = {
   }),
   innerTabPanel: {
     borderRadius: "16px",
-    background: "rgba(255,255,255,0.4)",
-    border: "1px solid rgba(15,23,42,0.05)",
+    background: "var(--app-card-muted)",
+    border: "1px solid var(--app-border-soft)",
     padding: "12px",
   },
   accountIdentity: {
@@ -1174,16 +1254,16 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "8px 12px",
-    background: "#fff",
+    background: "var(--app-surface)",
     borderRadius: "10px",
-    border: "1px solid rgba(0,0,0,0.05)",
+    border: "1px solid var(--app-border-soft)",
   },
   simpleTitle: { fontSize: "13px", fontWeight: 600 },
   videoFeedButton: (active) => ({
     padding: "10px 12px",
-    background: active ? "rgba(234,179,8,1)" : "#fff",
-    color: active ? "#fff" : "#111827",
-    border: "1px solid rgba(0,0,0,0.05)",
+    background: active ? "var(--app-selected-surface)" : "var(--app-surface)",
+    color: active ? "var(--app-selected-text)" : "var(--app-text)",
+    border: active ? "1px solid var(--app-selected-border)" : "1px solid var(--app-border-soft)",
     borderRadius: "10px",
     cursor: "pointer",
     textAlign: "left",
@@ -1215,7 +1295,7 @@ const styles = {
     textAlign: "center",
     fontSize: "28px",
     fontWeight: 800,
-    color: "#1e293b",
+    color: "var(--app-text)",
   },
   timerActionRow: {
     display: "flex",
@@ -1224,9 +1304,9 @@ const styles = {
     width: "100%",
   },
   iconActionButton: (active) => ({
-    background: active ? "rgba(99,102,241,0.1)" : "#fff",
-    color: active ? "#6366f1" : "#475569",
-    border: "1px solid rgba(0,0,0,0.08)",
+    background: active ? "rgba(99,102,241,0.16)" : "var(--app-surface)",
+    color: active ? "#6366f1" : "var(--app-text-soft)",
+    border: "1px solid var(--app-border-soft)",
     borderRadius: "12px",
     width: "44px",
     height: "44px",
@@ -1265,19 +1345,20 @@ const styles = {
     marginBottom: "15px",
   },
   adjustBtn: {
-    background: "#fff",
-    border: "1px solid rgba(0,0,0,0.08)",
+    background: "var(--app-surface)",
+    border: "1px solid var(--app-border-soft)",
     borderRadius: "8px",
     padding: "8px 0",
     fontSize: "12px",
     fontWeight: 700,
+    color: "var(--app-text)",
     cursor: "pointer",
   },
   goalGrid: {
-    background: "rgba(255,255,255,0.4)",
+    background: "var(--app-card-muted)",
     padding: "12px",
     borderRadius: "16px",
-    border: "1px solid rgba(0,0,0,0.05)",
+    border: "1px solid var(--app-border-soft)",
     display: "grid",
     gap: "12px",
   },
@@ -1288,7 +1369,7 @@ const styles = {
   },
   progressBlockShell: {
     height: "18px",
-    background: "rgba(0,0,0,0.05)",
+    background: "var(--app-progress-track)",
     borderRadius: "4px",
     overflow: "hidden",
     position: "relative",
@@ -1303,7 +1384,8 @@ const styles = {
   }),
   progressBarWrap: {
     height: "24px",
-    background: "rgba(0,0,0,0.05)",
+    background: "var(--app-progress-track)",
+    border: "1px solid var(--app-border-soft)",
     borderRadius: "999px",
     position: "relative",
     overflow: "hidden",
@@ -1312,7 +1394,7 @@ const styles = {
     position: "absolute",
     height: "100%",
     width: `${p}%`,
-    background: "#eab308",
+    background: "#eab208a5",
   }),
   progressBarLabel: {
     position: "absolute",
@@ -1323,6 +1405,7 @@ const styles = {
     fontSize: "11px",
     fontWeight: 800,
     gap: "4px",
+    color: "var(--app-text)",
   },
   focusOverlay: {
     position: "fixed",
@@ -1355,14 +1438,15 @@ const styles = {
   inputLabel: {
     fontSize: "11px",
     fontWeight: 700,
-    color: "#64748b",
+    color: "var(--app-text-muted)",
     textTransform: "uppercase",
   },
   input: {
     padding: "10px",
     borderRadius: "10px",
-    border: "1px solid rgba(0,0,0,0.1)",
-    background: "#fff",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text)",
     fontSize: "14px",
   },
 };

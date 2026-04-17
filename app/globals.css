@@ -3,6 +3,33 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --app-page-bg: linear-gradient(160deg, #eef2ff 0%, #f8fafc 45%, #ecfeff 100%);
+  --app-page-text: #111827;
+  --app-glass-bg: rgba(255, 255, 255, 0.6);
+  --app-glass-border: 1px solid rgba(255, 255, 255, 0.7);
+  --app-glass-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+  --app-surface: rgba(255, 255, 255, 0.86);
+  --app-surface-strong: rgba(255, 255, 255, 0.94);
+  --app-surface-soft: rgba(248, 250, 252, 0.92);
+  --app-surface-elevated: rgba(255, 255, 255, 0.78);
+  --app-card: rgba(255, 255, 255, 0.72);
+  --app-card-muted: rgba(255, 255, 255, 0.58);
+  --app-border: rgba(15, 23, 42, 0.1);
+  --app-border-soft: rgba(15, 23, 42, 0.06);
+  --app-border-strong: rgba(15, 23, 42, 0.14);
+  --app-text: #0f172a;
+  --app-text-soft: #334155;
+  --app-text-muted: #64748b;
+  --app-text-faint: #94a3b8;
+  --app-pill-track: rgba(255, 255, 255, 0.45);
+  --app-pill-slider: #ffffff;
+  --app-selected-surface: #111827;
+  --app-selected-border: rgba(15, 23, 42, 0.9);
+  --app-selected-text: #ffffff;
+  --app-overlay: rgba(15, 23, 42, 0.14);
+  --app-progress-track: rgba(15, 23, 42, 0.06);
+  --app-orb-1: rgba(186, 230, 253, 0.8);
+  --app-orb-2: rgba(221, 214, 254, 0.7);
 }
 
 @theme inline {
@@ -12,15 +39,41 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root[data-theme="dark"] {
+  --background: #07111f;
+  --foreground: #edf2ff;
+  --app-page-bg: linear-gradient(160deg, #07111f 0%, #0f172a 48%, #10243a 100%);
+  --app-page-text: #edf2ff;
+  --app-glass-bg: rgba(12, 23, 39, 0.76);
+  --app-glass-border: 1px solid rgba(148, 163, 184, 0.18);
+  --app-glass-shadow: 0 22px 70px rgba(2, 6, 23, 0.42);
+  --app-surface: rgba(15, 23, 42, 0.82);
+  --app-surface-strong: rgba(15, 23, 42, 0.92);
+  --app-surface-soft: rgba(15, 23, 42, 0.72);
+  --app-surface-elevated: rgba(22, 32, 52, 0.88);
+  --app-card: rgba(15, 23, 42, 0.82);
+  --app-card-muted: rgba(15, 23, 42, 0.72);
+  --app-border: rgba(148, 163, 184, 0.16);
+  --app-border-soft: rgba(148, 163, 184, 0.12);
+  --app-border-strong: rgba(148, 163, 184, 0.22);
+  --app-text: #edf2ff;
+  --app-text-soft: #cbd5e1;
+  --app-text-muted: #94a3b8;
+  --app-text-faint: #64748b;
+  --app-pill-track: rgba(15, 23, 42, 0.7);
+  --app-pill-slider: rgba(30, 41, 59, 0.94);
+  --app-selected-surface: rgba(51, 65, 85, 0.92);
+  --app-selected-border: rgba(148, 163, 184, 0.18);
+  --app-selected-text: #f8fafc;
+  --app-overlay: rgba(2, 6, 23, 0.42);
+  --app-progress-track: rgba(148, 163, 184, 0.14);
+  --app-orb-1: rgba(8, 145, 178, 0.16);
+  --app-orb-2: rgba(99, 102, 241, 0.16);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background 180ms ease, color 180ms ease;
 }

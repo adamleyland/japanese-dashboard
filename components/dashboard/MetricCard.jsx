@@ -28,8 +28,8 @@ export default function MetricCard({
 
 const styles = {
   metricCard: (f) => ({
-    background: f ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.58)",
-    border: "1px solid rgba(255,255,255,0.82)",
+    background: f ? "var(--app-card)" : "var(--app-card-muted)",
+    border: "1px solid var(--app-border-soft)",
     boxShadow: f ? "0 16px 36px rgba(15,23,42,0.14)" : "0 12px 26px rgba(15,23,42,0.1)",
     borderRadius: f ? "24px" : "22px",
     padding: f ? "20px" : "18px",
@@ -45,8 +45,8 @@ const styles = {
     width: f ? "40px" : "34px",
     height: f ? "40px" : "34px",
     borderRadius: "12px",
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.85)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface-elevated)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -55,20 +55,20 @@ const styles = {
   quickAddButton: {
     width: "32px",
     height: "32px",
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.78)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface-elevated)",
     borderRadius: "10px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
     cursor: "pointer",
   },
   metricLabel: {
     fontSize: "12px",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "#667085",
+    color: "var(--app-text-muted)",
     marginBottom: "8px",
   },
   metricValue: (f) => ({
@@ -76,5 +76,6 @@ const styles = {
     fontWeight: 700,
     letterSpacing: "-0.04em",
     lineHeight: 1,
+    color: "var(--app-text)",
   }),
 };

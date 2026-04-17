@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Ear,
   BookA,
@@ -22,13 +22,13 @@ export function PillSliderToggle({ value, options, onChange, width = 110, size =
   const toggleHeight = size === "sm" ? 38 : 44;
 
   return (
-    <div style={styles.pillToggleBase(width, toggleHeight, inset)}>
-      <div style={styles.pillToggleSlider(activeIndex, options.length, inset)} />
+    <div style={localStyles.pillToggleBase(width, toggleHeight, inset)}>
+      <div style={localStyles.pillToggleSlider(activeIndex, options.length, inset)} />
       {options.map((option) => (
         <button
           key={option.value}
           onClick={() => onChange(option.value)}
-          style={styles.pillToggleButton(option.value === value, toggleHeight)}
+          style={localStyles.pillToggleButton(option.value === value, toggleHeight)}
         >
           {option.label}
         </button>
@@ -50,7 +50,7 @@ export function ProgressRing({
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   return (
-    <svg height={radius * 2} width={radius * 2} style={styles.progressRing}>
+    <svg height={radius * 2} width={radius * 2} style={localStyles.progressRing}>
       <circle
         stroke={trackColor}
         fill="transparent"
@@ -116,7 +116,7 @@ export const Tag = ({ label, tone }) => {
   return (
     <span
       style={{
-        ...styles.tagBase,
+        ...localStyles.tagBase,
         backgroundColor: colors.bg,
         borderColor: colors.border,
         color: colors.text,
@@ -127,7 +127,7 @@ export const Tag = ({ label, tone }) => {
   );
 };
 
-export default function DictionaryCarousel({ styles }) {
+export default function DictionaryCarousel({ styles: sharedStyles }) {
   const [mode, setMode] = useState("carousel");
   const [carouselEntries, setCarouselEntries] = useState([]);
   const [activeWordIndex, setActiveWordIndex] = useState(0);
@@ -136,6 +136,8 @@ export default function DictionaryCarousel({ styles }) {
   const [searchResults, setSearchResults] = useState([]);
   const [progress, setProgress] = useState(0);
   const startTimeRef = useRef(0);
+  const modeRef = useRef(mode);
+  const carouselLengthRef = useRef(carouselEntries.length);
 
   const playAudio = (url) => {
     if (!url) return;
@@ -143,7 +145,7 @@ export default function DictionaryCarousel({ styles }) {
     audio.play().catch((e) => console.error("Audio error:", e));
   };
 
-  const fetchCarousel = async () => {
+  const fetchCarousel = useCallback(async () => {
     const { data } = await supabase
       .from("user_carousel")
       .select(`
@@ -172,14 +174,14 @@ export default function DictionaryCarousel({ styles }) {
       const formatted = data.map((item) => ({ carousel_id: item.id, ...item.words }));
       setCarouselEntries(formatted);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchCarousel();
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [fetchCarousel]);
 
   useEffect(() => {
     const search = async () => {
@@ -223,7 +225,7 @@ export default function DictionaryCarousel({ styles }) {
     return () => clearTimeout(timer);
   }, [dictionaryValue, dictionaryInputMode]);
 
-  const toggleCarousel = async (word) => {
+  const toggleCarousel = useCallback(async (word) => {
     const existing = carouselEntries.find((e) => e.id === word.id);
 
     if (existing) {
@@ -233,7 +235,15 @@ export default function DictionaryCarousel({ styles }) {
     }
 
     fetchCarousel();
-  };
+  }, [carouselEntries, fetchCarousel]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    carouselLengthRef.current = carouselEntries.length;
+  }, [carouselEntries.length]);
 
   useEffect(() => {
     if (mode !== "carousel" || carouselEntries.length === 0) {
@@ -241,36 +251,51 @@ export default function DictionaryCarousel({ styles }) {
     }
 
     startTimeRef.current = Date.now();
+  }, [activeWordIndex, carouselEntries.length, mode]);
 
+  useEffect(() => {
     const timer = setInterval(() => {
+      if (modeRef.current !== "carousel" || carouselLengthRef.current === 0) {
+        return;
+      }
+
       const elapsed = Date.now() - startTimeRef.current;
 
       if (elapsed >= CAROUSEL_INTERVAL) {
-        setActiveWordIndex((p) => (p + 1) % carouselEntries.length);
+        setActiveWordIndex((currentIndex) => {
+          if (carouselLengthRef.current <= 1) {
+            return currentIndex;
+          }
+
+          return (currentIndex + 1) % carouselLengthRef.current;
+        });
         startTimeRef.current = Date.now();
-        setProgress(0);
+        setProgress((currentProgress) => (currentProgress === 0 ? currentProgress : 0));
       } else {
-        setProgress((elapsed / CAROUSEL_INTERVAL) * 100);
+        const nextProgress = (elapsed / CAROUSEL_INTERVAL) * 100;
+        setProgress((currentProgress) =>
+          Math.abs(currentProgress - nextProgress) < 0.1 ? currentProgress : nextProgress,
+        );
       }
     }, 100);
 
     return () => clearInterval(timer);
-  }, [mode, carouselEntries.length]);
+  }, []);
 
   const activeEntry = carouselEntries[activeWordIndex] || null;
   const activeExamples =
     activeEntry?.examples?.filter((ex) => ex?.sentence_ja || ex?.sentence_en).slice(0, 2) || [];
 
-  const rotateCarousel = (direction = 1) => {
+  const rotateCarousel = useCallback((direction = 1) => {
     if (!carouselEntries.length) return;
     setActiveWordIndex(
       (prev) => (prev + direction + carouselEntries.length) % carouselEntries.length,
     );
     startTimeRef.current = Date.now();
-    setProgress(0);
-  };
+    setProgress((currentProgress) => (currentProgress === 0 ? currentProgress : 0));
+  }, [carouselEntries.length]);
 
-  const markKnown = async () => {
+  const markKnown = useCallback(async () => {
     if (!activeEntry?.carousel_id) return;
     await supabase.from("user_carousel").delete().eq("id", activeEntry.carousel_id);
     await supabase
@@ -278,7 +303,7 @@ export default function DictionaryCarousel({ styles }) {
       .upsert({ word_id: activeEntry.id }, { onConflict: "word_id", ignoreDuplicates: true });
     fetchCarousel();
     setActiveWordIndex(0);
-  };
+  }, [activeEntry, fetchCarousel]);
 
   const highlightSentence = (sentence, target) => {
     if (!target || !sentence.includes(target)) return sentence;
@@ -287,7 +312,7 @@ export default function DictionaryCarousel({ styles }) {
     return (
       <>
         {sentence.substring(0, index)}
-        <span style={styles.textHighlight}>
+        <span style={sharedStyles.textHighlight}>
           {sentence.substring(index, index + target.length)}
         </span>
         {sentence.substring(index + target.length)}
@@ -295,29 +320,35 @@ export default function DictionaryCarousel({ styles }) {
     );
   };
 
+  const headerIndicator =
+    mode === "carousel" ? (
+      activeEntry ? (
+        <div style={sharedStyles.progressContainer}>
+          <ProgressRing radius={14} stroke={2} progress={progress} />
+          <span style={sharedStyles.progressSeconds}>
+            {Math.ceil((CAROUSEL_INTERVAL - (progress / 100) * CAROUSEL_INTERVAL) / 1000)}
+          </span>
+        </div>
+      ) : null
+    ) : (
+      <div style={sharedStyles.progressContainer}>
+        <div style={sharedStyles.dictionaryIconFootprint}>
+          <BookA size={14} color="#ef4444" strokeWidth={2.5} />
+        </div>
+      </div>
+    );
+
   return (
-    <div style={styles.wordCard}>
-      <div style={styles.wordCardHeader}>
-        <div style={styles.eyebrow}>{mode === "carousel" ? "Word Carousel" : "Dictionary"}</div>
+    <div style={sharedStyles.wordCard}>
+      <div style={localStyles.headerRow}>
+        <div style={localStyles.leftGroup}>
+          {headerIndicator}
+          <span style={localStyles.wordHeaderTitle}>
+            {mode === "carousel" ? "Word Carousel" : "Dictionary"}
+          </span>
+        </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {mode === "carousel" ? (
-            activeEntry && (
-              <div style={styles.progressContainer}>
-                <ProgressRing radius={14} stroke={2} progress={progress} />
-                <span style={styles.progressSeconds}>
-                  {Math.ceil((CAROUSEL_INTERVAL - (progress / 100) * CAROUSEL_INTERVAL) / 1000)}
-                </span>
-              </div>
-            )
-          ) : (
-            <div style={styles.progressContainer}>
-              <div style={styles.dictionaryIconFootprint}>
-                <BookA size={14} color="#fff" strokeWidth={2.5} />
-              </div>
-            </div>
-          )}
-
+        <div style={localStyles.rightGroup}>
           <PillSliderToggle
             value={mode}
             options={[
@@ -332,26 +363,26 @@ export default function DictionaryCarousel({ styles }) {
       </div>
 
       {mode === "carousel" ? (
-        <div style={styles.wordCarouselBody}>
+        <div style={sharedStyles.wordCarouselBody}>
           {activeEntry ? (
             <>
-              <div style={styles.carouselTopSection}>
+              <div style={sharedStyles.carouselTopSection}>
                 <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                  <div style={styles.wordMain}>{activeEntry.term}</div>
+                  <div style={sharedStyles.wordMain}>{activeEntry.term}</div>
                   {activeEntry.audio_url && (
                     <button
                       onClick={() => playAudio(activeEntry.audio_url)}
-                      style={styles.audioActionBtn}
+                      style={sharedStyles.audioActionBtn}
                     >
                       <Volume2 size={24} color="#6366f1" />
                     </button>
                   )}
                 </div>
 
-                <div style={styles.wordReading}>{activeEntry.reading}</div>
-                <div style={styles.wordMeaning}>{activeEntry.meaning}</div>
+                <div style={sharedStyles.wordReading}>{activeEntry.reading}</div>
+                <div style={sharedStyles.wordMeaning}>{activeEntry.meaning}</div>
 
-                <div style={styles.metadataRow}>
+                <div style={sharedStyles.metadataRow}>
                   {activeEntry.jlpt_level && <Tag label={activeEntry.jlpt_level} tone="red" />}
                   {activeEntry.pos && <Tag label={activeEntry.pos} tone="cyan" />}
                   {activeEntry.tags
@@ -367,14 +398,14 @@ export default function DictionaryCarousel({ styles }) {
                 </div>
               </div>
 
-              <div style={styles.contextSectionBox}>
+              <div style={sharedStyles.contextSectionBox}>
                 {activeExamples.length > 0 ? (
                   <>
-                    <div style={styles.wordSentenceLabel}>Context examples</div>
+                    <div style={sharedStyles.wordSentenceLabel}>Context examples</div>
 
-                    <div style={styles.contextExamplesList}>
+                    <div style={sharedStyles.contextExamplesList}>
                       {activeExamples.map((ex, i) => (
-                        <div key={i} style={styles.contextExampleItem}>
+                        <div key={i} style={sharedStyles.contextExampleItem}>
                           <div
                             style={{
                               display: "flex",
@@ -384,7 +415,7 @@ export default function DictionaryCarousel({ styles }) {
                             }}
                           >
                             {ex.sentence_ja && (
-                              <div style={styles.wordSentence}>
+                              <div style={sharedStyles.wordSentence}>
                                 {highlightSentence(ex.sentence_ja, ex.highlight_ja)}
                               </div>
                             )}
@@ -392,7 +423,7 @@ export default function DictionaryCarousel({ styles }) {
                             {ex.sentence_audio_url && (
                               <button
                                 onClick={() => playAudio(ex.sentence_audio_url)}
-                                style={styles.miniAudioBtn}
+                                style={sharedStyles.miniAudioBtn}
                               >
                                 <Ear size={14} color="#64748b" />
                               </button>
@@ -400,36 +431,36 @@ export default function DictionaryCarousel({ styles }) {
                           </div>
 
                           {ex.sentence_en && (
-                            <div style={styles.wordSentenceTranslation}>{ex.sentence_en}</div>
+                            <div style={sharedStyles.wordSentenceTranslation}>{ex.sentence_en}</div>
                           )}
                         </div>
                       ))}
                     </div>
                   </>
                 ) : (
-                  <div style={styles.dictionaryPlaceholder}>No example sentence available.</div>
+                  <div style={sharedStyles.dictionaryPlaceholder}>No example sentence available.</div>
                 )}
               </div>
 
-              <div style={styles.carouselActionRow}>
-                <button onClick={() => rotateCarousel(-1)} style={styles.secondaryAction}>
+              <div style={sharedStyles.carouselActionRow}>
+                <button onClick={() => rotateCarousel(-1)} style={sharedStyles.secondaryAction}>
                   <ChevronLeft size={14} /> Previous
                 </button>
-                <button onClick={() => rotateCarousel(1)} style={styles.secondaryAction}>
+                <button onClick={() => rotateCarousel(1)} style={sharedStyles.secondaryAction}>
                   Next <ChevronRight size={14} />
                 </button>
-                <button onClick={markKnown} style={styles.masteredAction}>
+                <button onClick={markKnown} style={sharedStyles.masteredAction}>
                   <CheckCircle2 size={14} /> Known
                 </button>
               </div>
             </>
           ) : (
-            <div style={styles.dictionaryPlaceholder}>Add words from the dictionary to start!</div>
+            <div style={sharedStyles.dictionaryPlaceholder}>Add words from the dictionary to start!</div>
           )}
         </div>
       ) : (
-        <div style={styles.dictionaryBody}>
-          <div style={styles.dictionaryControls}>
+        <div style={sharedStyles.dictionaryBody}>
+          <div style={sharedStyles.dictionaryControls}>
             <PillSliderToggle
               value={dictionaryInputMode}
               options={[
@@ -444,7 +475,7 @@ export default function DictionaryCarousel({ styles }) {
               size="sm"
             />
 
-            <label style={styles.dictionaryInputWrapTight}>
+            <label style={sharedStyles.dictionaryInputWrapTight}>
               <Search size={16} color="#64748b" />
               <input
                 value={dictionaryValue}
@@ -455,57 +486,57 @@ export default function DictionaryCarousel({ styles }) {
                   );
                 }}
                 placeholder="Search database..."
-                style={styles.dictionaryInput}
+                style={sharedStyles.dictionaryInput}
               />
               {dictionaryValue && (
-                <button onClick={() => setDictionaryValue("")} style={styles.clearSearchBtn}>
+                <button onClick={() => setDictionaryValue("")} style={sharedStyles.clearSearchBtn}>
                   <X size={14} />
                 </button>
               )}
             </label>
           </div>
 
-          <div style={styles.dictionaryResultsArea}>
+          <div style={sharedStyles.dictionaryResultsArea}>
             {!dictionaryValue.trim() ? (
-              <div style={styles.dictionaryPlaceholder}>Search for a word.</div>
+              <div style={sharedStyles.dictionaryPlaceholder}>Search for a word.</div>
             ) : searchResults.length === 0 ? (
-              <div style={styles.dictionaryPlaceholder}>No matches found.</div>
+              <div style={sharedStyles.dictionaryPlaceholder}>No matches found.</div>
             ) : (
-              <div style={styles.dictionaryResultsList}>
+              <div style={sharedStyles.dictionaryResultsList}>
                 {searchResults.map((entry) => {
                   const isAdded = carouselEntries.some((e) => e.id === entry.id);
 
                   return (
-                    <div key={entry.id} style={styles.dictionaryResultCard}>
-                      <div style={styles.dictionaryResultTop}>
+                    <div key={entry.id} style={sharedStyles.dictionaryResultCard}>
+                      <div style={sharedStyles.dictionaryResultTop}>
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <div style={styles.dictionaryResultWord}>{entry.term}</div>
+                            <div style={sharedStyles.dictionaryResultWord}>{entry.term}</div>
 
                             {entry.audio_url && (
                               <button
                                 onClick={() => playAudio(entry.audio_url)}
-                                style={styles.miniAudioBtn}
+                                style={sharedStyles.miniAudioBtn}
                               >
                                 <Volume2 size={12} color="#6366f1" />
                               </button>
                             )}
                           </div>
 
-                          <div style={styles.dictionaryResultReading}>{entry.reading}</div>
+                          <div style={sharedStyles.dictionaryResultReading}>{entry.reading}</div>
                         </div>
 
                         <button
                           onClick={() => toggleCarousel(entry)}
-                          style={isAdded ? styles.removeButton : styles.addButton}
+                          style={isAdded ? sharedStyles.removeButton : sharedStyles.addButton}
                         >
                           {isAdded ? <X size={16} /> : <Plus size={16} />}
                         </button>
                       </div>
 
-                      <div style={styles.dictionaryResultDefinitions}>{entry.meaning}</div>
+                      <div style={sharedStyles.dictionaryResultDefinitions}>{entry.meaning}</div>
 
-                      <div style={styles.metadataRow}>
+                      <div style={sharedStyles.metadataRow}>
                         {entry.jlpt_level && <Tag label={entry.jlpt_level} tone="red" />}
                         {entry.pos && <Tag label={entry.pos} tone="cyan" />}
                       </div>
@@ -706,7 +737,39 @@ function scoreDictionaryEntry(entry, query, mode) {
   return score + isCommon * 10;
 }
 
-const styles = {
+const localStyles = {
+  headerRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    minWidth: 0,
+    flexWrap: "nowrap",
+    gap: "12px",
+    paddingBottom: "4px",
+  },
+  leftGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    minWidth: 0,
+    flex: "1 1 auto",
+  },
+  rightGroup: {
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  wordHeaderTitle: {
+    fontSize: "11px",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "var(--app-text-muted)",
+    display: "inline-block",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
   pillToggleBase: (w, h, i) => ({
     position: "relative",
     display: "flex",
@@ -715,8 +778,8 @@ const styles = {
     maxWidth: "100%",
     height: `${h}px`,
     padding: `${i}px`,
-    background: "rgba(255,255,255,0.45)",
-    border: "1px solid rgba(0,0,0,0.05)",
+    background: "var(--app-pill-track)",
+    border: "1px solid var(--app-border)",
     borderRadius: "999px",
     boxSizing: "border-box",
   }),
@@ -727,8 +790,8 @@ const styles = {
     left: `calc(${i}px + (${idx} * (100% - ${i * 2}px) / ${cnt}))`,
     width: `calc((100% - ${i * 2}px) / ${cnt})`,
     borderRadius: "999px",
-    background: "#fff",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    background: "var(--app-pill-slider)",
+    boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
     transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
     zIndex: 0,
   }),
@@ -745,7 +808,7 @@ const styles = {
     justifyContent: "center",
     fontSize: h < 40 ? "12px" : "13px",
     fontWeight: 600,
-    color: active ? "#111827" : "#64748b",
+    color: active ? "var(--app-text)" : "var(--app-text-muted)",
     transition: "color 0.2s ease",
   }),
   progressRing: { transform: "rotate(-90deg)" },

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { PillSliderToggle, ProgressRing } from "@/components/dashboard/DictionaryCarousel";
 
-const NEUTRAL_TRACK = "#e2e8f0";
+const NEUTRAL_TRACK = "var(--app-progress-track)";
 const BRIGHT_BLUE = "#6366f1";
 const MID_BLUE = "#4f46e5";
 const DARK_BLUE = "#3730a3";
@@ -112,8 +112,8 @@ export default function TimerStopwatch({
   };
 
   const timerAdjustButton = {
-    border: "1px solid rgba(99,102,241,0.14)",
-    background: "rgba(255,255,255,0.86)",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface-elevated)",
     color: "#4338ca",
     borderRadius: "12px",
     width: isDesktop ? "40px" : "36px",
@@ -145,11 +145,12 @@ export default function TimerStopwatch({
             <div
               style={{
                 ...styles.dictionaryIconFootprint,
-                background: "linear-gradient(145deg, #818cf8, #4f46e5)",
-                boxShadow: "0 10px 24px rgba(79,70,229,0.01)",
+                background: "rgba(99, 102, 241, 0.16)",
+                border: "1px solid rgba(99, 102, 241, 0.18)",
+                boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
               }}
             >
-              <Clock3 size={14} color="#fff" strokeWidth={2.5} />
+              <Clock3 size={14} color="#818cf8" strokeWidth={2.5} />
             </div>
           </div>
 
@@ -202,7 +203,7 @@ export default function TimerStopwatch({
               style={{
                 fontSize: isDesktop ? "12px" : "11px",
                 fontWeight: 600,
-                color: "#64748b",
+                color: "var(--app-text-muted)",
                 opacity: 0.84,
                 marginTop: "8px",
                 letterSpacing: "0.08em",
@@ -228,13 +229,17 @@ export default function TimerStopwatch({
                 gap: "10px",
                 padding: isDesktop ? "8px 10px" : "7px 9px",
                 borderRadius: "16px",
-                background: "rgba(255,255,255,0.58)",
-                border: "1px solid rgba(15,23,42,0.08)",
+                background: "var(--app-card)",
+                border: "1px solid var(--app-border-soft)",
               }}
             >
               <button
                 type="button"
-                style={timerAdjustButton}
+                style={{
+                  ...timerAdjustButton,
+                  opacity: timerMinutes <= 1 ? 0.45 : 1,
+                  cursor: timerMinutes <= 1 ? "not-allowed" : "pointer",
+                }}
                 onClick={() => adjustTimerMinutes(-1)}
                 disabled={timerMinutes <= 1}
               >
@@ -243,7 +248,13 @@ export default function TimerStopwatch({
 
               <div style={{ textAlign: "center", minWidth: isDesktop ? "116px" : "100px" }}>
                 <div style={{ ...styles.eyebrow, marginBottom: "2px" }}>Timer Length</div>
-                <div style={{ fontSize: isDesktop ? "18px" : "16px", fontWeight: 700 }}>
+                <div
+                  style={{
+                    fontSize: isDesktop ? "18px" : "16px",
+                    fontWeight: 700,
+                    color: "var(--app-text)",
+                  }}
+                >
                   {timerMinutes} min
                 </div>
               </div>

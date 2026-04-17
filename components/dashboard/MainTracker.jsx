@@ -90,11 +90,11 @@ export default function MainTracker({
           <h1
             style={{
               ...styles.title,
-              fontSize: isCompact ? "34px" : "44px",
+              fontSize: isCompact ? "34px" : "30px",
               margin: 0,
             }}
           >
-            Japanese Progress
+            日本語トラッカー
           </h1>
 
           {authControl}
@@ -149,8 +149,8 @@ export default function MainTracker({
                 height: 0,
                 borderLeft: "6px solid transparent",
                 borderRight: "6px solid transparent",
-                borderBottom: isAdditionalOpen ? "8px solid #cbd5e1" : "none",
-                borderTop: isAdditionalOpen ? "none" : "8px solid #cbd5e1",
+                borderBottom: isAdditionalOpen ? "8px solid var(--app-text-faint)" : "none",
+                borderTop: isAdditionalOpen ? "none" : "8px solid var(--app-text-faint)",
               }}
             />
           </summary>

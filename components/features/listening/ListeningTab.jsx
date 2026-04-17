@@ -7,6 +7,8 @@ import ListeningVisualization from "@/components/features/listening/ListeningVis
 import { useYoutubeSession } from "@/hooks/useYoutubeSession";
 import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 
+const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
+
 export default function ListeningTab({
   styles,
   listeningHours,
@@ -48,24 +50,55 @@ export default function ListeningTab({
   const [timerDurationSeconds, setTimerDurationSeconds] = useState(300);
   const [timerSeconds, setTimerSeconds] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [listeningGoal, setListeningGoal] = useState(1200);
+  const [listeningGoal, setListeningGoal] = useState(() => {
+    if (typeof window === "undefined") {
+      return 1200;
+    }
+
+    const storedGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
+    return Number.isFinite(storedGoal) && storedGoal > 0 ? storedGoal : 1200;
+  });
   const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("bar");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
   const isMounted = typeof window !== "undefined";
+  const playbackResumeVideoId = playbackState?.selectedVideoId || DEFAULT_VIDEO_ID;
+  const playbackResumeTime = playbackState?.currentTime || 0;
   const sessionRef = useRef(0);
   const playerRef = useRef(null);
   const playerHostRef = useRef(null);
   const focusPlayerHostRef = useRef(null);
   const activePlayerHostRef = useRef(null);
+  const playerVideoIdRef = useRef("");
   const initRef = useRef(false);
   const playerReadyRef = useRef(false);
   const pendingRestoreRef = useRef(null);
   const pendingSelectionPlaybackRef = useRef(null);
+  const playbackListRef = useRef(playbackList);
+  const selectedVideoIdRef = useRef(safeVideoId);
+  const playbackResumeRef = useRef({
+    videoId: playbackResumeVideoId,
+    currentTime: playbackResumeTime,
+  });
 
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
+
+  useEffect(() => {
+    playbackListRef.current = playbackList;
+  }, [playbackList]);
+
+  useEffect(() => {
+    selectedVideoIdRef.current = safeVideoId;
+  }, [safeVideoId]);
+
+  useEffect(() => {
+    playbackResumeRef.current = {
+      videoId: playbackResumeVideoId,
+      currentTime: playbackResumeTime,
+    };
+  }, [playbackResumeTime, playbackResumeVideoId]);
 
   const handleListeningHoursUpdate = useCallback(
     (nextValueOrUpdater, metadata = {}) => {
@@ -120,7 +153,7 @@ export default function ListeningTab({
   const applyPlaybackSnapshot = useCallback(
     (snapshot) => {
       const player = playerRef.current;
-      if (!player || !snapshot?.videoId) return;
+      if (!player || !snapshot?.videoId || !playerReadyRef.current) return;
 
       const payload = {
         videoId: snapshot.videoId,
@@ -131,6 +164,23 @@ export default function ListeningTab({
         videoId: snapshot.videoId,
         currentTime: payload.startSeconds,
       });
+
+      if (playerVideoIdRef.current === snapshot.videoId) {
+        const currentTime = getPlayerCurrentTime();
+        if (Math.abs(currentTime - payload.startSeconds) > 1.5) {
+          player.seekTo?.(payload.startSeconds, true);
+        }
+
+        if (snapshot.shouldPlay) {
+          player.playVideo?.();
+        } else {
+          player.pauseVideo?.();
+        }
+
+        return;
+      }
+
+      playerVideoIdRef.current = snapshot.videoId;
 
       if (snapshot.shouldPlay && typeof player.loadVideoById === "function") {
         player.loadVideoById(payload);
@@ -149,7 +199,7 @@ export default function ListeningTab({
         });
       }
     },
-    [setPlaybackState],
+    [getPlayerCurrentTime, setPlaybackState],
   );
 
   const bankSession = useCallback(() => {
@@ -283,11 +333,12 @@ export default function ListeningTab({
       pendingRestoreRef.current = persistCurrentPlayerState();
       playerRef.current.destroy?.();
       playerRef.current = null;
+      playerVideoIdRef.current = "";
       initRef.current = false;
       playerReadyRef.current = false;
     }
 
-    const syncVideoProgress = (videoId = safeVideoId) => {
+    const syncVideoProgress = (videoId = selectedVideoIdRef.current || DEFAULT_VIDEO_ID) => {
       setPlaybackState({
         videoId,
         currentTime: getPlayerCurrentTime(),
@@ -295,10 +346,12 @@ export default function ListeningTab({
     };
 
     const goNextVideo = () => {
-      if (!playbackList.length) return;
+      const currentPlaybackList = playbackListRef.current;
+      const currentSelectedVideoId = selectedVideoIdRef.current;
+      if (!currentPlaybackList.length) return;
 
-      const index = playbackList.findIndex((video) => video.id === selectedVideoId);
-      const next = playbackList[(index + 1) % playbackList.length];
+      const index = currentPlaybackList.findIndex((video) => video.id === currentSelectedVideoId);
+      const next = currentPlaybackList[(index + 1) % currentPlaybackList.length];
 
       if (next?.id) {
         pendingSelectionPlaybackRef.current = { shouldPlay: true };
@@ -343,10 +396,13 @@ export default function ListeningTab({
     const onPlayerReady = () => {
       playerReadyRef.current = true;
 
+      const resumeState = playbackResumeRef.current;
       const nextSnapshot = pendingRestoreRef.current || {
-        videoId: safeVideoId,
+        videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
         currentTime:
-          playbackState?.selectedVideoId === safeVideoId ? playbackState.currentTime || 0 : 0,
+          resumeState.videoId === (selectedVideoIdRef.current || DEFAULT_VIDEO_ID)
+            ? resumeState.currentTime || 0
+            : 0,
         shouldPlay: false,
       };
 
@@ -359,7 +415,7 @@ export default function ListeningTab({
       if (initRef.current || !window.YT?.Player || !host) return;
 
       playerRef.current = new window.YT.Player(host, {
-        videoId: safeVideoId,
+        videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
         playerVars: {
           controls: 1,
           rel: 0,
@@ -415,10 +471,6 @@ export default function ListeningTab({
     focusMode,
     getPlayerCurrentTime,
     persistCurrentPlayerState,
-    playbackList,
-    playbackState,
-    safeVideoId,
-    selectedVideoId,
     setPlaybackState,
     setSelectedVideoId,
   ]);
@@ -426,13 +478,15 @@ export default function ListeningTab({
   useEffect(() => {
     if (!safeVideoId) return;
 
-    const resumeAt =
-      playbackState?.selectedVideoId === safeVideoId ? playbackState.currentTime || 0 : 0;
+    const resumeState = playbackResumeRef.current;
+    const resumeAt = resumeState.videoId === safeVideoId ? resumeState.currentTime : 0;
 
-    setPlaybackState({
-      videoId: safeVideoId,
-      currentTime: resumeAt,
-    });
+    if (resumeState.videoId !== safeVideoId) {
+      setPlaybackState({
+        videoId: safeVideoId,
+        currentTime: resumeAt,
+      });
+    }
 
     const player = playerRef.current;
     if (!player || !playerReadyRef.current) return;
@@ -450,7 +504,6 @@ export default function ListeningTab({
   }, [
     applyPlaybackSnapshot,
     isPlayerCurrentlyPlaying,
-    playbackState,
     safeVideoId,
     setPlaybackState,
   ]);
@@ -464,6 +517,11 @@ export default function ListeningTab({
 
     return () => clearInterval(timer);
   }, [roundToTenth, stopwatchRunning]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LISTENING_GOAL_STORAGE_KEY, String(listeningGoal));
+  }, [listeningGoal]);
 
   useEffect(() => {
     if (clockMode !== "timer" || !timerRunning) return;

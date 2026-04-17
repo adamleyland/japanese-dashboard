@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LogOut, Mail, UserCircle2, X } from "lucide-react";
+import { LogOut, Mail, Moon, Sun, UserCircle2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
+  const { isDarkMode, toggleTheme } = useTheme();
   const [email, setEmail] = useState(user?.email || "");
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -146,6 +148,18 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
                 <span style={styles.accountLabel}>{user?.email || "Signed in"}</span>
               </div>
 
+              <button type="button" onClick={toggleTheme} style={styles.themeRow}>
+                <span style={styles.themeMeta}>
+                  <span style={styles.themeIcon}>
+                    {isDarkMode ? <Moon size={14} strokeWidth={2} /> : <Sun size={14} strokeWidth={2} />}
+                  </span>
+                  <span style={styles.themeLabel}>Dark mode</span>
+                </span>
+                <span style={styles.themeToggle(isDarkMode)}>
+                  <span style={styles.themeToggleKnob(isDarkMode)} />
+                </span>
+              </button>
+
               {!!statusMessage && <div style={styles.message(statusTone)}>{statusMessage}</div>}
 
               <button type="button" onClick={signOut} disabled={isSubmitting} style={styles.secondaryButton}>
@@ -171,6 +185,18 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
                 {isSubmitting ? "Sending..." : "Send magic link"}
               </button>
 
+              <button type="button" onClick={toggleTheme} style={styles.themeRow}>
+                <span style={styles.themeMeta}>
+                  <span style={styles.themeIcon}>
+                    {isDarkMode ? <Moon size={14} strokeWidth={2} /> : <Sun size={14} strokeWidth={2} />}
+                  </span>
+                  <span style={styles.themeLabel}>Dark mode</span>
+                </span>
+                <span style={styles.themeToggle(isDarkMode)}>
+                  <span style={styles.themeToggleKnob(isDarkMode)} />
+                </span>
+              </button>
+
               {!!statusMessage && <div style={styles.message(statusTone)}>{statusMessage}</div>}
             </>
           )}
@@ -189,9 +215,9 @@ const styles = {
     width: "38px",
     height: "38px",
     borderRadius: "999px",
-    border: signedIn ? "1px solid rgba(16,185,129,0.25)" : "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.86)",
-    color: signedIn ? "#047857" : "#475569",
+    border: signedIn ? "1px solid rgba(16,185,129,0.25)" : "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: signedIn ? "#047857" : "var(--app-text-muted)",
     boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
     display: "inline-flex",
     alignItems: "center",
@@ -216,14 +242,14 @@ const styles = {
     width: isCompact ? "min(260px, calc(100vw - 56px))" : "280px",
     borderRadius: "18px",
     border: "1px solid rgba(255,255,255,0.82)",
-    background: "rgba(255,255,255,0.95)",
+    background: "var(--app-surface-strong)",
     boxShadow: "0 22px 50px rgba(15,23,42,0.14)",
     backdropFilter: "blur(18px)",
     WebkitBackdropFilter: "blur(18px)",
     padding: "14px",
     display: "grid",
     gap: "10px",
-    zIndex: 20,
+    zIndex: 140,
   }),
   popupHeader: {
     display: "flex",
@@ -239,21 +265,21 @@ const styles = {
     fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "#94a3b8",
+    color: "var(--app-text-faint)",
   },
   title: {
     fontSize: "13px",
     fontWeight: 700,
-    color: "#111827",
+    color: "var(--app-text)",
     marginTop: "2px",
   },
   closeButton: {
     width: "26px",
     height: "26px",
     borderRadius: "999px",
-    border: "1px solid rgba(15,23,42,0.08)",
-    background: "rgba(255,255,255,0.9)",
-    color: "#64748b",
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-surface)",
+    color: "var(--app-text-muted)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -265,10 +291,10 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     borderRadius: "12px",
-    border: "1px solid rgba(15,23,42,0.1)",
-    background: "#fff",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
     padding: "10px 12px",
-    color: "#64748b",
+    color: "var(--app-text-muted)",
   },
   input: {
     width: "100%",
@@ -276,7 +302,7 @@ const styles = {
     outline: "none",
     background: "transparent",
     fontSize: "13px",
-    color: "#111827",
+    color: "var(--app-text)",
   },
   primaryButton: {
     border: "none",
@@ -289,11 +315,11 @@ const styles = {
     cursor: "pointer",
   },
   secondaryButton: {
-    border: "1px solid rgba(15,23,42,0.1)",
+    border: "1px solid var(--app-border)",
     borderRadius: "12px",
     padding: "10px 12px",
-    background: "#fff",
-    color: "#111827",
+    background: "var(--app-surface)",
+    color: "var(--app-text)",
     fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
@@ -307,7 +333,7 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     fontSize: "12px",
-    color: "#0f172a",
+    color: "var(--app-text)",
     minWidth: 0,
   },
   accountDot: {
@@ -322,9 +348,63 @@ const styles = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  themeRow: {
+    width: "100%",
+    border: "1px solid var(--app-border)",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    background: "var(--app-surface)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    cursor: "pointer",
+  },
+  themeMeta: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    minWidth: 0,
+  },
+  themeIcon: {
+    width: "24px",
+    height: "24px",
+    borderRadius: "999px",
+    background: "var(--app-surface-soft)",
+    color: "var(--app-text-soft)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  themeLabel: {
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "var(--app-text)",
+  },
+  themeToggle: (active) => ({
+    width: "36px",
+    height: "22px",
+    borderRadius: "999px",
+    background: active ? "#111827" : "var(--app-surface-soft)",
+    border: active ? "1px solid rgba(15,23,42,0.32)" : "1px solid var(--app-border)",
+    position: "relative",
+    flexShrink: 0,
+  }),
+  themeToggleKnob: (active) => ({
+    position: "absolute",
+    top: "2px",
+    left: active ? "16px" : "2px",
+    width: "16px",
+    height: "16px",
+    borderRadius: "999px",
+    background: "#ffffff",
+    boxShadow: "0 2px 6px rgba(15,23,42,0.18)",
+    transition: "left 180ms ease",
+  }),
   message: (tone) => ({
     fontSize: "12px",
-    color: tone === "error" ? "#b91c1c" : tone === "success" ? "#047857" : "#64748b",
+    color: tone === "error" ? "#b91c1c" : tone === "success" ? "#047857" : "var(--app-text-muted)",
     lineHeight: 1.4,
   }),
 };

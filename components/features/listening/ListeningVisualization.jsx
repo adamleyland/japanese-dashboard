@@ -48,11 +48,12 @@ export default function ListeningVisualization({
             <div
               style={{
                 ...styles.dictionaryIconFootprint,
-                background: "linear-gradient(145deg, #f5cd55, #eab308)",
-                boxShadow: "0 10px 24px rgba(14,165,233,0.01)",
+                background: "rgba(234, 179, 8, 0.16)",
+                border: "1px solid rgba(234, 179, 8, 0.18)",
+                boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
               }}
             >
-              <Ear size={14} color="#fff" strokeWidth={2.5} />
+              <Ear size={14} color="#facc15" strokeWidth={2.5} />
             </div>
           </div>
 
@@ -65,17 +66,17 @@ export default function ListeningVisualization({
           <button
             type="button"
             style={{
-              border: "1px solid rgba(15, 23, 42, 0.08)",
-              background: settingsOpen ? "rgba(14,165,233,0.12)" : "rgba(255,255,255,0.82)",
+              border: "1px solid var(--app-border-soft)",
+              background: settingsOpen ? "rgba(14,165,233,0.16)" : "var(--app-surface-elevated)",
               borderRadius: "12px",
               width: "36px",
               height: "36px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: settingsOpen ? "#0369a1" : "#475569",
+              color: settingsOpen ? "#38bdf8" : "var(--app-text-soft)",
               cursor: "pointer",
-              boxShadow: "0 6px 18px rgba(15,23,42,0.06)",
+              boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
             }}
             onClick={() => setSettingsOpen((value) => !value)}
             aria-label="Toggle listening visualization settings"
@@ -92,7 +93,7 @@ export default function ListeningVisualization({
             textAlign: "center",
             fontSize: "11px",
             textTransform: "uppercase",
-            color: "#64748b",
+            color: "var(--app-text-muted)",
             margin: "-5px 0 10px 0",
             letterSpacing: "0.05em",
           }}

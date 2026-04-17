@@ -505,32 +505,59 @@ export function YoutubeSessionProvider({ children }) {
     const nextVideoId = payload?.videoId || payload?.selectedVideoId || DEFAULT_VIDEO_ID;
     const nextCurrentTime = Math.max(0, Number(payload?.currentTime || 0));
 
-    setState((currentState) => ({
-      ...currentState,
-      selectedVideoId: nextVideoId,
-      playbackState: {
+    setState((currentState) => {
+      const currentPlaybackState = currentState.playbackState;
+      const sameSelectedVideo = currentState.selectedVideoId === nextVideoId;
+      const samePlaybackVideo = currentPlaybackState.selectedVideoId === nextVideoId;
+      const samePlaybackTime = Math.abs(currentPlaybackState.currentTime - nextCurrentTime) < 0.01;
+
+      if (sameSelectedVideo && samePlaybackVideo && samePlaybackTime) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
         selectedVideoId: nextVideoId,
-        currentTime: nextCurrentTime,
-        updatedAt: Date.now(),
-      },
-    }));
+        playbackState: {
+          selectedVideoId: nextVideoId,
+          currentTime: nextCurrentTime,
+          updatedAt: Date.now(),
+        },
+      };
+    });
   }, []);
 
   const setWorkspaceTab = useCallback((nextTabOrUpdater) => {
-    setState((currentState) => ({
-      ...currentState,
-      workspaceTab:
+    setState((currentState) => {
+      const nextWorkspaceTab =
         typeof nextTabOrUpdater === "function"
           ? nextTabOrUpdater(currentState.workspaceTab)
-          : nextTabOrUpdater,
-    }));
+          : nextTabOrUpdater;
+
+      if (currentState.workspaceTab === nextWorkspaceTab) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        workspaceTab: nextWorkspaceTab,
+      };
+    });
   }, []);
 
   const setDiscoverFilter = useCallback((nextFilter) => {
-    setState((currentState) => ({
-      ...currentState,
-      discoverFilter: nextFilter || DEFAULT_DISCOVER_FILTER,
-    }));
+    setState((currentState) => {
+      const resolvedFilter = nextFilter || DEFAULT_DISCOVER_FILTER;
+
+      if (currentState.discoverFilter === resolvedFilter) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        discoverFilter: resolvedFilter,
+      };
+    });
   }, []);
 
   const toggleChannelEnabled = useCallback((channelId) => {

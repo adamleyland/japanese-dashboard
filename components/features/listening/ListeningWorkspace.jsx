@@ -73,16 +73,16 @@ export default function ListeningWorkspace({
     gap: "6px",
     padding: "6px",
     borderRadius: "999px",
-    background: "rgba(255,255,255,0.62)",
-    border: "1px solid rgba(15,23,42,0.08)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
+    background: "var(--app-pill-track)",
+    border: "1px solid var(--app-border-soft)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
     flexWrap: "wrap",
   };
 
   const segmentedButtonStyle = (active) => ({
     border: "none",
-    background: active ? "#ffffff" : "transparent",
-    color: active ? "#0f172a" : "#64748b",
+    background: active ? "var(--app-selected-surface)" : "transparent",
+    color: active ? "var(--app-selected-text)" : "var(--app-text-muted)",
     borderRadius: "999px",
     padding: "8px 14px",
     fontSize: "12px",
@@ -97,8 +97,8 @@ export default function ListeningWorkspace({
     gap: "14px",
     padding: "14px",
     borderRadius: "16px",
-    background: "rgba(255,255,255,0.58)",
-    border: "1px solid rgba(15,23,42,0.06)",
+    background: "var(--app-card)",
+    border: "1px solid var(--app-border-soft)",
   };
 
   const authIconButtonStyle = {
@@ -107,9 +107,9 @@ export default function ListeningWorkspace({
     borderRadius: "999px",
     border: youtubeConnected
       ? "1px solid rgba(34,197,94,0.18)"
-      : "1px solid rgba(15,23,42,0.08)",
-    background: youtubeConnected ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.9)",
-    color: youtubeConnected ? "#15803d" : "#475569",
+      : "1px solid var(--app-border-soft)",
+    background: youtubeConnected ? "rgba(34,197,94,0.12)" : "var(--app-surface-elevated)",
+    color: youtubeConnected ? "#22c55e" : "var(--app-text-soft)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -133,8 +133,8 @@ export default function ListeningWorkspace({
     fontSize: "11px",
     fontWeight: 800,
     cursor: "pointer",
-    background: enabled ? "rgba(34,197,94,0.12)" : "rgba(148,163,184,0.14)",
-    color: enabled ? "#15803d" : "#64748b",
+    background: enabled ? "rgba(34,197,94,0.14)" : "var(--app-surface-soft)",
+    color: enabled ? "#22c55e" : "var(--app-text-muted)",
   });
 
   const discoverFilterButtonStyle = (active) => ({
@@ -144,8 +144,8 @@ export default function ListeningWorkspace({
     fontSize: "11px",
     fontWeight: 800,
     cursor: "pointer",
-    background: active ? "rgba(15,23,42,0.9)" : "rgba(255,255,255,0.86)",
-    color: active ? "#ffffff" : "#475569",
+    background: active ? "var(--app-selected-surface)" : "var(--app-surface-elevated)",
+    color: active ? "var(--app-selected-text)" : "var(--app-text-soft)",
   });
 
   const renderAvatar = (channel) => {
@@ -159,7 +159,7 @@ export default function ListeningWorkspace({
             height: "34px",
             borderRadius: "999px",
             objectFit: "cover",
-            border: "1px solid rgba(15,23,42,0.06)",
+            border: "1px solid var(--app-border-soft)",
           }}
         />
       );
@@ -174,8 +174,8 @@ export default function ListeningWorkspace({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "rgba(15,23,42,0.06)",
-          color: "#475569",
+          background: "var(--app-surface-soft)",
+          color: "var(--app-text-soft)",
           fontSize: "12px",
           fontWeight: 800,
         }}
@@ -204,7 +204,7 @@ export default function ListeningWorkspace({
             height: `${size}px`,
             borderRadius: "999px",
             objectFit: "cover",
-            border: "1px solid rgba(15,23,42,0.06)",
+            border: "1px solid var(--app-border-soft)",
             flexShrink: 0,
           }}
         />
@@ -220,8 +220,8 @@ export default function ListeningWorkspace({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "rgba(15,23,42,0.06)",
-          color: "#475569",
+          background: "var(--app-surface-soft)",
+          color: "var(--app-text-soft)",
           fontSize: size <= 36 ? "12px" : "13px",
           fontWeight: 800,
           flexShrink: 0,
@@ -319,8 +319,6 @@ export default function ListeningWorkspace({
                 style={{
                   ...styles.innerTabPanel,
                   marginTop: "12px",
-                  background: "rgba(255,255,255,0.34)",
-                  borderColor: "rgba(15,23,42,0.04)",
                 }}
               >
                 {workspaceTab === "account" && (
@@ -367,11 +365,11 @@ export default function ListeningWorkspace({
                         gap: "8px",
                         padding: "10px 12px",
                         borderRadius: "14px",
-                        background: "rgba(255,255,255,0.72)",
-                        border: "1px solid rgba(15,23,42,0.06)",
+                        background: "var(--app-surface-elevated)",
+                        border: "1px solid var(--app-border-soft)",
                       }}
                     >
-                      <Search size={15} color="#64748b" />
+                      <Search size={15} color="var(--app-text-muted)" />
                       <input
                         type="text"
                         value={channelSearch}
@@ -383,7 +381,7 @@ export default function ListeningWorkspace({
                           outline: "none",
                           background: "transparent",
                           fontSize: "13px",
-                          color: "#0f172a",
+                          color: "var(--app-text)",
                         }}
                       />
                     </div>
@@ -458,16 +456,14 @@ export default function ListeningWorkspace({
                           key={video.id}
                           style={{
                             ...styles.videoFeedButton(active),
-                            background: active ? "#111827" : "rgba(255,255,255,0.86)",
-                            color: active ? "#ffffff" : "#111827",
-                            borderColor: active
-                              ? "rgba(15,23,42,0.9)"
-                              : "rgba(15,23,42,0.06)",
                           }}
                           onClick={() => onSelectVideo(video.id)}
                         >
                           <div style={styles.videoFeedTop}>
-                            <PlayCircle size={16} color={active ? "#ffffff" : "#64748b"} />
+                            <PlayCircle
+                              size={16}
+                              color={active ? "var(--app-selected-text)" : "var(--app-text-muted)"}
+                            />
                             <span style={styles.videoFeedTitle(active)}>{video.title}</span>
                           </div>
                         </button>
@@ -523,10 +519,12 @@ export default function ListeningWorkspace({
                                   padding: "10px",
                                   borderRadius: "14px",
                                   border: active
-                                    ? "1px solid rgba(15,23,42,0.9)"
-                                    : "1px solid rgba(15,23,42,0.06)",
-                                  background: active ? "#111827" : "rgba(255,255,255,0.86)",
-                                  color: active ? "#ffffff" : "#111827",
+                                    ? "1px solid var(--app-selected-border)"
+                                    : "1px solid var(--app-border-soft)",
+                                  background: active
+                                    ? "var(--app-selected-surface)"
+                                    : "var(--app-surface-elevated)",
+                                  color: active ? "var(--app-selected-text)" : "var(--app-text)",
                                   cursor: "pointer",
                                 }}
                               >
@@ -536,7 +534,7 @@ export default function ListeningWorkspace({
                                     aspectRatio: "16 / 9",
                                     borderRadius: "10px",
                                     overflow: "hidden",
-                                    background: "rgba(15,23,42,0.08)",
+                                    background: "var(--app-progress-track)",
                                     flexShrink: 0,
                                   }}
                                 >
@@ -568,7 +566,9 @@ export default function ListeningWorkspace({
                                   <div
                                     style={{
                                       ...styles.playerSub,
-                                      color: active ? "#cbd5e1" : "#64748b",
+                                      color: active
+                                        ? "rgba(248, 250, 252, 0.78)"
+                                        : "var(--app-text-muted)",
                                     }}
                                   >
                                     {video.channel}
