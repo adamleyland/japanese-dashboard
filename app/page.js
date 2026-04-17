@@ -19,7 +19,9 @@ import {
   Save,
 } from "lucide-react";
 import { addListeningMinutes, reduceListeningMinutes } from "@/lib/listeningEvents";
+import { supabase } from "@/lib/supabase";
 import NavigationBar from "@/components/layout/NavigationBar";
+import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
 import MainTracker from "@/components/dashboard/MainTracker";
 import DictionaryCarousel from "@/components/dashboard/DictionaryCarousel";
 import ListeningTab from "@/components/features/listening/ListeningTab";
@@ -96,6 +98,9 @@ export default function Home() {
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
+  const [authSession, setAuthSession] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const listeningHoursRef = useRef(listeningHours);
 
   const overallHours = useMemo(
@@ -163,6 +168,41 @@ export default function Home() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const loadSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("Failed to load Supabase auth session", error);
+      }
+
+      if (!isActive) return;
+
+      setAuthSession(data.session ?? null);
+      setAuthUser(data.session?.user ?? null);
+      setAuthLoading(false);
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isActive) return;
+
+      setAuthSession(session ?? null);
+      setAuthUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
     <main style={styles.page}>
       <div style={styles.bgOrb1} />
@@ -196,6 +236,13 @@ export default function Home() {
           <DictionaryCarousel styles={styles} />
         </section>
 
+        <MagicLinkAuth
+          session={authSession}
+          user={authUser}
+          isCompact={isCompact}
+          isLoading={authLoading}
+        />
+
         <NavigationBar activeTab={tab} onChange={setTab} moduleTabs={MODULE_TABS} styles={styles} />
 
         <section style={styles.contentWrap}>
@@ -205,6 +252,7 @@ export default function Home() {
               listeningHours={listeningHours}
               setListeningHours={setListeningHours}
               adjustListeningHours={adjustListeningHours}
+              authUserId={authUser?.id || ""}
               isMobile={isMobile}
               isCompact={isCompact}
               seededChannels={SEEDED_CHANNELS}

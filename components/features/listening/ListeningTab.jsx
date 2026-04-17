@@ -17,6 +17,7 @@ export default function ListeningTab({
   listeningHours,
   setListeningHours,
   adjustListeningHours,
+  authUserId,
   isMobile,
   isCompact,
   seededChannels,
@@ -83,6 +84,7 @@ export default function ListeningTab({
   const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
 
   const parseDurationToSeconds = useCallback((duration) => {
     if (!duration || typeof duration !== "string") return 0;
@@ -333,6 +335,8 @@ export default function ListeningTab({
     let cancelled = false;
 
     const hydrateListeningHours = async () => {
+      if (!authUserId) return;
+
       const totalMinutes = await fetchListeningTotal();
       if (cancelled || typeof totalMinutes !== "number") return;
 
@@ -344,7 +348,7 @@ export default function ListeningTab({
     return () => {
       cancelled = true;
     };
-  }, [setListeningHours]);
+  }, [authUserId, setListeningHours]);
 
   const getPlayerCurrentTime = useCallback(() => {
     const player = playerRef.current;
@@ -601,17 +605,21 @@ export default function ListeningTab({
     }
     if (!googleClientId) {
       console.error(
-        "Google OAuth is unavailable because NEXT_PUBLIC_GOOGLE_CLIENT_ID is missing.",
+        `Google OAuth is unavailable because NEXT_PUBLIC_GOOGLE_CLIENT_ID is missing. Current origin: ${browserOrigin || "unknown"}.`,
       );
       return null;
     }
 
     googleTokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+      // Google Identity Services validates the current browser origin for this popup flow.
       // Google Cloud Authorized JavaScript origins must include:
       // - http://localhost:3000
       // - https://japanese-dashboard.vercel.app
       client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
       scope: "https://www.googleapis.com/auth/youtube.readonly",
+      error_callback: (error) => {
+        console.error("Google OAuth popup failed", error);
+      },
       callback: (response) => {
         if (response?.access_token) {
           setYoutubeAccessToken(response.access_token);
@@ -631,14 +639,18 @@ export default function ListeningTab({
     });
 
     return googleTokenClientRef.current;
-  }, [googleClientId]);
+  }, [browserOrigin, googleClientId]);
 
   const connectYoutube = useCallback(async () => {
     if (typeof window === "undefined") return;
     if (!googleClientId) {
       console.error(
-        "Cannot start Google OAuth because NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.",
+        `Cannot start Google OAuth because NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured. Current origin: ${browserOrigin || "unknown"}.`,
       );
+      return;
+    }
+    if (!browserOrigin) {
+      console.error("Cannot start Google OAuth because window.location.origin is unavailable.");
       return;
     }
 
@@ -653,7 +665,7 @@ export default function ListeningTab({
     } catch (error) {
       console.error("Unable to connect YouTube via Google OAuth", error);
     }
-  }, [getGoogleTokenClient, googleClientId, loadGoogleIdentityScript]);
+  }, [browserOrigin, getGoogleTokenClient, googleClientId, loadGoogleIdentityScript]);
 
   const disconnectYoutube = useCallback(() => {
     if (typeof window !== "undefined") {
