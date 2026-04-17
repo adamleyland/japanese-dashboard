@@ -29,6 +29,10 @@ export default function ListeningTab({
   const SESSION_STORAGE_KEY = "jp_dashboard_youtube_session";
   const DAILY_QUEUE_STORAGE_KEY = "jp_daily_video_queue";
   const CHANNEL_PREFERENCES_STORAGE_KEY = "jp_youtube_channel_preferences";
+  const DISCOVER_CACHE_STORAGE_KEY = "jp_youtube_discover_cache_v1";
+  const DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY = "jp_youtube_discover_quota_cooldown_v1";
+  const DISCOVER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const DISCOVER_QUOTA_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
   const normalizeSeededChannels = useCallback(
     () =>
@@ -77,6 +81,8 @@ export default function ListeningTab({
   const googleTokenClientRef = useRef(null);
   const pendingRestoreRef = useRef(null);
   const pendingSelectionPlaybackRef = useRef(null);
+  const discoverInFlightFiltersRef = useRef(new Set());
+  const discoverLoadedFiltersRef = useRef(new Set());
 
   const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
@@ -96,6 +102,57 @@ export default function ListeningTab({
 
     console.log(`[ListeningTab:YouTube] ${message}`, payload);
   }, []);
+
+  const parseYouTubeErrorText = useCallback((bodyText = "") => {
+    try {
+      const parsedBody = JSON.parse(bodyText || "{}");
+      const parsedError = parsedBody?.error;
+
+      return {
+        parsedBody,
+        code: parsedError?.code ?? null,
+        message: parsedError?.message || bodyText || "",
+        domain: parsedError?.errors?.[0]?.domain || "",
+        reason: parsedError?.errors?.[0]?.reason || "",
+      };
+    } catch {
+      return {
+        parsedBody: null,
+        code: null,
+        message: bodyText || "",
+        domain: "",
+        reason: "",
+      };
+    }
+  }, []);
+
+  const readYouTubeErrorResponse = useCallback(
+    async (response, contextLabel) => {
+      const bodyText = await response.text();
+      const parsedError = parseYouTubeErrorText(bodyText);
+      const errorInfo = {
+        status: response.status,
+        code: parsedError.code ?? response.status,
+        message: parsedError.message || response.statusText || bodyText,
+        domain: parsedError.domain,
+        reason: parsedError.reason,
+        bodyText,
+        parsedBody: parsedError.parsedBody,
+      };
+
+      logYouTubeDebug(`${contextLabel} parsed YouTube API error response.`, errorInfo);
+      return errorInfo;
+    },
+    [logYouTubeDebug, parseYouTubeErrorText],
+  );
+
+  const isQuotaExceededError = useCallback(
+    (errorInfo) =>
+      errorInfo?.status === 403 &&
+      errorInfo?.domain === "youtube.quota" &&
+      errorInfo?.reason === "quotaExceeded",
+    [],
+  );
 
   const parseDurationToSeconds = useCallback((duration) => {
     if (!duration || typeof duration !== "string") return 0;
@@ -179,13 +236,18 @@ export default function ListeningTab({
         );
 
         if (!response.ok) {
-          const errorText = await response.text();
+          const errorInfo = await readYouTubeErrorResponse(response, "Video details fetch");
           console.error("[ListeningTab:YouTube] Video details fetch failed.", {
-            status: response.status,
+            status: errorInfo.status,
             requestLabel: options.requestLabel || "unspecified",
-            errorText,
+            errorInfo,
           });
-          throw new Error(`Video details fetch failed: ${response.status}`);
+          if (isQuotaExceededError(errorInfo)) {
+            console.error(
+              "[ListeningTab:YouTube] Video details request hit YouTube API quotaExceeded.",
+            );
+          }
+          throw new Error(`Video details fetch failed: ${errorInfo.status}`);
         }
 
         const data = await response.json();
@@ -209,8 +271,10 @@ export default function ListeningTab({
     [
       chunkItems,
       formatDurationLabel,
+      isQuotaExceededError,
       logYouTubeDebug,
       parseDurationToSeconds,
+      readYouTubeErrorResponse,
       youtubeAccessToken,
       youtubeApiKey,
     ],
@@ -281,6 +345,81 @@ export default function ListeningTab({
     return storedPreferences && typeof storedPreferences === "object" ? storedPreferences : {};
   }, [readJsonStorage]);
 
+  const readStoredDiscoverCache = useCallback(
+    (filter) => {
+      const discoverCache = readJsonStorage(DISCOVER_CACHE_STORAGE_KEY);
+      const cacheEntry = discoverCache?.[filter];
+
+      if (!cacheEntry || !Array.isArray(cacheEntry.videos) || !cacheEntry.timestamp) {
+        return null;
+      }
+
+      const ageMs = Date.now() - Number(cacheEntry.timestamp || 0);
+      if (ageMs > DISCOVER_CACHE_TTL_MS) {
+        return null;
+      }
+
+      return cacheEntry;
+    },
+    [DISCOVER_CACHE_TTL_MS, DISCOVER_CACHE_STORAGE_KEY, readJsonStorage],
+  );
+
+  const persistDiscoverCache = useCallback(
+    (filter, videos) => {
+      if (typeof window === "undefined") return;
+
+      const existingCache = readJsonStorage(DISCOVER_CACHE_STORAGE_KEY);
+      const nextCache =
+        existingCache && typeof existingCache === "object" ? existingCache : {};
+
+      nextCache[filter] = {
+        timestamp: Date.now(),
+        videos,
+      };
+
+      localStorage.setItem(DISCOVER_CACHE_STORAGE_KEY, JSON.stringify(nextCache));
+    },
+    [DISCOVER_CACHE_STORAGE_KEY, readJsonStorage],
+  );
+
+  const readDiscoverQuotaCooldown = useCallback(() => {
+    const cooldown = readJsonStorage(DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY);
+    const expiresAt = Number(cooldown?.expiresAt || 0);
+
+    if (!expiresAt) {
+      return null;
+    }
+
+    if (Date.now() >= expiresAt) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY);
+      }
+      return null;
+    }
+
+    return cooldown;
+  }, [DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY, readJsonStorage]);
+
+  const persistDiscoverQuotaCooldown = useCallback(
+    (errorInfo) => {
+      if (typeof window === "undefined") return;
+
+      localStorage.setItem(
+        DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY,
+        JSON.stringify({
+          timestamp: Date.now(),
+          expiresAt: Date.now() + DISCOVER_QUOTA_COOLDOWN_MS,
+          status: errorInfo?.status || 403,
+          code: errorInfo?.code || 403,
+          message: errorInfo?.message || "YouTube API quota exceeded",
+          domain: errorInfo?.domain || "",
+          reason: errorInfo?.reason || "",
+        }),
+      );
+    },
+    [DISCOVER_QUOTA_COOLDOWN_MS, DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY],
+  );
+
   const persistChannelPreferences = useCallback((channels) => {
     if (typeof window === "undefined") return;
 
@@ -307,6 +446,8 @@ export default function ListeningTab({
 
   const clearYoutubeDataState = useCallback(() => {
     logYouTubeDebug("Clearing YouTube account data state.");
+    discoverInFlightFiltersRef.current.clear();
+    discoverLoadedFiltersRef.current.clear();
     setYoutubeConnected(false);
     setAccountVideos([]);
     setDiscoverVideos([]);
@@ -315,11 +456,79 @@ export default function ListeningTab({
     setSelectedVideoId(DEFAULT_VIDEO_ID);
   }, [DEFAULT_VIDEO_ID, logYouTubeDebug, normalizeSeededChannels]);
 
+  const verifyYoutubeAccountAccess = useCallback(
+    async (accessToken) => {
+      logYouTubeDebug("Starting YouTube account verification request.", {
+        youtubeAccessToken: maskSecret(accessToken),
+      });
+
+      const response = await fetch(
+        "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      logYouTubeDebug("YouTube account verification response received.", {
+        status: response.status,
+      });
+
+      if (!response.ok) {
+        const errorInfo = await readYouTubeErrorResponse(
+          response,
+          "YouTube account verification",
+        );
+        console.error("[ListeningTab:YouTube] YouTube account verification failed.", {
+          status: errorInfo.status,
+          errorInfo,
+        });
+        if (isQuotaExceededError(errorInfo)) {
+          console.error(
+            "[ListeningTab:YouTube] YouTube account verification hit quotaExceeded. Skipping account-data initialization without treating this as an auth failure.",
+          );
+          return {
+            ok: false,
+            reason: "quotaExceeded",
+            errorInfo,
+          };
+        }
+        console.error(
+          "[ListeningTab:YouTube] OAuth token/account is not usable for YouTube account data. Skipping subscriptions initialization.",
+        );
+        throw new Error(`YouTube account verification failed: ${errorInfo.status}`);
+      }
+
+      const data = await response.json();
+      logYouTubeDebug("YouTube account verification succeeded.", {
+        itemCount: data.items?.length || 0,
+      });
+
+      return {
+        ok: true,
+        data,
+      };
+    },
+    [isQuotaExceededError, logYouTubeDebug, maskSecret, readYouTubeErrorResponse],
+  );
+
   const fetchSubscribedChannels = useCallback(
     async (accessToken) => {
       logYouTubeDebug("Starting subscriptions initialization.", {
         youtubeAccessToken: maskSecret(accessToken),
       });
+
+      const verificationResult = await verifyYoutubeAccountAccess(accessToken);
+      if (!verificationResult?.ok) {
+        return {
+          ok: false,
+          reason: verificationResult?.reason || "unknown",
+          errorInfo: verificationResult?.errorInfo || null,
+          fetchedChannels: [],
+          channelDetailsMap: new Map(),
+        };
+      }
 
       const channelPreferences = readStoredChannelPreferences();
       const allSubscriptions = [];
@@ -350,12 +559,31 @@ export default function ListeningTab({
         );
 
         if (!subscriptionsResponse.ok) {
-          const errorText = await subscriptionsResponse.text();
+          const errorInfo = await readYouTubeErrorResponse(
+            subscriptionsResponse,
+            "Subscriptions fetch",
+          );
           console.error("[ListeningTab:YouTube] Subscriptions fetch failed.", {
-            status: subscriptionsResponse.status,
-            errorText,
+            status: errorInfo.status,
+            errorInfo,
           });
-          throw new Error(`Subscriptions fetch failed: ${subscriptionsResponse.status}`);
+          if (isQuotaExceededError(errorInfo)) {
+            console.error(
+              "[ListeningTab:YouTube] Subscriptions fetch returned quotaExceeded. This is a YouTube API quota issue, not an auth/access failure.",
+            );
+            return {
+              ok: false,
+              reason: "quotaExceeded",
+              errorInfo,
+              fetchedChannels: [],
+              channelDetailsMap: new Map(),
+            };
+          } else if (subscriptionsResponse.status === 403) {
+            console.error(
+              "[ListeningTab:YouTube] Subscriptions fetch returned 403. This is a YouTube subscriptions authorization/access issue for the current OAuth token/account.",
+            );
+          }
+          throw new Error(`Subscriptions fetch failed: ${errorInfo.status}`);
         }
 
         const subscriptionsData = await subscriptionsResponse.json();
@@ -398,10 +626,13 @@ export default function ListeningTab({
         );
 
         if (!channelsResponse.ok) {
-          const errorText = await channelsResponse.text();
+          const errorInfo = await readYouTubeErrorResponse(
+            channelsResponse,
+            "Subscribed channel details fetch",
+          );
           console.error("[ListeningTab:YouTube] Channel details fetch failed.", {
-            status: channelsResponse.status,
-            errorText,
+            status: errorInfo.status,
+            errorInfo,
           });
           continue;
         }
@@ -461,6 +692,7 @@ export default function ListeningTab({
       }
 
       return {
+        ok: true,
         fetchedChannels,
         channelDetailsMap,
       };
@@ -468,10 +700,13 @@ export default function ListeningTab({
     [
       applyChannelPreferences,
       chunkItems,
+      isQuotaExceededError,
       logYouTubeDebug,
       maskSecret,
       persistChannelPreferences,
+      readYouTubeErrorResponse,
       readStoredChannelPreferences,
+      verifyYoutubeAccountAccess,
     ],
   );
 
@@ -514,13 +749,21 @@ export default function ListeningTab({
             );
 
             if (!videosResponse.ok) {
-              const errorText = await videosResponse.text();
+              const errorInfo = await readYouTubeErrorResponse(
+                videosResponse,
+                "Channel video fetch",
+              );
               console.error("[ListeningTab:YouTube] Channel video fetch failed.", {
                 channelId,
-                status: videosResponse.status,
-                errorText,
+                status: errorInfo.status,
+                errorInfo,
               });
-              throw new Error(`Video fetch failed for ${channelId}: ${videosResponse.status}`);
+              if (isQuotaExceededError(errorInfo)) {
+                console.error(
+                  "[ListeningTab:YouTube] Channel video fetch hit quotaExceeded. Failing gracefully without retrying in this initialization flow.",
+                );
+              }
+              throw new Error(`Video fetch failed for ${channelId}: ${errorInfo.status}`);
             }
 
             const videosData = await videosResponse.json();
@@ -598,8 +841,10 @@ export default function ListeningTab({
       MINIMUM_VIDEO_LENGTH_SECONDS,
       fetchVideoDetailsMap,
       getTodayKey,
+      isQuotaExceededError,
       logYouTubeDebug,
       persistDailyQueue,
+      readYouTubeErrorResponse,
       readStoredDailyQueue,
       shuffleVideos,
     ],
@@ -607,164 +852,309 @@ export default function ListeningTab({
 
   const fetchDiscoverVideosForToken = useCallback(
     async (accessToken, filter) => {
+      const discoverQuery = DISCOVER_FILTERS[filter] || DISCOVER_FILTERS.ゲーム;
+      const cachedEntry = readStoredDiscoverCache(filter);
+      const cooldownEntry = readDiscoverQuotaCooldown();
+      const requestKey = filter;
+
       logYouTubeDebug("Running discover fetch.", {
         discoverFilter: filter,
+        discoverQuery,
         youtubeAccessToken: maskSecret(accessToken),
-        authMode: youtubeApiKey ? "apiKey" : "oauth",
+        hasApiKey: Boolean(youtubeApiKey),
+        hasCachedEntry: Boolean(cachedEntry),
+        hasCooldown: Boolean(cooldownEntry),
       });
+
+      if (cachedEntry) {
+        logYouTubeDebug("Using cached discover results.", {
+          discoverFilter: filter,
+          cachedVideoCount: cachedEntry.videos.length,
+          cachedAt: cachedEntry.timestamp,
+        });
+        discoverLoadedFiltersRef.current.add(requestKey);
+        return cachedEntry.videos;
+      }
+
+      if (cooldownEntry) {
+        console.error(
+          "[ListeningTab:YouTube] Skipping discover fetch because a quotaExceeded cooldown is active.",
+          cooldownEntry,
+        );
+        return [];
+      }
+
+      if (discoverInFlightFiltersRef.current.has(requestKey)) {
+        logYouTubeDebug("Skipping duplicate discover fetch because one is already in flight.", {
+          discoverFilter: filter,
+        });
+        return [];
+      }
+
+      if (discoverLoadedFiltersRef.current.has(requestKey)) {
+        logYouTubeDebug(
+          "Skipping discover network fetch because this filter has already been loaded in the current session.",
+          { discoverFilter: filter },
+        );
+        return [];
+      }
+
+      if (!youtubeApiKey && !accessToken) {
+        console.error(
+          "[ListeningTab:YouTube] Discover fetch cannot start because both NEXT_PUBLIC_YOUTUBE_API_KEY and youtubeAccessToken are missing.",
+        );
+        return [];
+      }
 
       if (!youtubeApiKey) {
         console.error(
-          "[ListeningTab:YouTube] NEXT_PUBLIC_YOUTUBE_API_KEY is missing. Discover fetch will fall back to the OAuth access token.",
+          "[ListeningTab:YouTube] NEXT_PUBLIC_YOUTUBE_API_KEY is missing. Discover will fall back to the OAuth access token.",
         );
       }
 
-      const params = new URLSearchParams({
-        part: "snippet",
-        maxResults: "12",
-        type: "video",
-        relevanceLanguage: "ja",
-        regionCode: "JP",
-        videoEmbeddable: "true",
-        q: DISCOVER_FILTERS[filter] || DISCOVER_FILTERS.ゲーム,
-      });
+      discoverInFlightFiltersRef.current.add(requestKey);
 
-      if (youtubeApiKey) {
-        params.set("key", youtubeApiKey);
-      }
+      try {
+        const authModes = youtubeApiKey
+          ? ["apiKey", ...(accessToken ? ["oauth"] : [])]
+          : accessToken
+            ? ["oauth"]
+            : [];
 
-      const response = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
-        youtubeApiKey
-          ? undefined
-          : {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-              },
-            },
-      );
+        for (const authMode of authModes) {
+          const searchParams = new URLSearchParams({
+            part: "snippet",
+            maxResults: "12",
+            type: "video",
+            relevanceLanguage: "ja",
+            regionCode: "JP",
+            videoEmbeddable: "true",
+            videoSyndicated: "true",
+            q: discoverQuery,
+          });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("[ListeningTab:YouTube] Discover fetch failed.", {
-          status: response.status,
-          errorText,
-          discoverFilter: filter,
-        });
-        throw new Error(`Discover fetch failed: ${response.status}`);
-      }
+          if (authMode === "apiKey") {
+            searchParams.set("key", youtubeApiKey);
+          }
 
-      const data = await response.json();
-      logYouTubeDebug("Discover search fetch succeeded.", {
-        discoverFilter: filter,
-        receivedItems: data.items?.length || 0,
-      });
+          logYouTubeDebug("Starting discover search request.", {
+            discoverFilter: filter,
+            authMode,
+            params: searchParams.toString(),
+          });
 
-      const discoverResults =
-        data.items?.filter((item) => item?.id?.videoId && item?.snippet) || [];
-
-      const discoverVideoDetails = await fetchVideoDetailsMap(
-        discoverResults.map((item) => item?.id?.videoId),
-        {
-          requestLabel: "discover",
-          accessToken,
-          useApiKey: Boolean(youtubeApiKey),
-        },
-      );
-
-      const discoverChannelIds = [
-        ...new Set(discoverResults.map((item) => item?.snippet?.channelId).filter(Boolean)),
-      ];
-      const discoverChannelMap = new Map();
-
-      for (const channelIdChunk of chunkItems(discoverChannelIds, 50)) {
-        const channelsResponse = await fetch(
-          `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${channelIdChunk.join(",")}${youtubeApiKey ? `&key=${youtubeApiKey}` : ""}`,
-          youtubeApiKey
-            ? undefined
-            : {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
+          const searchResponse = await fetch(
+            `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`,
+            authMode === "apiKey"
+              ? undefined
+              : {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                  },
                 },
-              },
-        );
+          );
 
-        if (!channelsResponse.ok) {
-          console.error("[ListeningTab:YouTube] Unable to fetch Discover channel details", {
-            status: channelsResponse.status,
+          if (!searchResponse.ok) {
+            const errorInfo = await readYouTubeErrorResponse(searchResponse, "Discover search");
+            console.error("[ListeningTab:YouTube] Discover search request failed.", {
+              discoverFilter: filter,
+              authMode,
+              errorInfo,
+            });
+
+            if (isQuotaExceededError(errorInfo)) {
+              console.error(
+                "[ListeningTab:YouTube] Discover search hit quotaExceeded. Applying cooldown and skipping further discover requests in this session.",
+              );
+              persistDiscoverQuotaCooldown(errorInfo);
+              return [];
+            }
+
+            continue;
+          }
+
+          const searchData = await searchResponse.json();
+          logYouTubeDebug("Discover raw YouTube search response.", {
+            discoverFilter: filter,
+            authMode,
+            response: searchData,
           });
-          continue;
+
+          const discoverResults =
+            searchData.items?.filter((item) => item?.id?.videoId && item?.snippet) || [];
+
+          logYouTubeDebug("Discover search results filtered to valid video rows.", {
+            discoverFilter: filter,
+            authMode,
+            resultCount: discoverResults.length,
+          });
+
+          if (!discoverResults.length) {
+            persistDiscoverCache(filter, []);
+            discoverLoadedFiltersRef.current.add(requestKey);
+            return [];
+          }
+
+          const discoverVideoIds = discoverResults.map((item) => item.id.videoId).filter(Boolean);
+          const discoverDetailsMap = new Map();
+
+          for (const videoIdChunk of chunkItems(discoverVideoIds, 50)) {
+            const detailsParams = new URLSearchParams({
+              part: "contentDetails,snippet",
+              id: videoIdChunk.join(","),
+              maxResults: String(videoIdChunk.length),
+            });
+
+            if (authMode === "apiKey") {
+              detailsParams.set("key", youtubeApiKey);
+            }
+
+            const detailsResponse = await fetch(
+              `https://www.googleapis.com/youtube/v3/videos?${detailsParams.toString()}`,
+              authMode === "apiKey"
+                ? undefined
+                : {
+                    headers: {
+                      Authorization: `Bearer ${accessToken}`,
+                    },
+                  },
+            );
+
+            if (!detailsResponse.ok) {
+              const errorInfo = await readYouTubeErrorResponse(
+                detailsResponse,
+                "Discover videos.list",
+              );
+              console.error("[ListeningTab:YouTube] Discover videos.list request failed.", {
+                discoverFilter: filter,
+                authMode,
+                errorInfo,
+              });
+
+              if (isQuotaExceededError(errorInfo)) {
+                console.error(
+                  "[ListeningTab:YouTube] Discover videos.list hit quotaExceeded. Applying cooldown and skipping further discover requests in this session.",
+                );
+                persistDiscoverQuotaCooldown(errorInfo);
+                return [];
+              }
+
+              throw new Error(`Discover videos.list failed: ${errorInfo.status}`);
+            }
+
+            const detailsData = await detailsResponse.json();
+            logYouTubeDebug("Discover raw YouTube videos.list response.", {
+              discoverFilter: filter,
+              authMode,
+              response: detailsData,
+            });
+
+            for (const item of detailsData.items || []) {
+              const durationSeconds = parseDurationToSeconds(item?.contentDetails?.duration);
+              discoverDetailsMap.set(item.id, {
+                durationSeconds,
+                durationLabel: formatDurationLabel(durationSeconds),
+                snippet: item?.snippet || null,
+              });
+            }
+          }
+
+          const nextDiscoverVideos = discoverResults
+            .map((item) => {
+              const videoId = item.id.videoId;
+              const detailEntry = discoverDetailsMap.get(videoId);
+              const detailSnippet = detailEntry?.snippet;
+
+              return {
+                id: videoId,
+                channelId: detailSnippet?.channelId || item.snippet.channelId || "",
+                channelThumbnail: "",
+                title: detailSnippet?.title || item.snippet.title || "Untitled video",
+                channel:
+                  detailSnippet?.channelTitle ||
+                  item.snippet.channelTitle ||
+                  "YouTube",
+                thumbnail:
+                  detailSnippet?.thumbnails?.medium?.url ||
+                  detailSnippet?.thumbnails?.default?.url ||
+                  item.snippet.thumbnails?.medium?.url ||
+                  item.snippet.thumbnails?.default?.url ||
+                  "",
+                duration: detailEntry?.durationLabel || "Discover",
+                durationSeconds: detailEntry?.durationSeconds || 0,
+              };
+            })
+            .filter((video) => video.durationSeconds >= MINIMUM_VIDEO_LENGTH_SECONDS);
+
+          logYouTubeDebug("Discover results after short-video filtering.", {
+            discoverFilter: filter,
+            authMode,
+            keptVideos: nextDiscoverVideos.length,
+            sourceResults: discoverResults.length,
+          });
+
+          persistDiscoverCache(filter, nextDiscoverVideos);
+          discoverLoadedFiltersRef.current.add(requestKey);
+          return nextDiscoverVideos;
         }
 
-        const channelsData = await channelsResponse.json();
-        for (const channel of channelsData.items || []) {
-          discoverChannelMap.set(channel?.id, {
-            thumbnail:
-              channel?.snippet?.thumbnails?.default?.url ||
-              channel?.snippet?.thumbnails?.medium?.url ||
-              "",
-          });
-        }
+        return [];
+      } catch (error) {
+        console.error("[ListeningTab:YouTube] Discover fetch failed unexpectedly.", {
+          discoverFilter: filter,
+          error,
+        });
+        throw error;
+      } finally {
+        discoverInFlightFiltersRef.current.delete(requestKey);
       }
-
-      return discoverResults
-        .map((item) => {
-          const videoId = item.id.videoId;
-          const videoDetails = discoverVideoDetails.get(videoId);
-
-          return {
-            id: videoId,
-            channelId: item.snippet.channelId || "",
-            channelThumbnail:
-              discoverChannelMap.get(item.snippet.channelId || "")?.thumbnail || "",
-            title: item.snippet.title || "Untitled video",
-            channel: item.snippet.channelTitle || "YouTube",
-            thumbnail:
-              item.snippet.thumbnails?.medium?.url ||
-              item.snippet.thumbnails?.default?.url ||
-              "",
-            duration: videoDetails?.durationLabel || "Discover",
-            durationSeconds: videoDetails?.durationSeconds || 0,
-          };
-        })
-        .filter((video) => video.durationSeconds >= MINIMUM_VIDEO_LENGTH_SECONDS);
     },
     [
       MINIMUM_VIDEO_LENGTH_SECONDS,
       chunkItems,
-      fetchVideoDetailsMap,
+      formatDurationLabel,
+      isQuotaExceededError,
       logYouTubeDebug,
       maskSecret,
+      parseDurationToSeconds,
+      persistDiscoverCache,
+      persistDiscoverQuotaCooldown,
+      readDiscoverQuotaCooldown,
+      readStoredDiscoverCache,
+      readYouTubeErrorResponse,
       youtubeApiKey,
     ],
   );
 
-  function getPreferredSelectedVideoId(videos, fallbackReason) {
-    const storedWatchState = readStoredWatchState();
-    const restoredVideo = videos.find((video) => video.id === storedWatchState?.selectedVideoId);
+  const getPreferredSelectedVideoId = useCallback(
+    (videos, fallbackReason) => {
+      const storedWatchState = readStoredWatchState();
+      const restoredVideo = videos.find((video) => video.id === storedWatchState?.selectedVideoId);
 
-    if (restoredVideo?.id) {
-      logYouTubeDebug("Using stored watch state to restore selected video.", {
-        selectedVideoId: restoredVideo.id,
+      if (restoredVideo?.id) {
+        logYouTubeDebug("Using stored watch state to restore selected video.", {
+          selectedVideoId: restoredVideo.id,
+          fallbackReason,
+        });
+        return restoredVideo.id;
+      }
+
+      if (videos[0]?.id) {
+        logYouTubeDebug("Using the first available fetched video as the selected video.", {
+          selectedVideoId: videos[0].id,
+          fallbackReason,
+        });
+        return videos[0].id;
+      }
+
+      console.warn("[ListeningTab:YouTube] No usable fetched videos were available. Falling back to DEFAULT_VIDEO_ID.", {
         fallbackReason,
+        defaultVideoId: DEFAULT_VIDEO_ID,
       });
-      return restoredVideo.id;
-    }
-
-    if (videos[0]?.id) {
-      logYouTubeDebug("Using the first available fetched video as the selected video.", {
-        selectedVideoId: videos[0].id,
-        fallbackReason,
-      });
-      return videos[0].id;
-    }
-
-    console.warn("[ListeningTab:YouTube] No usable fetched videos were available. Falling back to DEFAULT_VIDEO_ID.", {
-      fallbackReason,
-      defaultVideoId: DEFAULT_VIDEO_ID,
-    });
-    return DEFAULT_VIDEO_ID;
-  }
+      return DEFAULT_VIDEO_ID;
+    },
+    [DEFAULT_VIDEO_ID, logYouTubeDebug, readStoredWatchState],
+  );
 
   const initializeYoutubeData = useCallback(
     async (accessToken) => {
@@ -773,30 +1163,41 @@ export default function ListeningTab({
       });
 
       try {
-        const { fetchedChannels, channelDetailsMap } = await fetchSubscribedChannels(accessToken);
+        const subscriptionResult = await fetchSubscribedChannels(accessToken);
+        const cachedDiscoverVideos = readStoredDiscoverCache(discoverFilter)?.videos || [];
+        logYouTubeDebug("Skipping automatic discover network fetch during initialization.", {
+          discoverFilter,
+          cachedDiscoverVideos: cachedDiscoverVideos.length,
+        });
+
+        if (!subscriptionResult?.ok && subscriptionResult?.reason === "quotaExceeded") {
+          logYouTubeDebug(
+            "Stopping YouTube account-data initialization cleanly because the API quota is exhausted.",
+            {
+              discoverFilter,
+              cachedDiscoverVideos: cachedDiscoverVideos.length,
+              errorInfo: subscriptionResult?.errorInfo || null,
+            },
+          );
+          setYoutubeConnected(false);
+          setDiscoverLoading(false);
+          setSubscribedChannels(normalizeSeededChannels());
+          setAccountVideos([]);
+          setDiscoverVideos(cachedDiscoverVideos);
+          setSelectedVideoId(DEFAULT_VIDEO_ID);
+          return false;
+        }
+
+        const fetchedChannels = subscriptionResult?.fetchedChannels || [];
         const queueVideos = await fetchAccountQueueVideos(
           accessToken,
           fetchedChannels,
-          channelDetailsMap,
+          subscriptionResult?.channelDetailsMap || new Map(),
         );
-
-        let nextDiscoverVideos = [];
-        try {
-          setDiscoverLoading(true);
-          nextDiscoverVideos = await fetchDiscoverVideosForToken(accessToken, discoverFilter);
-          logYouTubeDebug("Discover initialization completed.", {
-            discoverFilter,
-            discoverVideos: nextDiscoverVideos.length,
-          });
-        } catch (error) {
-          console.error("Unable to fetch discover videos during YouTube initialization", error);
-        } finally {
-          setDiscoverLoading(false);
-        }
 
         setSubscribedChannels(fetchedChannels.length ? fetchedChannels : normalizeSeededChannels());
         setAccountVideos(queueVideos);
-        setDiscoverVideos(nextDiscoverVideos);
+        setDiscoverVideos(cachedDiscoverVideos);
 
         const nextSelectedVideoId = getPreferredSelectedVideoId(
           queueVideos,
@@ -806,7 +1207,7 @@ export default function ListeningTab({
         setSelectedVideoId(nextSelectedVideoId);
 
         const hasUsableData =
-          fetchedChannels.length > 0 || queueVideos.length > 0 || nextDiscoverVideos.length > 0;
+          fetchedChannels.length > 0 || queueVideos.length > 0 || cachedDiscoverVideos.length > 0;
 
         if (!hasUsableData) {
           console.warn(
@@ -828,7 +1229,7 @@ export default function ListeningTab({
         logYouTubeDebug("YouTube initialization succeeded.", {
           subscribedChannels: fetchedChannels.length,
           queueVideos: queueVideos.length,
-          discoverVideos: nextDiscoverVideos.length,
+          discoverVideos: cachedDiscoverVideos.length,
           selectedVideoId: nextSelectedVideoId,
         });
         return true;
@@ -848,12 +1249,12 @@ export default function ListeningTab({
       DEFAULT_VIDEO_ID,
       discoverFilter,
       fetchAccountQueueVideos,
-      fetchDiscoverVideosForToken,
       fetchSubscribedChannels,
       getPreferredSelectedVideoId,
       logYouTubeDebug,
       maskSecret,
       normalizeSeededChannels,
+      readStoredDiscoverCache,
     ],
   );
 
@@ -1247,6 +1648,11 @@ export default function ListeningTab({
           logYouTubeDebug("Google OAuth callback succeeded. Setting youtubeAccessToken.", {
             youtubeAccessToken: maskSecret(response.access_token),
           });
+          logYouTubeDebug("Starting YouTube initialization immediately after token receipt.", {
+            hasAccessToken: true,
+            grantedScopes: response?.scope || "",
+            expiresIn: response?.expires_in,
+          });
           setYoutubeAccessToken(response.access_token);
           void initializeYoutubeData(response.access_token);
         } else {
@@ -1301,11 +1707,26 @@ export default function ListeningTab({
   }, [clearYoutubeDataState, youtubeAccessToken]);
 
   useEffect(() => {
+    const discoverTabOpen = workspaceTab === "discover";
+    if (!discoverTabOpen) return;
     if (!youtubeConnected || !youtubeAccessToken) return;
 
     let cancelled = false;
+    const cachedDiscoverVideos = readStoredDiscoverCache(discoverFilter)?.videos || [];
 
     const refreshDiscoverVideos = async () => {
+      logYouTubeDebug("Discover effect triggered.", {
+        workspaceTab,
+        discoverFilter,
+        youtubeConnected,
+        hasCachedDiscoverVideos: cachedDiscoverVideos.length > 0,
+        cooldownActive: Boolean(readDiscoverQuotaCooldown()),
+      });
+
+      if (cachedDiscoverVideos.length) {
+        setDiscoverVideos(cachedDiscoverVideos);
+      }
+
       setDiscoverLoading(true);
 
       try {
@@ -1319,12 +1740,16 @@ export default function ListeningTab({
             discoverFilter,
             discoverVideos: nextDiscoverVideos.length,
           });
-          setDiscoverVideos(nextDiscoverVideos);
+          if (nextDiscoverVideos.length || !cachedDiscoverVideos.length) {
+            setDiscoverVideos(nextDiscoverVideos);
+          }
         }
       } catch (error) {
         console.error("Unable to fetch discover videos", error);
         if (!cancelled) {
-          setDiscoverVideos([]);
+          if (!cachedDiscoverVideos.length) {
+            setDiscoverVideos([]);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -1338,7 +1763,16 @@ export default function ListeningTab({
     return () => {
       cancelled = true;
     };
-  }, [discoverFilter, fetchDiscoverVideosForToken, logYouTubeDebug, youtubeAccessToken, youtubeConnected]);
+  }, [
+    discoverFilter,
+    fetchDiscoverVideosForToken,
+    logYouTubeDebug,
+    readDiscoverQuotaCooldown,
+    readStoredDiscoverCache,
+    workspaceTab,
+    youtubeAccessToken,
+    youtubeConnected,
+  ]);
 
   useEffect(() => {
     if (isDiscoverVideoSelected) return;
