@@ -8,6 +8,7 @@ import { useYoutubeSession } from "@/hooks/useYoutubeSession";
 import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 
 const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
+const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 
 export default function ListeningTab({
   styles,
@@ -58,6 +59,15 @@ export default function ListeningTab({
     const storedGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
     return Number.isFinite(storedGoal) && storedGoal > 0 ? storedGoal : 1200;
   });
+  const [workspaceSource, setWorkspaceSource] = useState(() => {
+    if (typeof window === "undefined") {
+      return "youtube";
+    }
+
+    return window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY) === "audiobooks"
+      ? "audiobooks"
+      : "youtube";
+  });
   const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("bar");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -67,6 +77,7 @@ export default function ListeningTab({
   const playbackResumeVideoId = playbackState?.selectedVideoId || DEFAULT_VIDEO_ID;
   const playbackResumeTime = playbackState?.currentTime || 0;
   const sessionRef = useRef(0);
+  const sessionMetaRef = useRef(null);
   const playerRef = useRef(null);
   const playerHostRef = useRef(null);
   const focusPlayerHostRef = useRef(null);
@@ -78,6 +89,7 @@ export default function ListeningTab({
   const pendingSelectionPlaybackRef = useRef(null);
   const playbackListRef = useRef(playbackList);
   const selectedVideoIdRef = useRef(safeVideoId);
+  const selectedChannelIdRef = useRef(selectedVideo?.channelId || null);
   const playbackResumeRef = useRef({
     videoId: playbackResumeVideoId,
     currentTime: playbackResumeTime,
@@ -92,6 +104,10 @@ export default function ListeningTab({
   useEffect(() => {
     selectedVideoIdRef.current = safeVideoId;
   }, [safeVideoId]);
+
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedVideo?.channelId || null;
+  }, [selectedVideo?.channelId]);
 
   useEffect(() => {
     playbackResumeRef.current = {
@@ -205,18 +221,52 @@ export default function ListeningTab({
   const bankSession = useCallback(() => {
     if (!sessionRef.current) return;
 
+    const sessionMeta = sessionMetaRef.current || {};
     const gained = (Date.now() - sessionRef.current) / 3600000;
     if (gained > 0) {
       adjustListeningHours(gained, {
         kind: "session",
-        source: "youtube",
-        videoId: safeVideoId,
-        channelId: selectedVideo?.channelId,
+        ...sessionMeta,
       });
     }
 
     sessionRef.current = 0;
-  }, [adjustListeningHours, safeVideoId, selectedVideo?.channelId]);
+    sessionMetaRef.current = null;
+  }, [adjustListeningHours]);
+
+  const syncPlaybackSession = useCallback(
+    ({ isPlaying, metadata = null, playerPlaying = null }) => {
+      if (typeof playerPlaying === "boolean") {
+        setIsPlayerPlaying(playerPlaying);
+      }
+
+      if (isPlaying) {
+        const nextSessionKey = metadata?.sessionKey || null;
+        const currentSessionKey = sessionMetaRef.current?.sessionKey || null;
+
+        if (
+          sessionRef.current &&
+          nextSessionKey &&
+          currentSessionKey &&
+          currentSessionKey !== nextSessionKey
+        ) {
+          bankSession();
+        }
+
+        if (!sessionRef.current) {
+          sessionRef.current = Date.now();
+        }
+
+        sessionMetaRef.current = metadata;
+        setStopwatchRunning(true);
+        return;
+      }
+
+      setStopwatchRunning(false);
+      bankSession();
+    },
+    [bankSession],
+  );
 
   const persistCurrentPlayerState = useCallback(() => {
     const snapshot = capturePlaybackSnapshot();
@@ -366,29 +416,40 @@ export default function ListeningTab({
       if (!YTRef) return;
 
       if (currentPlayerState === YTRef.PLAYING) {
-        setIsPlayerPlaying(true);
-        setStopwatchRunning(true);
-        if (!sessionRef.current) {
-          sessionRef.current = Date.now();
-        }
+        syncPlaybackSession({
+          isPlaying: true,
+          playerPlaying: true,
+          metadata: {
+            source: "youtube",
+            sessionKey: `youtube:${selectedVideoIdRef.current || DEFAULT_VIDEO_ID}`,
+            videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
+            channelId: selectedChannelIdRef.current,
+          },
+        });
       }
 
       if (currentPlayerState === YTRef.PAUSED) {
-        setIsPlayerPlaying(false);
-        setStopwatchRunning(false);
+        syncPlaybackSession({
+          isPlaying: false,
+          playerPlaying: false,
+        });
         syncVideoProgress();
       }
 
       if (currentPlayerState === YTRef.CUED || currentPlayerState === YTRef.UNSTARTED) {
-        setIsPlayerPlaying(false);
+        syncPlaybackSession({
+          isPlaying: false,
+          playerPlaying: false,
+        });
         syncVideoProgress();
       }
 
       if (currentPlayerState === YTRef.ENDED) {
-        setIsPlayerPlaying(false);
-        setStopwatchRunning(false);
+        syncPlaybackSession({
+          isPlaying: false,
+          playerPlaying: false,
+        });
         syncVideoProgress();
-        bankSession();
         goNextVideo();
       }
     };
@@ -473,6 +534,7 @@ export default function ListeningTab({
     persistCurrentPlayerState,
     setPlaybackState,
     setSelectedVideoId,
+    syncPlaybackSession,
   ]);
 
   useEffect(() => {
@@ -522,6 +584,29 @@ export default function ListeningTab({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(LISTENING_GOAL_STORAGE_KEY, String(listeningGoal));
   }, [listeningGoal]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LISTENING_SOURCE_STORAGE_KEY, workspaceSource);
+  }, [workspaceSource]);
+
+  useEffect(() => {
+    if (workspaceSource === "audiobooks" && focusMode) {
+      setFocusMode(false);
+    }
+  }, [focusMode, workspaceSource]);
+
+  useEffect(() => {
+    const activeSource = sessionMetaRef.current?.source;
+    if (!activeSource || activeSource === workspaceSource) {
+      return;
+    }
+
+    syncPlaybackSession({
+      isPlaying: false,
+      playerPlaying: activeSource === "youtube" ? false : null,
+    });
+  }, [syncPlaybackSession, workspaceSource]);
 
   useEffect(() => {
     if (clockMode !== "timer" || !timerRunning) return;
@@ -596,6 +681,24 @@ export default function ListeningTab({
       <ListeningWorkspace
         styles={styles}
         isCompact={isCompact}
+        workspaceSource={workspaceSource}
+        setWorkspaceSource={setWorkspaceSource}
+        onAudiobookPlaybackStateChange={({ isPlaying, book, durationSeconds, playbackState }) => {
+          syncPlaybackSession({
+            isPlaying,
+            metadata: book
+              ? {
+                  source: "audiobook",
+                  sessionKey: `audiobook:${book.id}`,
+                  audiobookId: book.id,
+                  title: book.title,
+                  author: book.author,
+                  durationSeconds,
+                  playbackState,
+                }
+              : null,
+          });
+        }}
         focusMode={focusMode}
         setFocusMode={setFocusMode}
         isMounted={isMounted}
