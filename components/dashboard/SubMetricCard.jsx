@@ -1,18 +1,23 @@
 "use client";
 
+import { Clock3 } from "lucide-react";
+
 export default function SubMetricCard({
   label,
   value,
-  onQuickAdd,
-  quickAddLabel = "+1",
+  icon,
+  onAdjust,
 }) {
   return (
     <div style={styles.metricCard(false)}>
       <div style={styles.metricTopRow}>
-        <div style={styles.metricLabel}>{label}</div>
-        {onQuickAdd && (
-          <button onClick={onQuickAdd} style={styles.quickAddButtonSub}>
-            {quickAddLabel}
+        <div style={styles.metricMeta}>
+          {icon && <div style={styles.metricIconWrap}>{icon}</div>}
+          <div style={styles.metricLabel}>{label}</div>
+        </div>
+        {onAdjust && (
+          <button type="button" onClick={onAdjust} style={styles.quickAddButtonSub} aria-label={`Adjust ${label}`}>
+            <Clock3 size={14} strokeWidth={2} />
           </button>
         )}
       </div>
@@ -37,21 +42,39 @@ const styles = {
     gap: "10px",
     marginBottom: "10px",
   },
+  metricMeta: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+  },
+  metricIconWrap: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "12px",
+    border: "1px solid rgba(15,23,42,0.1)",
+    background: "rgba(255,255,255,0.85)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   metricLabel: {
     fontSize: "12px",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
     color: "#667085",
-    marginBottom: "8px",
   },
   quickAddButtonSub: {
+    width: "30px",
+    height: "30px",
     border: "1px solid rgba(15,23,42,0.1)",
-    background: "rgba(255,255,255,0.85)",
-    borderRadius: "999px",
-    padding: "5px 9px",
-    fontSize: "11px",
-    fontWeight: 700,
-    color: "#111827",
+    background: "rgba(255,255,255,0.78)",
+    borderRadius: "10px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#64748b",
     cursor: "pointer",
   },
   metricValue: (featured) => ({

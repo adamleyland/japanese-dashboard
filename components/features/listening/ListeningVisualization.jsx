@@ -57,7 +57,7 @@ export default function ListeningVisualization({
           </div>
 
           <div style={{ display: "grid", gap: "3px", minWidth: 0 }}>
-            <div style={styles.eyebrow}>Listening Progress</div>
+            <div style={styles.eyebrow}>進歩</div>
           </div>
         </div>
 

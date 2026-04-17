@@ -1,20 +1,21 @@
 "use client";
 
+import { Clock3 } from "lucide-react";
+
 export default function MetricCard({
   label,
   value,
   icon,
-  onQuickAdd,
-  quickAddLabel = "+1",
+  onAdjust,
   featured = false,
 }) {
   return (
     <div style={styles.metricCard(featured)}>
       <div style={styles.metricTopRow}>
         <div style={styles.metricIconWrap(featured)}>{icon}</div>
-        {onQuickAdd && (
-          <button onClick={onQuickAdd} style={styles.quickAddButton}>
-            {quickAddLabel}
+        {onAdjust && (
+          <button type="button" onClick={onAdjust} style={styles.quickAddButton} aria-label={`Adjust ${label}`}>
+            <Clock3 size={15} strokeWidth={2} />
           </button>
         )}
       </div>
@@ -52,13 +53,15 @@ const styles = {
     fontSize: f ? "20px" : "18px",
   }),
   quickAddButton: {
-    border: "1px solid rgba(15,23,42,0.14)",
-    background: "rgba(255,255,255,0.9)",
-    borderRadius: "999px",
-    padding: "6px 10px",
-    fontSize: "12px",
-    fontWeight: 700,
-    color: "#111827",
+    width: "32px",
+    height: "32px",
+    border: "1px solid rgba(15,23,42,0.1)",
+    background: "rgba(255,255,255,0.78)",
+    borderRadius: "10px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#64748b",
     cursor: "pointer",
   },
   metricLabel: {

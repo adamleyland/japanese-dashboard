@@ -154,7 +154,7 @@ export default function TimerStopwatch({
           </div>
 
           <div style={{ display: "grid", gap: "3px", minWidth: 0 }}>
-            <div style={styles.eyebrow}>Live Session</div>
+            <div style={styles.eyebrow}>セッション</div>
           </div>
         </div>
 

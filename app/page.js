@@ -199,6 +199,45 @@ export default function Home() {
     [updateTrackedMetric],
   );
 
+  const adjustMetricByDelta = useCallback(
+    (metric, amount, metadata = {}) => {
+      if (!Number.isFinite(amount) || !amount) {
+        return;
+      }
+
+      const adjustmentMetadata = {
+        kind: "adjustment",
+        source: "adjustment",
+        ...metadata,
+      };
+
+      if (metric === "listening") {
+        updateListeningHours((currentValue) => Math.max(0, currentValue + amount), adjustmentMetadata);
+        return;
+      }
+
+      if (metric === "reading") {
+        updateWordsRead((currentValue) => Math.max(0, currentValue + amount), adjustmentMetadata);
+        return;
+      }
+
+      if (metric === "shadowing") {
+        updateShadowingHours((currentValue) => Math.max(0, currentValue + amount), adjustmentMetadata);
+        return;
+      }
+
+      if (metric === "writing") {
+        updateWordsWritten((currentValue) => Math.max(0, currentValue + amount), adjustmentMetadata);
+        return;
+      }
+
+      if (metric === "gaming") {
+        updateGamingHours((currentValue) => Math.max(0, currentValue + amount), adjustmentMetadata);
+      }
+    },
+    [updateGamingHours, updateListeningHours, updateShadowingHours, updateWordsRead, updateWordsWritten],
+  );
+
   const adjustListeningHours = useCallback(
     (deltaHours, metadata = {}) => {
       if (!Number.isFinite(deltaHours) || !deltaHours) return;
@@ -303,13 +342,17 @@ export default function Home() {
           }}
         >
           <MainTracker
-            styles={styles}
             overallHoursLabel={formatHours(overallHours)}
             listeningHoursLabel={formatHours(listeningHours)}
+            listeningHours={listeningHours}
             wordsReadLabel={formatWords(wordsRead)}
+            wordsRead={wordsRead}
             gamingHoursLabel={formatHours(gamingHours)}
+            gamingHours={gamingHours}
             shadowingHoursLabel={formatHours(shadowingHours)}
+            shadowingHours={shadowingHours}
             wordsWrittenLabel={formatWords(wordsWritten)}
+            wordsWritten={wordsWritten}
             authControl={
               <MagicLinkAuth
                 session={authSession}
@@ -318,14 +361,11 @@ export default function Home() {
                 isLoading={authLoading}
               />
             }
+            onAdjustMetric={adjustMetricByDelta}
             isCompact={isCompact}
             isAdditionalOpen={isAdditionalOpen}
             setIsAdditionalOpen={setIsAdditionalOpen}
-            setListeningHours={updateListeningHours}
-            setWordsRead={updateWordsRead}
-            setGamingHours={updateGamingHours}
-            setShadowingHours={updateShadowingHours}
-            setWordsWritten={updateWordsWritten}
+            styles={styles}
           />
 
           <DictionaryCarousel styles={styles} />
