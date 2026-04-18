@@ -20,7 +20,7 @@ const FALLBACK_COVER_URL =
     </svg>
   `);
 
-export default function AudiobookCurrentlyListening({ book, onPlay }) {
+export default function AudiobookCurrentlyListening({ book, onOpenPlayer, onPlayNow }) {
   if (!book) {
     return null;
   }
@@ -32,38 +32,63 @@ export default function AudiobookCurrentlyListening({ book, onPlay }) {
     <section style={styles.section}>
       <div style={styles.sectionHeader}>
         <div style={styles.sectionEyebrow}>Currently Listening</div>
-        <button type="button" onClick={onPlay} style={styles.iconButton} aria-label="Open player">
-          <Play size={18} />
-        </button>
       </div>
 
-      <div style={styles.card}>
-        <div style={styles.cover(book.coverGradient)} aria-hidden="true">
-          <img
-            key={`${book.id}-${coverUrl}`}
-            src={coverUrl}
-            alt=""
-            style={styles.coverImage}
-            onError={(event) => {
-              event.currentTarget.src = FALLBACK_COVER_URL;
-            }}
-          />
-        </div>
-
-        <div style={styles.meta}>
-          <div style={styles.title}>{book.title}</div>
-          <div style={styles.author}>{book.author}</div>
-          <div style={styles.description}>{plainDescription}</div>
-
-          <div style={styles.progressMeta}>
-            <span style={styles.progressLabel}>{book.progressPercent.toFixed(0)}% complete</span>
-            <span style={styles.progressLabel}>
-              {formatClock(book.progressSeconds)} / {formatClock(book.durationSeconds)}
-            </span>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpenPlayer}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpenPlayer?.();
+          }
+        }}
+        style={styles.cardButton}
+        aria-label={`Open player for ${book.title}`}
+      >
+        <div style={styles.card}>
+          <div style={styles.cover(book.coverGradient)} aria-hidden="true">
+            <img
+              key={`${book.id}-${coverUrl}`}
+              src={coverUrl}
+              alt=""
+              style={styles.coverImage}
+              onError={(event) => {
+                event.currentTarget.src = FALLBACK_COVER_URL;
+              }}
+            />
           </div>
 
-          <div style={styles.progressTrack}>
-            <div style={styles.progressFill(book.progressPercent, book.accentColor)} />
+          <div style={styles.meta}>
+            <div style={styles.metaTopRow}>
+              <div style={styles.title}>{book.title}</div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPlayNow?.();
+                }}
+                style={styles.iconButton}
+                aria-label={`Play ${book.title}`}
+              >
+                <Play size={18} />
+              </button>
+            </div>
+            <div style={styles.author}>{book.author}</div>
+            <div style={styles.description}>{plainDescription}</div>
+
+            <div style={styles.progressMeta}>
+              <span style={styles.progressLabel}>{book.progressPercent.toFixed(0)}% complete</span>
+              <span style={styles.progressLabel}>
+                {formatClock(book.progressSeconds)} / {formatClock(book.durationSeconds)}
+              </span>
+            </div>
+
+            <div style={styles.progressTrack}>
+              <div style={styles.progressFill(book.progressPercent, book.accentColor)} />
+            </div>
           </div>
         </div>
       </div>
@@ -119,9 +144,18 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer",
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
     flexShrink: 0,
+    cursor: "pointer",
+  },
+  cardButton: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    cursor: "pointer",
   },
   card: {
     border: "1px solid var(--app-border-soft)",
@@ -155,12 +189,20 @@ const styles = {
     alignContent: "center",
     minWidth: 0,
   },
+  metaTopRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "12px",
+  },
   title: {
     fontSize: "22px",
     fontWeight: 700,
     lineHeight: 1.1,
     letterSpacing: "-0.03em",
     color: "var(--app-text)",
+    minWidth: 0,
+    flex: 1,
   },
   author: {
     fontSize: "14px",

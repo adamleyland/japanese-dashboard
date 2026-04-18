@@ -55,33 +55,26 @@ export default function ListeningTab({
   const [timerDurationSeconds, setTimerDurationSeconds] = useState(300);
   const [timerSeconds, setTimerSeconds] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [listeningGoal, setListeningGoal] = useState(() => {
-    if (typeof window === "undefined") {
-      return 1200;
-    }
-
-    const storedGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
-    return Number.isFinite(storedGoal) && storedGoal > 0 ? storedGoal : 1200;
-  });
-  const [workspaceSource, setWorkspaceSource] = useState(() => {
-    if (typeof window === "undefined") {
-      return "youtube";
-    }
-
-    return window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY) === "audiobooks"
-      ? "audiobooks"
-      : "youtube";
-  });
+  const [listeningGoal, setListeningGoal] = useState(1200);
+  const [workspaceSource, setWorkspaceSource] = useState("youtube");
   const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("bar");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const isYoutubeMode = workspaceSource === "youtube";
 
   const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
-  const isMounted = typeof window !== "undefined";
   const playbackResumeVideoId = playbackState?.selectedVideoId || DEFAULT_VIDEO_ID;
   const playbackResumeTime = playbackState?.currentTime || 0;
   const sessionRef = useRef(0);
   const sessionMetaRef = useRef(null);
+  const audiobookPlaybackSnapshotRef = useRef({
+    bookId: null,
+    isPlaying: false,
+    currentTime: 0,
+    durationSeconds: 0,
+    isPlayerOpen: false,
+  });
   const playerRef = useRef(null);
   const playerHostRef = useRef(null);
   const focusPlayerHostRef = useRef(null);
@@ -91,6 +84,7 @@ export default function ListeningTab({
   const playerReadyRef = useRef(false);
   const pendingRestoreRef = useRef(null);
   const pendingSelectionPlaybackRef = useRef(null);
+  const playbackIntentRef = useRef(false);
   const playbackListRef = useRef(playbackList);
   const selectedVideoIdRef = useRef(safeVideoId);
   const selectedChannelIdRef = useRef(selectedVideo?.channelId || null);
@@ -100,6 +94,27 @@ export default function ListeningTab({
   });
 
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) {
+      return;
+    }
+
+    const storedGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
+    if (Number.isFinite(storedGoal) && storedGoal > 0) {
+      setListeningGoal((currentValue) => (currentValue === storedGoal ? currentValue : storedGoal));
+    }
+
+    const storedSource =
+      window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY) === "audiobooks"
+        ? "audiobooks"
+        : "youtube";
+    setWorkspaceSource((currentValue) => (currentValue === storedSource ? currentValue : storedSource));
+  }, [isMounted]);
 
   useEffect(() => {
     playbackListRef.current = playbackList;
@@ -174,6 +189,7 @@ export default function ListeningTab({
     (snapshot) => {
       const player = playerRef.current;
       if (!player || !snapshot?.videoId || !playerReadyRef.current) return;
+      playbackIntentRef.current = Boolean(snapshot.shouldPlay);
 
       const payload = {
         videoId: snapshot.videoId,
@@ -183,6 +199,10 @@ export default function ListeningTab({
       setPlaybackState({
         videoId: snapshot.videoId,
         currentTime: payload.startSeconds,
+        duration:
+          typeof player.getDuration === "function" ? Number(player.getDuration() || 0) : 0,
+        isPlaying: Boolean(snapshot.shouldPlay),
+        playbackStatus: snapshot.shouldPlay ? "playing" : "paused",
       });
 
       if (playerVideoIdRef.current === snapshot.videoId) {
@@ -204,6 +224,15 @@ export default function ListeningTab({
 
       if (snapshot.shouldPlay && typeof player.loadVideoById === "function") {
         player.loadVideoById(payload);
+        window.setTimeout(() => {
+          if (
+            playbackIntentRef.current &&
+            playerRef.current === player &&
+            typeof player.playVideo === "function"
+          ) {
+            player.playVideo();
+          }
+        }, 150);
         return;
       }
 
@@ -241,7 +270,9 @@ export default function ListeningTab({
   const syncPlaybackSession = useCallback(
     ({ isPlaying, metadata = null, playerPlaying = null }) => {
       if (typeof playerPlaying === "boolean") {
-        setIsPlayerPlaying(playerPlaying);
+        setIsPlayerPlaying((currentValue) =>
+          currentValue === playerPlaying ? currentValue : playerPlaying,
+        );
       }
 
       if (isPlaying) {
@@ -262,24 +293,51 @@ export default function ListeningTab({
         }
 
         sessionMetaRef.current = metadata;
-        setStopwatchRunning(true);
+        setStopwatchRunning((currentValue) => (currentValue ? currentValue : true));
         return;
       }
 
-      setStopwatchRunning(false);
+      sessionMetaRef.current = metadata;
+      setStopwatchRunning((currentValue) => (currentValue ? false : currentValue));
       bankSession();
     },
     [bankSession],
   );
 
+  const buildPlaybackPayload = useCallback(
+    ({ videoId, currentTime, shouldPlay } = {}) => {
+      const player = playerRef.current;
+      const resolvedVideoId = videoId || safeVideoId || DEFAULT_VIDEO_ID;
+      const resolvedCurrentTime = Math.max(
+        0,
+        Number((currentTime ?? getPlayerCurrentTime()) || 0),
+      );
+      const resolvedDuration =
+        player && playerReadyRef.current && typeof player.getDuration === "function"
+          ? Math.max(0, Number(player.getDuration() || 0))
+          : 0;
+      const resolvedIsPlaying = shouldPlay ?? isPlayerCurrentlyPlaying();
+      const playerStateCode =
+        player && playerReadyRef.current && typeof player.getPlayerState === "function"
+          ? player.getPlayerState()
+          : null;
+
+      return {
+        videoId: resolvedVideoId,
+        currentTime: resolvedCurrentTime,
+        duration: resolvedDuration,
+        isPlaying: Boolean(resolvedIsPlaying),
+        playbackStatus: typeof playerStateCode === "number" ? String(playerStateCode) : "unknown",
+      };
+    },
+    [getPlayerCurrentTime, isPlayerCurrentlyPlaying, safeVideoId],
+  );
+
   const persistCurrentPlayerState = useCallback(() => {
     const snapshot = capturePlaybackSnapshot();
-    setPlaybackState({
-      videoId: snapshot.videoId,
-      currentTime: snapshot.currentTime,
-    });
+    setPlaybackState(buildPlaybackPayload(snapshot));
     return snapshot;
-  }, [capturePlaybackSnapshot, setPlaybackState]);
+  }, [buildPlaybackPayload, capturePlaybackSnapshot, setPlaybackState]);
 
   const togglePlayerPlayback = useCallback(() => {
     const player = playerRef.current;
@@ -375,12 +433,26 @@ export default function ListeningTab({
     window.addEventListener("beforeunload", handlePersist);
 
     return () => {
-      handlePersist();
       window.removeEventListener("beforeunload", handlePersist);
     };
   }, [persistCurrentPlayerState]);
 
   useEffect(() => {
+    if (!isYoutubeMode) {
+      if (playerRef.current) {
+        pendingRestoreRef.current = persistCurrentPlayerState();
+        playerRef.current.pauseVideo?.();
+        playerRef.current.destroy?.();
+        playerRef.current = null;
+        playerVideoIdRef.current = "";
+        initRef.current = false;
+        playerReadyRef.current = false;
+        activePlayerHostRef.current = null;
+      }
+
+      return undefined;
+    }
+
     const activeHost = focusMode ? focusPlayerHostRef.current : playerHostRef.current;
 
     if (playerRef.current && activeHost !== activePlayerHostRef.current) {
@@ -390,12 +462,25 @@ export default function ListeningTab({
       playerVideoIdRef.current = "";
       initRef.current = false;
       playerReadyRef.current = false;
+      activePlayerHostRef.current = null;
     }
 
     const syncVideoProgress = (videoId = selectedVideoIdRef.current || DEFAULT_VIDEO_ID) => {
+      const player = playerRef.current;
+      const playerStateCode =
+        player && playerReadyRef.current && typeof player.getPlayerState === "function"
+          ? player.getPlayerState()
+          : null;
+
       setPlaybackState({
         videoId,
         currentTime: getPlayerCurrentTime(),
+        duration:
+          player && playerReadyRef.current && typeof player.getDuration === "function"
+            ? Number(player.getDuration() || 0)
+            : 0,
+        isPlaying: isPlayerCurrentlyPlaying(),
+        playbackStatus: typeof playerStateCode === "number" ? String(playerStateCode) : "unknown",
       });
     };
 
@@ -420,6 +505,7 @@ export default function ListeningTab({
       if (!YTRef) return;
 
       if (currentPlayerState === YTRef.PLAYING) {
+        playbackIntentRef.current = false;
         syncPlaybackSession({
           isPlaying: true,
           playerPlaying: true,
@@ -433,6 +519,7 @@ export default function ListeningTab({
       }
 
       if (currentPlayerState === YTRef.PAUSED) {
+        playbackIntentRef.current = false;
         syncPlaybackSession({
           isPlaying: false,
           playerPlaying: false,
@@ -441,6 +528,20 @@ export default function ListeningTab({
       }
 
       if (currentPlayerState === YTRef.CUED || currentPlayerState === YTRef.UNSTARTED) {
+        if (playbackIntentRef.current) {
+          window.setTimeout(() => {
+            if (
+              playbackIntentRef.current &&
+              playerRef.current &&
+              playerReadyRef.current &&
+              typeof playerRef.current.playVideo === "function"
+            ) {
+              playerRef.current.playVideo();
+            }
+          }, 120);
+          return;
+        }
+
         syncPlaybackSession({
           isPlaying: false,
           playerPlaying: false,
@@ -535,6 +636,8 @@ export default function ListeningTab({
     bankSession,
     focusMode,
     getPlayerCurrentTime,
+    isPlayerCurrentlyPlaying,
+    isYoutubeMode,
     persistCurrentPlayerState,
     setPlaybackState,
     setSelectedVideoId,
@@ -542,6 +645,10 @@ export default function ListeningTab({
   ]);
 
   useEffect(() => {
+    if (!isYoutubeMode) {
+      return;
+    }
+
     if (!safeVideoId) return;
 
     const resumeState = playbackResumeRef.current;
@@ -551,6 +658,9 @@ export default function ListeningTab({
       setPlaybackState({
         videoId: safeVideoId,
         currentTime: resumeAt,
+        duration: 0,
+        isPlaying: false,
+        playbackStatus: "cued",
       });
     }
 
@@ -570,6 +680,7 @@ export default function ListeningTab({
   }, [
     applyPlaybackSnapshot,
     isPlayerCurrentlyPlaying,
+    isYoutubeMode,
     safeVideoId,
     setPlaybackState,
   ]);
@@ -585,14 +696,14 @@ export default function ListeningTab({
   }, [roundToTenth, stopwatchRunning]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!isMounted) return;
     window.localStorage.setItem(LISTENING_GOAL_STORAGE_KEY, String(listeningGoal));
-  }, [listeningGoal]);
+  }, [isMounted, listeningGoal]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!isMounted) return;
     window.localStorage.setItem(LISTENING_SOURCE_STORAGE_KEY, workspaceSource);
-  }, [workspaceSource]);
+  }, [isMounted, workspaceSource]);
 
   useEffect(() => {
     if (workspaceSource === "audiobooks" && focusMode) {
@@ -675,6 +786,54 @@ export default function ListeningTab({
   const totalBlocks = Math.max(12, Math.ceil(Math.max(listeningGoal, listeningHours) / 10));
   const listeningProgress = Math.min(100, (listeningHours / Math.max(1, listeningGoal)) * 100);
 
+  const handleAudiobookPlaybackStateChange = useCallback(
+    ({
+      isPlaying,
+      book,
+      currentTime = 0,
+      durationSeconds = 0,
+      playbackState: nextPlaybackState = "idle",
+      isPlayerOpen = false,
+    }) => {
+      const nextSnapshot = {
+        bookId: book?.id || null,
+        isPlaying: Boolean(isPlaying),
+        currentTime: Math.round(Math.max(0, Number(currentTime || 0)) * 10) / 10,
+        durationSeconds: Math.round(Math.max(0, Number(durationSeconds || 0)) * 10) / 10,
+        isPlayerOpen: Boolean(isPlayerOpen),
+      };
+      const previousSnapshot = audiobookPlaybackSnapshotRef.current;
+
+      if (
+        previousSnapshot.bookId === nextSnapshot.bookId &&
+        previousSnapshot.isPlaying === nextSnapshot.isPlaying &&
+        Math.abs(previousSnapshot.currentTime - nextSnapshot.currentTime) < 0.1 &&
+        Math.abs(previousSnapshot.durationSeconds - nextSnapshot.durationSeconds) < 0.1 &&
+        previousSnapshot.isPlayerOpen === nextSnapshot.isPlayerOpen
+      ) {
+        return;
+      }
+
+      audiobookPlaybackSnapshotRef.current = nextSnapshot;
+
+      syncPlaybackSession({
+        isPlaying,
+        metadata: book
+          ? {
+              source: "audiobook",
+              sessionKey: `audiobook:${book.id}`,
+              audiobookId: book.id,
+              title: book.title,
+              author: book.author,
+              durationSeconds,
+              playbackState: nextPlaybackState,
+            }
+          : null,
+      });
+    },
+    [syncPlaybackSession],
+  );
+
   return (
     <div
       style={{
@@ -688,25 +847,9 @@ export default function ListeningTab({
         workspaceSource={workspaceSource}
         setWorkspaceSource={setWorkspaceSource}
         authUserId={authUserId}
-        onAudiobookPlaybackStateChange={({ isPlaying, book, durationSeconds, playbackState }) => {
-          syncPlaybackSession({
-            isPlaying,
-            metadata: book
-              ? {
-                  source: "audiobook",
-                  sessionKey: `audiobook:${book.id}`,
-                  audiobookId: book.id,
-                  title: book.title,
-                  author: book.author,
-                  durationSeconds,
-                  playbackState,
-                }
-              : null,
-          });
-        }}
+        onAudiobookPlaybackStateChange={handleAudiobookPlaybackStateChange}
         focusMode={focusMode}
         setFocusMode={setFocusMode}
-        isMounted={isMounted}
         youtubeConnected={youtubeConnected}
         subscribedChannels={subscribedChannels}
         approvedFeed={activeFeed}

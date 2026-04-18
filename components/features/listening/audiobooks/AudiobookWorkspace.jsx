@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AudiobookCurrentlyListening from "@/components/features/listening/audiobooks/AudiobookCurrentlyListening";
 import AudiobookLibrary from "@/components/features/listening/audiobooks/AudiobookLibrary";
 import AudiobookPlayer from "@/components/features/listening/audiobooks/AudiobookPlayer";
@@ -24,6 +24,7 @@ export default function AudiobookWorkspace({
     durationSeconds,
     loadBook,
     playbackState,
+    playFromStart,
     progressPercent,
     savingProgress,
     seekTo,
@@ -32,21 +33,45 @@ export default function AudiobookWorkspace({
     togglePlayback,
   } = useAudiobookPlayer(audiobooksData, authUserId);
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const playbackStateRef = useRef(null);
 
   const usingFetchedBooks = Array.isArray(audiobooksData) && audiobooksData.length > 0;
 
   useEffect(() => {
-    onPlaybackStateChange?.({
+    const nextSnapshot = {
+      bookId: currentBook?.id || null,
       isPlaying: playbackState === "playing",
+      currentTime: Math.round(Math.max(0, Number(currentProgressSeconds || 0)) * 10) / 10,
+      durationSeconds: Math.round(Math.max(0, Number(durationSeconds || 0)) * 10) / 10,
+      isPlayerOpen,
+    };
+    const previousSnapshot = playbackStateRef.current;
+
+    if (
+      previousSnapshot &&
+      previousSnapshot.bookId === nextSnapshot.bookId &&
+      previousSnapshot.isPlaying === nextSnapshot.isPlaying &&
+      Math.abs(previousSnapshot.currentTime - nextSnapshot.currentTime) < 0.1 &&
+      Math.abs(previousSnapshot.durationSeconds - nextSnapshot.durationSeconds) < 0.1 &&
+      previousSnapshot.isPlayerOpen === nextSnapshot.isPlayerOpen
+    ) {
+      return;
+    }
+
+    playbackStateRef.current = nextSnapshot;
+    onPlaybackStateChange?.({
+      isPlaying: nextSnapshot.isPlaying,
       playbackState,
       book: currentBook,
-      progressSeconds: currentProgressSeconds,
+      currentTime: currentProgressSeconds,
       durationSeconds,
+      isPlayerOpen,
     });
   }, [
     currentBook,
     currentProgressSeconds,
     durationSeconds,
+    isPlayerOpen,
     onPlaybackStateChange,
     playbackState,
   ]);
@@ -57,8 +82,9 @@ export default function AudiobookWorkspace({
         isPlaying: false,
         playbackState: "idle",
         book: null,
-        progressSeconds: 0,
+        currentTime: 0,
         durationSeconds: 0,
+        isPlayerOpen: false,
       });
     },
     [onPlaybackStateChange],
@@ -75,6 +101,7 @@ export default function AudiobookWorkspace({
           isPlaying={isPlaying}
           playbackState={playbackState}
           progressPercent={progressPercent}
+          onPlayFromStart={playFromStart}
           onClosePlayer={() => {
             closePlayer();
             setIsPlayerOpen(false);
@@ -88,7 +115,11 @@ export default function AudiobookWorkspace({
         <>
           <AudiobookCurrentlyListening
             book={currentlyListeningBook}
-            onPlay={() => {
+            onOpenPlayer={() => {
+              selectCurrentlyListening("loaded");
+              setIsPlayerOpen(true);
+            }}
+            onPlayNow={() => {
               selectCurrentlyListening("playing");
               setIsPlayerOpen(true);
             }}

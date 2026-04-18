@@ -55,6 +55,9 @@ function createDefaultState() {
     playbackState: {
       selectedVideoId: DEFAULT_VIDEO_ID,
       currentTime: 0,
+      duration: 0,
+      isPlaying: false,
+      playbackStatus: "unstarted",
       updatedAt: 0,
     },
     workspaceTab: null,
@@ -90,6 +93,12 @@ function normalizePlaybackState(playbackState) {
   return {
     selectedVideoId,
     currentTime: Math.max(0, Number(playbackState?.currentTime || 0)),
+    duration: Math.max(0, Number(playbackState?.duration || 0)),
+    isPlaying: Boolean(playbackState?.isPlaying),
+    playbackStatus:
+      typeof playbackState?.playbackStatus === "string"
+        ? playbackState.playbackStatus
+        : "unstarted",
     updatedAt: Number(playbackState?.updatedAt || 0),
   };
 }
@@ -504,14 +513,29 @@ export function YoutubeSessionProvider({ children }) {
   const setPlaybackState = useCallback((payload) => {
     const nextVideoId = payload?.videoId || payload?.selectedVideoId || DEFAULT_VIDEO_ID;
     const nextCurrentTime = Math.max(0, Number(payload?.currentTime || 0));
+    const nextDuration = Math.max(0, Number(payload?.duration || 0));
+    const nextIsPlaying = Boolean(payload?.isPlaying);
+    const nextPlaybackStatus =
+      typeof payload?.playbackStatus === "string" ? payload.playbackStatus : "unknown";
 
     setState((currentState) => {
       const currentPlaybackState = currentState.playbackState;
       const sameSelectedVideo = currentState.selectedVideoId === nextVideoId;
       const samePlaybackVideo = currentPlaybackState.selectedVideoId === nextVideoId;
-      const samePlaybackTime = Math.abs(currentPlaybackState.currentTime - nextCurrentTime) < 0.01;
+      const samePlaybackTime = Math.abs(currentPlaybackState.currentTime - nextCurrentTime) < 0.25;
+      const sameDuration = Math.abs((currentPlaybackState.duration || 0) - nextDuration) < 0.25;
+      const sameIsPlaying = Boolean(currentPlaybackState.isPlaying) === nextIsPlaying;
+      const samePlaybackStatus =
+        (currentPlaybackState.playbackStatus || "unknown") === nextPlaybackStatus;
 
-      if (sameSelectedVideo && samePlaybackVideo && samePlaybackTime) {
+      if (
+        sameSelectedVideo &&
+        samePlaybackVideo &&
+        samePlaybackTime &&
+        sameDuration &&
+        sameIsPlaying &&
+        samePlaybackStatus
+      ) {
         return currentState;
       }
 
@@ -521,6 +545,9 @@ export function YoutubeSessionProvider({ children }) {
         playbackState: {
           selectedVideoId: nextVideoId,
           currentTime: nextCurrentTime,
+          duration: nextDuration,
+          isPlaying: nextIsPlaying,
+          playbackStatus: nextPlaybackStatus,
           updatedAt: Date.now(),
         },
       };
@@ -744,8 +771,12 @@ export function YoutubeSessionProvider({ children }) {
         return "";
       }
 
+      if (!interactive) {
+        return "";
+      }
+
       const response = await requestAccessToken({
-        prompt: interactive ? (currentState.wasConnected ? "" : "consent") : "none",
+        prompt: currentState.wasConnected ? "" : "consent",
       });
       const tokenMetaFromResponse = toTokenMeta(response);
 
@@ -1155,7 +1186,7 @@ export function YoutubeSessionProvider({ children }) {
     try {
       const accessToken = await ensureFreshAccessToken({ interactive: false });
       if (!accessToken) {
-        markSessionDisconnected();
+        markSessionDisconnected({ clearPersistentConnection: true });
         return;
       }
 
@@ -1174,7 +1205,7 @@ export function YoutubeSessionProvider({ children }) {
       if (error?.isOAuthError) {
         markSessionDisconnected({ clearPersistentConnection: true });
       } else {
-        markSessionDisconnected();
+        markSessionDisconnected({ clearPersistentConnection: true });
       }
     }
   }, [ensureFreshAccessToken, markSessionDisconnected, refreshYoutubeAccountData]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
+import { Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
 import { clampWords, stripHtml } from "@/lib/stripHtml";
 
 export default function AudiobookPlayer({
@@ -12,6 +12,7 @@ export default function AudiobookPlayer({
   playbackState,
   progressPercent,
   onClosePlayer,
+  onPlayFromStart,
   onSeekTo,
   onSkipBy,
   onTogglePlayback,
@@ -35,9 +36,11 @@ export default function AudiobookPlayer({
           <p style={styles.description}>{plainDescription}</p>
         </div>
 
-        <button type="button" onClick={onClosePlayer} style={styles.iconButton} aria-label="Close player">
-          <X size={18} />
-        </button>
+        <div style={styles.headerActions}>
+          <button type="button" onClick={onClosePlayer} style={styles.iconButton(false)} aria-label="Close player">
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       <div style={styles.playerGrid}>
@@ -74,16 +77,6 @@ export default function AudiobookPlayer({
           <div style={styles.actionRow}>
             <button
               type="button"
-              onClick={() => onSkipBy(-10)}
-              disabled={!hasPlayableAudio}
-              style={styles.secondaryButton(!hasPlayableAudio)}
-            >
-              <SkipBack size={16} />
-              -10s
-            </button>
-
-            <button
-              type="button"
               onClick={onTogglePlayback}
               disabled={!hasPlayableAudio}
               style={styles.primaryButton(!hasPlayableAudio)}
@@ -94,12 +87,35 @@ export default function AudiobookPlayer({
 
             <button
               type="button"
+              onClick={onPlayFromStart}
+              disabled={!hasPlayableAudio}
+              style={styles.iconControlButton(!hasPlayableAudio)}
+              aria-label="Play from start"
+              title="Play from start"
+            >
+              <RotateCcw size={16} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onSkipBy(-10)}
+              disabled={!hasPlayableAudio}
+              style={styles.iconControlButton(!hasPlayableAudio)}
+              aria-label="Skip back 10 seconds"
+              title="Skip back 10 seconds"
+            >
+              <SkipBack size={16} />
+            </button>
+
+            <button
+              type="button"
               onClick={() => onSkipBy(10)}
               disabled={!hasPlayableAudio}
-              style={styles.secondaryButton(!hasPlayableAudio)}
+              style={styles.iconControlButton(!hasPlayableAudio)}
+              aria-label="Skip forward 10 seconds"
+              title="Skip forward 10 seconds"
             >
               <SkipForward size={16} />
-              +10s
             </button>
           </div>
 
@@ -226,7 +242,13 @@ const styles = {
     overflow: "hidden",
     maxWidth: "68ch",
   },
-  iconButton: {
+  headerActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
+    flexShrink: 0,
+  },
+  iconButton: (disabled) => ({
     width: "40px",
     height: "40px",
     border: "1px solid var(--app-border)",
@@ -236,10 +258,11 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
     flexShrink: 0,
-  },
+  }),
   playerGrid: {
     display: "grid",
     gridTemplateColumns: "220px minmax(0, 1fr)",
@@ -307,7 +330,7 @@ const styles = {
     flexWrap: "wrap",
   },
   primaryButton: (disabled) => ({
-    border: "none",
+    border: "1px solid var(--app-border)",
     background: "var(--app-selected-surface)",
     color: "var(--app-selected-text)",
     borderRadius: "14px",
@@ -320,19 +343,20 @@ const styles = {
     fontSize: "13px",
     fontWeight: 700,
   }),
-  secondaryButton: (disabled) => ({
+  iconControlButton: (disabled) => ({
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
     color: "var(--app-text-soft)",
     borderRadius: "14px",
-    padding: "12px 16px",
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
-    fontSize: "13px",
-    fontWeight: 700,
+    width: "44px",
+    height: "44px",
+    justifyContent: "center",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
   }),
   chapterBlock: {
     display: "grid",

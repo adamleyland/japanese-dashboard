@@ -1,14 +1,18 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import AudiobookCard from "@/components/features/listening/audiobooks/AudiobookCard";
+import { matchesJapaneseSearch } from "@/lib/japaneseSearch";
+
+const DEFAULT_LIBRARY_HINT = "Browse your audiobook library";
 
 export default function AudiobookLibrary({
   books,
   onSelect,
-  hint = "Mock shelf ready for real sources later",
+  hint = DEFAULT_LIBRARY_HINT,
 }) {
   const shelfRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleWheel = useCallback((event) => {
     const shelf = shelfRef.current;
@@ -27,18 +31,44 @@ export default function AudiobookLibrary({
     shelf.scrollLeft += horizontalDelta;
   }, []);
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredBooks = useMemo(() => {
+    if (!normalizedQuery) {
+      return books;
+    }
+
+    return books.filter((book) =>
+      matchesJapaneseSearch(normalizedQuery, book.searchIndex || []),
+    );
+  }, [books, normalizedQuery]);
+
+  const showHelperText = hint && hint !== DEFAULT_LIBRARY_HINT;
+
   return (
     <section style={styles.section}>
       <div style={styles.sectionHeader}>
         <div style={styles.sectionEyebrow}>Library</div>
-        <div style={styles.sectionHint}>{hint}</div>
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Search Audiobooks"
+          aria-label="Search audiobooks"
+          style={styles.searchInput}
+        />
       </div>
 
-      <div ref={shelfRef} style={styles.shelf} onWheel={handleWheel}>
-        {books.map((book) => (
-          <AudiobookCard key={book.id} book={book} onSelect={onSelect} />
-        ))}
-      </div>
+      {showHelperText ? <div style={styles.sectionHint}>{hint}</div> : null}
+
+      {filteredBooks.length ? (
+        <div ref={shelfRef} style={styles.shelf} onWheel={handleWheel}>
+          {filteredBooks.map((book) => (
+            <AudiobookCard key={book.id} book={book} onSelect={onSelect} />
+          ))}
+        </div>
+      ) : (
+        <div style={styles.emptyState}>No audiobooks match your search.</div>
+      )}
     </section>
   );
 }
@@ -66,11 +96,32 @@ const styles = {
     fontSize: "12px",
     color: "var(--app-text-faint)",
   },
+  searchInput: {
+    width: "100%",
+    maxWidth: "280px",
+    flex: "1 1 220px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text)",
+    borderRadius: "14px",
+    padding: "11px 14px",
+    fontSize: "13px",
+    lineHeight: 1.2,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+  },
   shelf: {
     display: "flex",
     gap: "14px",
     overflowX: "auto",
     paddingBottom: "8px",
     scrollbarWidth: "thin",
+  },
+  emptyState: {
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-surface-soft)",
+    borderRadius: "18px",
+    padding: "18px",
+    fontSize: "13px",
+    color: "var(--app-text-muted)",
   },
 };

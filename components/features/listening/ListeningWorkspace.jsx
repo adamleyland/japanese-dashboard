@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   UserCircle2,
@@ -26,7 +26,6 @@ export default function ListeningWorkspace({
   onAudiobookPlaybackStateChange,
   focusMode,
   setFocusMode,
-  isMounted,
   youtubeConnected,
   subscribedChannels,
   approvedFeed,
@@ -56,6 +55,11 @@ export default function ListeningWorkspace({
   audiobooksError,
 }) {
   const [channelSearch, setChannelSearch] = useState("");
+  const hasMounted = useSyncExternalStore(
+    subscribeToMountState,
+    getMountedSnapshot,
+    getServerMountedSnapshot,
+  );
   const isAudiobookMode = workspaceSource === "audiobooks";
 
   const panelItems = [
@@ -634,7 +638,7 @@ export default function ListeningWorkspace({
         )}
       </div>
 
-      {isMounted &&
+      {hasMounted &&
         !isAudiobookMode &&
         focusMode &&
         createPortal(
@@ -679,4 +683,16 @@ export default function ListeningWorkspace({
         )}
     </>
   );
+}
+
+function subscribeToMountState() {
+  return () => {};
+}
+
+function getMountedSnapshot() {
+  return true;
+}
+
+function getServerMountedSnapshot() {
+  return false;
 }
