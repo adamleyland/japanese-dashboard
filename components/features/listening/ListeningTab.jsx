@@ -17,6 +17,10 @@ export default function ListeningTab({
   isMobile,
   isCompact,
   formatClock,
+  authUserId,
+  audiobooksData,
+  audiobooksLoading,
+  audiobooksError,
 }) {
   const {
     activeFeed,
@@ -683,6 +687,7 @@ export default function ListeningTab({
         isCompact={isCompact}
         workspaceSource={workspaceSource}
         setWorkspaceSource={setWorkspaceSource}
+        authUserId={authUserId}
         onAudiobookPlaybackStateChange={({ isPlaying, book, durationSeconds, playbackState }) => {
           syncPlaybackSession({
             isPlaying,
@@ -732,6 +737,9 @@ export default function ListeningTab({
         onSelectDiscoverVideo={selectDiscoverVideo}
         onOpenSelectedDiscoverChannel={openSelectedDiscoverChannel}
         onToggleChannelEnabled={toggleChannelEnabled}
+        audiobooksData={audiobooksData}
+        audiobooksLoading={audiobooksLoading}
+        audiobooksError={audiobooksError}
       />
 
       <div style={styles.sideColumn}>

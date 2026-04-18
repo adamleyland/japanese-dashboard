@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "enrich:audiobooks": "node ./scripts/enrich-audiobooks.js",
+    "sync:audiobooks": "node ./scripts/sync-audiobooks.js"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@scriptin/jmdict-simplified-loader": "^3.6.1",
     "@supabase/supabase-js": "^2.103.0",
     "jmdict-simplified-node": "^1.1.2",

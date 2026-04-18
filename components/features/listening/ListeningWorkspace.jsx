@@ -22,6 +22,7 @@ export default function ListeningWorkspace({
   isCompact,
   workspaceSource,
   setWorkspaceSource,
+  authUserId,
   onAudiobookPlaybackStateChange,
   focusMode,
   setFocusMode,
@@ -50,6 +51,9 @@ export default function ListeningWorkspace({
   onToggleChannelEnabled,
   playerHostRef,
   focusPlayerHostRef,
+  audiobooksData,
+  audiobooksLoading,
+  audiobooksError,
 }) {
   const [channelSearch, setChannelSearch] = useState("");
   const isAudiobookMode = workspaceSource === "audiobooks";
@@ -281,7 +285,7 @@ export default function ListeningWorkspace({
                 textOverflow: "ellipsis",
               }}
             >
-              リスニング·ワークスペース
+              リスニング • ワークスペース
             </h2>
           </div>
 
@@ -293,7 +297,13 @@ export default function ListeningWorkspace({
         </div>
 
         {isAudiobookMode ? (
-          <AudiobookWorkspace onPlaybackStateChange={onAudiobookPlaybackStateChange} />
+          <AudiobookWorkspace
+            authUserId={authUserId}
+            onPlaybackStateChange={onAudiobookPlaybackStateChange}
+            audiobooksData={audiobooksData}
+            audiobooksLoading={audiobooksLoading}
+            audiobooksError={audiobooksError}
+          />
         ) : (
           <>
             {!focusMode && (

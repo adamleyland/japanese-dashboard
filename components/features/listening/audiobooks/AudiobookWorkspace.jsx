@@ -1,29 +1,39 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import AudiobookCurrentlyListening from "@/components/features/listening/audiobooks/AudiobookCurrentlyListening";
 import AudiobookLibrary from "@/components/features/listening/audiobooks/AudiobookLibrary";
 import AudiobookPlayer from "@/components/features/listening/audiobooks/AudiobookPlayer";
 import { useAudiobookPlayer } from "@/hooks/useAudiobookPlayer";
 
-export default function AudiobookWorkspace({ onPlaybackStateChange }) {
+export default function AudiobookWorkspace({
+  authUserId,
+  onPlaybackStateChange,
+  audiobooksData,
+  audiobooksLoading,
+  audiobooksError,
+}) {
   const {
     books,
     currentBook,
     currentProgressSeconds,
+    closePlayer,
+    hasPlayableAudio,
+    isPlaying,
     currentlyListeningBook,
     durationSeconds,
     loadBook,
     playbackState,
     progressPercent,
-    returnToLibrary,
+    savingProgress,
     seekTo,
     selectCurrentlyListening,
     skipBy,
     togglePlayback,
-  } = useAudiobookPlayer();
+  } = useAudiobookPlayer(audiobooksData, authUserId);
+  const [isPlayerOpen, setIsPlayerOpen] = useState(false);
 
-  const isBrowsing = playbackState === "idle" || !currentBook;
+  const usingFetchedBooks = Array.isArray(audiobooksData) && audiobooksData.length > 0;
 
   useEffect(() => {
     onPlaybackStateChange?.({
@@ -56,31 +66,45 @@ export default function AudiobookWorkspace({ onPlaybackStateChange }) {
 
   return (
     <div style={styles.shell}>
-      {isBrowsing ? (
+      {isPlayerOpen && currentBook ? (
+        <AudiobookPlayer
+          book={currentBook}
+          currentProgressSeconds={currentProgressSeconds}
+          durationSeconds={durationSeconds}
+          hasPlayableAudio={hasPlayableAudio}
+          isPlaying={isPlaying}
+          playbackState={playbackState}
+          progressPercent={progressPercent}
+          onClosePlayer={() => {
+            closePlayer();
+            setIsPlayerOpen(false);
+          }}
+          savingProgress={savingProgress}
+          onSeekTo={seekTo}
+          onSkipBy={skipBy}
+          onTogglePlayback={togglePlayback}
+        />
+      ) : (
         <>
           <AudiobookCurrentlyListening
             book={currentlyListeningBook}
-            onOpen={selectCurrentlyListening}
+            onPlay={() => {
+              selectCurrentlyListening("playing");
+              setIsPlayerOpen(true);
+            }}
           />
-          <AudiobookLibrary books={books} onSelect={loadBook} />
-        </>
-      ) : (
-        <>
-          <AudiobookPlayer
-            book={currentBook}
-            currentProgressSeconds={currentProgressSeconds}
-            durationSeconds={durationSeconds}
-            playbackState={playbackState}
-            progressPercent={progressPercent}
-            onReturnToLibrary={returnToLibrary}
-            onSeekTo={seekTo}
-            onSkipBy={skipBy}
-            onTogglePlayback={togglePlayback}
-          />
-
           <AudiobookLibrary
-            books={books.filter((book) => book.id !== currentBook.id)}
+            books={books}
             onSelect={loadBook}
+            hint={
+              usingFetchedBooks
+                ? "Browse your audiobook library"
+                : audiobooksLoading
+                  ? "Loading your audiobook shelf"
+                  : audiobooksError
+                    ? "Showing fallback audiobooks for now"
+                    : undefined
+            }
           />
         </>
       )}

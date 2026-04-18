@@ -44,6 +44,9 @@ export default function Home() {
   const [authSession, setAuthSession] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [audiobooksData, setAudiobooksData] = useState([]);
+  const [audiobooksError, setAudiobooksError] = useState(null);
+  const [audiobooksLoading, setAudiobooksLoading] = useState(true);
   const authUserId = authUser?.id || "";
   const listeningHoursRef = useRef(listeningHours);
   const shadowingHoursRef = useRef(shadowingHours);
@@ -256,6 +259,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const fetchAudiobooks = async () => {
+      setAudiobooksLoading(true);
+
+      const { data, error } = await supabase.from("audiobooks").select("*");
+
+      setAudiobooksData(data ?? []);
+      setAudiobooksError(error);
+      setAudiobooksLoading(false);
+    };
+
+    fetchAudiobooks();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const hydrateTrackingState = async () => {
@@ -352,6 +369,10 @@ export default function Home() {
               isMobile={isMobile}
               isCompact={isCompact}
               formatClock={formatClock}
+              authUserId={authUserId}
+              audiobooksData={audiobooksData}
+              audiobooksLoading={audiobooksLoading}
+              audiobooksError={audiobooksError}
             />
           )}
           {tab === "reading" && (

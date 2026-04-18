@@ -4,8 +4,8 @@ export default function AudiobookCard({ book, onSelect, compact = false }) {
   const progressPercent = Math.max(0, Math.min(100, book.progressPercent || 0));
 
   return (
-    <button type="button" onClick={() => onSelect(book.id)} style={styles.card(compact)}>
-      <div style={styles.cover(book.coverGradient)}>
+    <button type="button" onClick={() => onSelect(book)} style={styles.card(compact)}>
+      <div style={styles.cover(book.coverImage, book.coverGradient)}>
         <div style={styles.coverGlow(book.accentColor)} />
         <div style={styles.coverTextWrap}>
           <span style={styles.coverEyebrow}>Audiobook</span>
@@ -55,25 +55,26 @@ const styles = {
     minWidth: compact ? "190px" : "220px",
     boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
   }),
-  cover: (coverGradient) => ({
+  cover: (coverImage, coverGradient) => ({
     position: "relative",
     aspectRatio: "4 / 5",
     borderRadius: "16px",
     overflow: "hidden",
     background: coverGradient,
+    backgroundImage: coverImage
+      ? `linear-gradient(180deg, rgba(15,23,42,0.08) 0%, rgba(15,23,42,0.28) 52%, rgba(15,23,42,0.8) 100%), url("${coverImage}")`
+      : undefined,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
     padding: "14px",
     display: "flex",
     alignItems: "flex-end",
   }),
-  coverGlow: (accentColor) => ({
+  coverGlow: () => ({
     position: "absolute",
-    inset: "auto -10% -25% auto",
-    width: "110px",
-    height: "110px",
-    borderRadius: "999px",
-    background: accentColor,
-    opacity: 0.22,
-    filter: "blur(18px)",
+    inset: 0,
+    background:
+      "linear-gradient(180deg, rgba(15,23,42,0.02) 0%, rgba(15,23,42,0.12) 42%, rgba(15,23,42,0.4) 100%)",
   }),
   coverTextWrap: {
     position: "relative",
@@ -94,6 +95,10 @@ const styles = {
     lineHeight: 1.15,
     letterSpacing: "-0.03em",
     textShadow: "0 2px 12px rgba(15,23,42,0.18)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "100%",
   },
   meta: {
     display: "grid",

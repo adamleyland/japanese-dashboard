@@ -1,14 +1,17 @@
 "use client";
 
-import { Headphones, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
+import { clampWords, stripHtml } from "@/lib/stripHtml";
 
 export default function AudiobookPlayer({
   book,
   currentProgressSeconds,
   durationSeconds,
+  hasPlayableAudio,
+  isPlaying,
   playbackState,
   progressPercent,
-  onReturnToLibrary,
+  onClosePlayer,
   onSeekTo,
   onSkipBy,
   onTogglePlayback,
@@ -17,44 +20,43 @@ export default function AudiobookPlayer({
     return null;
   }
 
-  const isPlaying = playbackState === "playing";
+  const playing = isPlaying ?? playbackState === "playing";
+  const chapterCount = (book.chapters || []).length;
+  const remainingSeconds = Math.max(0, durationSeconds - currentProgressSeconds);
+  const plainDescription = clampWords(stripHtml(book.description), 50);
 
   return (
     <section style={styles.shell}>
       <div style={styles.playerHeader}>
-        <div>
+        <div style={styles.headerCopy}>
           <div style={styles.eyebrow}>Audiobook Player</div>
           <h3 style={styles.title}>{book.title}</h3>
-          <p style={styles.meta}>
-            {book.author}
-            {book.narrator ? ` • Narrated by ${book.narrator}` : ""}
-          </p>
+          <p style={styles.meta}>{buildMetadataLine(book, durationSeconds)}</p>
+          <p style={styles.description}>{plainDescription}</p>
         </div>
 
-        <button type="button" onClick={onReturnToLibrary} style={styles.backButton}>
-          <RotateCcw size={14} />
-          Back to library
+        <button type="button" onClick={onClosePlayer} style={styles.iconButton} aria-label="Close player">
+          <X size={18} />
         </button>
       </div>
 
       <div style={styles.playerGrid}>
-        <div style={styles.cover(book.coverGradient)}>
-          <div style={styles.coverInner}>
-            <Headphones size={18} />
-            <span style={styles.coverTitle}>{book.title}</span>
-          </div>
-        </div>
+        <div style={styles.cover(book.coverImage, book.coverGradient)} aria-hidden="true" />
 
         <div style={styles.controlsColumn}>
-          <div style={styles.description}>{book.description}</div>
-
           <div style={styles.timelineWrap}>
+            <div style={styles.progressSummary}>
+              <span style={styles.progressBadge}>{progressPercent.toFixed(0)}% complete</span>
+              <span style={styles.progressRemaining}>{formatRemaining(remainingSeconds)} left</span>
+            </div>
+
             <input
               type="range"
               min={0}
               max={durationSeconds}
               value={currentProgressSeconds}
               onChange={(event) => onSeekTo(Number(event.target.value))}
+              disabled={!hasPlayableAudio}
               style={styles.timeline}
             />
 
@@ -63,27 +65,52 @@ export default function AudiobookPlayer({
               <span>{progressPercent.toFixed(1)}%</span>
               <span>{formatClock(durationSeconds)}</span>
             </div>
+
+            {!hasPlayableAudio && (
+              <div style={styles.audioHint}>Audio source unavailable for this audiobook.</div>
+            )}
           </div>
 
           <div style={styles.actionRow}>
-            <button type="button" onClick={() => onSkipBy(-10)} style={styles.secondaryButton}>
+            <button
+              type="button"
+              onClick={() => onSkipBy(-10)}
+              disabled={!hasPlayableAudio}
+              style={styles.secondaryButton(!hasPlayableAudio)}
+            >
               <SkipBack size={16} />
               -10s
             </button>
 
-            <button type="button" onClick={onTogglePlayback} style={styles.primaryButton}>
-              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-              {isPlaying ? "Pause" : "Play"}
+            <button
+              type="button"
+              onClick={onTogglePlayback}
+              disabled={!hasPlayableAudio}
+              style={styles.primaryButton(!hasPlayableAudio)}
+            >
+              {playing ? <Pause size={18} /> : <Play size={18} />}
+              {playing ? "Pause" : "Play"}
             </button>
 
-            <button type="button" onClick={() => onSkipBy(10)} style={styles.secondaryButton}>
+            <button
+              type="button"
+              onClick={() => onSkipBy(10)}
+              disabled={!hasPlayableAudio}
+              style={styles.secondaryButton(!hasPlayableAudio)}
+            >
               <SkipForward size={16} />
               +10s
             </button>
           </div>
 
           <div style={styles.chapterBlock}>
-            <div style={styles.chapterEyebrow}>Chapter placeholders</div>
+            <div style={styles.chapterHeader}>
+              <div style={styles.chapterEyebrow}>Chapters</div>
+              <div style={styles.chapterCount}>
+                {chapterCount ? `${chapterCount} items` : "No chapter markers yet"}
+              </div>
+            </div>
+
             <div style={styles.chapterList}>
               {(book.chapters || []).map((chapter) => (
                 <button
@@ -92,8 +119,8 @@ export default function AudiobookPlayer({
                   onClick={() => onSeekTo(chapter.startSeconds)}
                   style={styles.chapterButton}
                 >
-                  <span>{chapter.title}</span>
-                  <span>{formatClock(chapter.startSeconds)}</span>
+                  <span style={styles.chapterTitle}>{chapter.title}</span>
+                  <span style={styles.chapterTime}>{formatClock(chapter.startSeconds)}</span>
                 </button>
               ))}
             </div>
@@ -119,6 +146,32 @@ function formatClock(totalSeconds) {
   ).padStart(2, "0")}`;
 }
 
+function formatDurationCompact(totalSeconds) {
+  const safe = Math.max(0, Math.floor(totalSeconds || 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+
+  if (!hours) {
+    return `${minutes}m`;
+  }
+
+  return `${hours}h ${minutes}m`;
+}
+
+function formatRemaining(totalSeconds) {
+  return formatDurationCompact(totalSeconds);
+}
+
+function buildMetadataLine(book, durationSeconds) {
+  return [
+    book.author,
+    book.narrator ? `Narrated by ${book.narrator}` : "",
+    durationSeconds ? formatDurationCompact(durationSeconds) : "",
+  ]
+    .filter(Boolean)
+    .join(" • ");
+}
+
 const styles = {
   shell: {
     display: "grid",
@@ -136,6 +189,12 @@ const styles = {
     gap: "12px",
     flexWrap: "wrap",
   },
+  headerCopy: {
+    minWidth: 0,
+    display: "grid",
+    gap: "8px",
+    flex: "1 1 320px",
+  },
   eyebrow: {
     fontSize: "11px",
     fontWeight: 700,
@@ -144,7 +203,7 @@ const styles = {
     color: "var(--app-text-muted)",
   },
   title: {
-    margin: "4px 0 0 0",
+    margin: 0,
     fontSize: "28px",
     fontWeight: 700,
     lineHeight: 1.1,
@@ -152,57 +211,54 @@ const styles = {
     color: "var(--app-text)",
   },
   meta: {
-    margin: "6px 0 0 0",
+    margin: 0,
     fontSize: "13px",
-    color: "var(--app-text-muted)",
+    color: "var(--app-text-soft)",
   },
-  backButton: {
+  description: {
+    margin: 0,
+    fontSize: "13px",
+    lineHeight: 1.65,
+    color: "var(--app-text-muted)",
+    display: "-webkit-box",
+    WebkitLineClamp: 4,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    maxWidth: "68ch",
+  },
+  iconButton: {
+    width: "40px",
+    height: "40px",
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
     color: "var(--app-text-soft)",
-    borderRadius: "12px",
-    padding: "10px 12px",
+    borderRadius: "14px",
     display: "inline-flex",
     alignItems: "center",
-    gap: "8px",
+    justifyContent: "center",
     cursor: "pointer",
-    fontSize: "12px",
-    fontWeight: 700,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    flexShrink: 0,
   },
   playerGrid: {
     display: "grid",
     gridTemplateColumns: "220px minmax(0, 1fr)",
     gap: "18px",
   },
-  cover: (coverGradient) => ({
+  cover: (coverImage, coverGradient) => ({
+    position: "relative",
     borderRadius: "20px",
     background: coverGradient,
+    backgroundImage: coverImage ? `url("${coverImage}")` : undefined,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
     minHeight: "280px",
-    display: "flex",
-    alignItems: "flex-end",
-    padding: "18px",
-    boxShadow: "inset 0 -40px 80px rgba(15,23,42,0.2)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.12)",
   }),
-  coverInner: {
-    display: "grid",
-    gap: "8px",
-    color: "#fff",
-  },
-  coverTitle: {
-    fontSize: "24px",
-    fontWeight: 700,
-    lineHeight: 1.05,
-    letterSpacing: "-0.04em",
-  },
   controlsColumn: {
     display: "grid",
     gap: "16px",
     alignContent: "start",
-  },
-  description: {
-    fontSize: "14px",
-    lineHeight: 1.65,
-    color: "var(--app-text-soft)",
   },
   timelineWrap: {
     display: "grid",
@@ -212,10 +268,30 @@ const styles = {
     borderRadius: "16px",
     padding: "14px",
   },
+  progressSummary: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "10px",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  progressBadge: {
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "var(--app-text)",
+  },
+  progressRemaining: {
+    fontSize: "12px",
+    color: "var(--app-text-muted)",
+  },
   timeline: {
     width: "100%",
     accentColor: "#38bdf8",
     cursor: "pointer",
+  },
+  audioHint: {
+    fontSize: "12px",
+    color: "var(--app-text-faint)",
   },
   timelineMeta: {
     display: "flex",
@@ -230,7 +306,7 @@ const styles = {
     alignItems: "center",
     flexWrap: "wrap",
   },
-  primaryButton: {
+  primaryButton: (disabled) => ({
     border: "none",
     background: "var(--app-selected-surface)",
     color: "var(--app-selected-text)",
@@ -239,11 +315,12 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
     fontSize: "13px",
     fontWeight: 700,
-  },
-  secondaryButton: {
+  }),
+  secondaryButton: (disabled) => ({
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
     color: "var(--app-text-soft)",
@@ -252,10 +329,11 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
     fontSize: "13px",
     fontWeight: 700,
-  },
+  }),
   chapterBlock: {
     display: "grid",
     gap: "10px",
@@ -264,6 +342,13 @@ const styles = {
     borderRadius: "16px",
     padding: "14px",
   },
+  chapterHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
   chapterEyebrow: {
     fontSize: "11px",
     fontWeight: 700,
@@ -271,9 +356,16 @@ const styles = {
     textTransform: "uppercase",
     color: "var(--app-text-muted)",
   },
+  chapterCount: {
+    fontSize: "11px",
+    color: "var(--app-text-faint)",
+  },
   chapterList: {
     display: "grid",
     gap: "8px",
+    maxHeight: "240px",
+    overflowY: "auto",
+    paddingRight: "4px",
   },
   chapterButton: {
     border: "1px solid var(--app-border-soft)",
@@ -288,5 +380,16 @@ const styles = {
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 600,
+    textAlign: "left",
+  },
+  chapterTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  chapterTime: {
+    color: "var(--app-text-muted)",
+    flexShrink: 0,
   },
 };
