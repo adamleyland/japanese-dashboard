@@ -19,6 +19,64 @@ const AUDIOBOOK_GRADIENTS = [
   "linear-gradient(135deg, #22c55e 0%, #06b6d4 100%)",
 ];
 const AUDIOBOOK_ACCENTS = ["#fbbf24", "#38bdf8", "#34d399", "#c084fc", "#fb923c", "#5eead4"];
+const AUDIOBOOK_SEARCH_ALIASES = {
+  "１Ｑ８４―ＢＯＯＫ１〈４月－６月〉前編": [
+    "いちきゅうはちよん ぶっく1 しがつ ろくがつ ぜんぺん",
+    "ichikyuuhachiyon book1 shigatsu rokugatsu zenpen",
+    "1q84 book1 zenpen",
+  ],
+  "１Ｑ８４―ＢＯＯＫ１〈４月－６月〉後編": [
+    "いちきゅうはちよん ぶっく1 しがつ ろくがつ こうへん",
+    "ichikyuuhachiyon book1 shigatsu rokugatsu kouhen",
+    "1q84 book1 kouhen",
+  ],
+  "スプートニクの恋人": [
+    "すぷーとにくのこいびと",
+    "suputoniku no koibito",
+    "sputnik no koibito",
+  ],
+  "ノルウェイの森 上": [
+    "のるうぇいのもり じょう",
+    "noruwei no mori jou",
+    "norwegian wood jou",
+  ],
+  告白: [
+    "こくはく",
+    "kokuhaku",
+  ],
+  "国境の南、太陽の西": [
+    "こっきょうのみなみ たいようのにし",
+    "kokkyou no minami taiyou no nishi",
+  ],
+  "愛しさに気づかぬうちに": [
+    "いとしさにきづかぬうちに",
+    "itoshisa ni kizukanu uchi ni",
+  ],
+  "放課後ミステリクラブ　３ 動くカメの銅像事件": [
+    "ほうかごみすてりくらぶ さん うごくかめのどうぞうじけん",
+    "houkago misuteri kurabu san ugoku kame no douzou jiken",
+  ],
+  "放課後ミステリクラブ　4 密室のウサギ小屋事件": [
+    "ほうかごみすてりくらぶ よん みっしつのうさぎごやじけん",
+    "houkago misuteri kurabu yon misshitsu no usagigoya jiken",
+  ],
+  "殺人ライセンス": [
+    "さつじんらいせんす",
+    "satsujin raisensu",
+  ],
+  "色彩を持たない多崎つくると、彼の巡礼の年": [
+    "しきさいをもたない たざきつくると かれのじゅんれいのとし",
+    "shikisai o motanai tazaki tsukuru to kare no junrei no toshi",
+  ],
+};
+
+const AUDIOBOOK_AUTHOR_SEARCH_ALIASES = {
+  "村上 春樹": ["むらかみ はるき", "murakami haruki"],
+  "湊 かなえ": ["みなと かなえ", "minato kanae"],
+  "川口 俊和": ["かわぐち としかず", "kawaguchi toshikazu"],
+  "知念 実希人": ["ちねん みきと", "chinen mikito"],
+  "今野 敏": ["こんの びん", "konno bin"],
+};
 
 function toTrimmedString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -47,6 +105,103 @@ function normalizeSearchCollection(value) {
   }
 
   return [];
+}
+
+function shouldIncludeSearchValue(value) {
+  const trimmedValue = toTrimmedString(value);
+  if (!trimmedValue) {
+    return false;
+  }
+
+  const normalizedValue = trimmedValue.toLowerCase();
+  if (
+    normalizedValue.startsWith("http://") ||
+    normalizedValue.startsWith("https://") ||
+    normalizedValue.startsWith("data:")
+  ) {
+    return false;
+  }
+
+  return trimmedValue.length <= 240;
+}
+
+function decodeEscapedUnicode(value) {
+  return value.replace(/\\u([0-9a-f]{4})/gi, (_, hex) =>
+    String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+}
+
+function maybeParseStructuredString(value) {
+  const trimmedValue = toTrimmedString(value);
+  if (!trimmedValue || !/^[\[{]/.test(trimmedValue)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmedValue);
+  } catch {
+    return null;
+  }
+}
+
+function extractSearchSegments(value) {
+  const normalizedValue = toTrimmedString(value).normalize("NFKC");
+  if (!normalizedValue) {
+    return [];
+  }
+
+  return normalizedValue.match(/[一-龯々ぁ-んァ-ヶー]+|[a-z0-9]+/gi) || [];
+}
+
+function collectSearchableStrings(value, bucket = new Set(), seen = new WeakSet()) {
+  if (typeof value === "string") {
+    const decodedValue = decodeEscapedUnicode(value);
+    const parsedValue = maybeParseStructuredString(decodedValue);
+    if (parsedValue) {
+      collectSearchableStrings(parsedValue, bucket, seen);
+    }
+
+    if (shouldIncludeSearchValue(decodedValue)) {
+      const trimmedValue = decodedValue.trim();
+      bucket.add(trimmedValue);
+
+      const fileStem = extractFileStem(trimmedValue);
+      if (fileStem && fileStem !== trimmedValue) {
+        bucket.add(fileStem);
+      }
+
+      extractSearchSegments(trimmedValue).forEach((segment) => {
+        if (segment !== trimmedValue) {
+          bucket.add(segment);
+        }
+      });
+    }
+
+    return bucket;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      collectSearchableStrings(entry, bucket, seen);
+    });
+    return bucket;
+  }
+
+  if (!value || typeof value !== "object") {
+    return bucket;
+  }
+
+  if (seen.has(value)) {
+    return bucket;
+  }
+
+  seen.add(value);
+
+  Object.values(value).forEach((entry) => {
+    collectSearchableStrings(entry, bucket, seen);
+  });
+
+  return bucket;
 }
 
 function buildAudiobookSearchValues(book) {
@@ -102,6 +257,9 @@ function buildAudiobookSearchValues(book) {
     ...normalizeSearchCollection(book?.keywords),
     ...normalizeSearchCollection(book?.search_terms),
     ...normalizeSearchCollection(book?.searchTerms),
+    ...normalizeSearchCollection(AUDIOBOOK_SEARCH_ALIASES[toTrimmedString(book?.title)]),
+    ...normalizeSearchCollection(AUDIOBOOK_AUTHOR_SEARCH_ALIASES[toTrimmedString(book?.author)]),
+    ...collectSearchableStrings(book),
   ];
 }
 
