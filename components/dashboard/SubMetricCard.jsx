@@ -1,7 +1,5 @@
 "use client";
 
-import { Clock3 } from "lucide-react";
-
 export default function SubMetricCard({
   label,
   value,
@@ -12,14 +10,21 @@ export default function SubMetricCard({
     <div style={styles.metricCard(false)}>
       <div style={styles.metricTopRow}>
         <div style={styles.metricMeta}>
-          {icon && <div style={styles.metricIconWrap}>{icon}</div>}
+          {icon &&
+            (onAdjust ? (
+              <button
+                type="button"
+                onClick={onAdjust}
+                style={styles.metricIconButton}
+                aria-label={`Adjust ${label}`}
+              >
+                {icon}
+              </button>
+            ) : (
+              <div style={styles.metricIconWrap}>{icon}</div>
+            ))}
           <div style={styles.metricLabel}>{label}</div>
         </div>
-        {onAdjust && (
-          <button type="button" onClick={onAdjust} style={styles.quickAddButtonSub} aria-label={`Adjust ${label}`}>
-            <Clock3 size={14} strokeWidth={2} />
-          </button>
-        )}
       </div>
 
       <div style={styles.metricValue(false)}>{value}</div>
@@ -59,23 +64,24 @@ const styles = {
     justifyContent: "center",
     flexShrink: 0,
   },
+  metricIconButton: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "12px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface-elevated)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    cursor: "pointer",
+    padding: 0,
+  },
   metricLabel: {
     fontSize: "12px",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
     color: "var(--app-text-muted)",
-  },
-  quickAddButtonSub: {
-    width: "30px",
-    height: "30px",
-    border: "1px solid var(--app-border)",
-    background: "var(--app-surface-elevated)",
-    borderRadius: "10px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "var(--app-text-muted)",
-    cursor: "pointer",
   },
   metricValue: (featured) => ({
     fontSize: featured ? "40px" : "30px",

@@ -38,7 +38,7 @@ export default function Home() {
   const [wordsRead, setWordsRead] = useState(3050000);
   const [wordsWritten, setWordsWritten] = useState(260000);
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(true);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [authSession, setAuthSession] = useState(null);
@@ -212,6 +212,10 @@ export default function Home() {
     [updateListeningHours],
   );
 
+  const handleTabChange = useCallback((nextTab) => {
+    setTab((currentTab) => (currentTab === nextTab ? null : nextTab));
+  }, []);
+
   useEffect(() => {
     const onResize = () => {
       setIsMobile(window.innerWidth < 1000);
@@ -324,7 +328,7 @@ export default function Home() {
           authUserId={authUserId}
           isCompact={isCompact}
           moduleTabs={MODULE_TABS}
-          onChange={setTab}
+          onChange={handleTabChange}
           onToggleDashboard={() => setShowDashboard((visible) => !visible)}
           showDashboard={showDashboard}
           styles={styles}

@@ -1,7 +1,5 @@
 "use client";
 
-import { Clock3 } from "lucide-react";
-
 export default function MetricCard({
   label,
   value,
@@ -12,11 +10,17 @@ export default function MetricCard({
   return (
     <div style={styles.metricCard(featured)}>
       <div style={styles.metricTopRow}>
-        <div style={styles.metricIconWrap(featured)}>{icon}</div>
-        {onAdjust && (
-          <button type="button" onClick={onAdjust} style={styles.quickAddButton} aria-label={`Adjust ${label}`}>
-            <Clock3 size={15} strokeWidth={2} />
+        {onAdjust ? (
+          <button
+            type="button"
+            onClick={onAdjust}
+            style={styles.metricIconButton(featured)}
+            aria-label={`Adjust ${label}`}
+          >
+            {icon}
           </button>
+        ) : (
+          <div style={styles.metricIconWrap(featured)}>{icon}</div>
         )}
       </div>
 
@@ -52,18 +56,19 @@ const styles = {
     justifyContent: "center",
     fontSize: f ? "20px" : "18px",
   }),
-  quickAddButton: {
-    width: "32px",
-    height: "32px",
+  metricIconButton: (f) => ({
+    width: f ? "40px" : "34px",
+    height: f ? "40px" : "34px",
+    borderRadius: "12px",
     border: "1px solid var(--app-border)",
     background: "var(--app-surface-elevated)",
-    borderRadius: "10px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "var(--app-text-muted)",
+    fontSize: f ? "20px" : "18px",
     cursor: "pointer",
-  },
+    padding: 0,
+  }),
   metricLabel: {
     fontSize: "12px",
     textTransform: "uppercase",
