@@ -12,7 +12,7 @@ import ListeningTab from "@/components/features/listening/ListeningTab";
 import ReadingWorkspace from "@/components/features/reading/ReadingWorkspace";
 import ShadowingWorkspace from "@/components/features/shadowing/ShadowingWorkspace";
 import WritingWorkspace from "@/components/features/writing/WritingWorkspace";
-import GamingWorkspace from "@/components/features/gaming/GamingWorkspace";
+import GamingTab from "@/components/features/gaming/GamingTab";
 
 const MODULE_TABS = [
   { key: "listening", label: "Listening", icon: Ear },
@@ -212,6 +212,18 @@ export default function Home() {
     [updateListeningHours],
   );
 
+  const adjustGamingHours = useCallback(
+    (deltaHours, metadata = {}) => {
+      if (!Number.isFinite(deltaHours) || !deltaHours) return;
+
+      updateGamingHours(
+        (currentHours) => Math.max(0, currentHours + deltaHours),
+        metadata,
+      );
+    },
+    [updateGamingHours],
+  );
+
   const handleTabChange = useCallback((nextTab) => {
     setTab((currentTab) => (currentTab === nextTab ? null : nextTab));
   }, []);
@@ -401,10 +413,12 @@ export default function Home() {
             />
           )}
           {tab === "gaming" && (
-            <GamingWorkspace
+            <GamingTab
               styles={styles}
               gamingHours={gamingHours}
-              setGamingHours={updateGamingHours}
+              adjustGamingHours={adjustGamingHours}
+              isMobile={isMobile}
+              isCompact={isCompact}
             />
           )}
         </section>
