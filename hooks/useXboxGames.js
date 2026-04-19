@@ -4,26 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { normalizeXboxGamesResponse } from "@/lib/gaming/normalizers";
 
 export function useXboxGames() {
-  const endpoint = process.env.NEXT_PUBLIC_XBOX_GAMES_ENDPOINT || "";
+  const endpoint = "/api/gaming/xbox";
   const [refreshCount, setRefreshCount] = useState(0);
   const [state, setState] = useState({
     games: [],
-    loading: false,
+    loading: true,
     error: null,
-    configured: Boolean(endpoint),
+    configured: true,
   });
 
   useEffect(() => {
-    if (!endpoint) {
-      setState({
-        games: [],
-        loading: false,
-        error: null,
-        configured: false,
-      });
-      return;
-    }
-
     const abortController = new AbortController();
 
     async function loadXboxGames() {
@@ -41,11 +31,16 @@ export function useXboxGames() {
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(payload?.message || "Unable to load Xbox games.");
+          throw new Error(payload?.error || payload?.message || "Unable to load Xbox games.");
         }
 
+        const games =
+          Array.isArray(payload?.games) && payload.games.every((game) => game?.source === "xbox")
+            ? payload.games
+            : normalizeXboxGamesResponse(payload);
+
         setState({
-          games: normalizeXboxGamesResponse(payload),
+          games,
           loading: false,
           error: null,
           configured: true,

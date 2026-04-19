@@ -13,9 +13,9 @@ import {
   DEFAULT_GAMING_SOURCE_FILTER,
 } from "@/lib/gaming/gaming-utils";
 import {
-  selectCurrentlyPlayingGame,
+  getCurrentlyPlayingGame,
+  getVisibleLibraryGames,
   selectIncludedGames,
-  selectVisibleGames,
 } from "@/lib/gaming/selectors";
 
 const GAMING_SORT_STORAGE_KEY = "jp_gaming_sort";
@@ -138,12 +138,12 @@ export default function GamingTab({
   const includedGames = useMemo(() => selectIncludedGames(games), [games]);
 
   const visibleGames = useMemo(
-    () => selectVisibleGames(games, { sortKey, sourceFilter, viewMode: libraryView }),
+    () => getVisibleLibraryGames(games, { sortKey, sourceFilter, viewMode: libraryView }),
     [games, libraryView, sortKey, sourceFilter],
   );
 
   const currentGame = useMemo(
-    () => selectCurrentlyPlayingGame(includedGames),
+    () => getCurrentlyPlayingGame(includedGames),
     [includedGames],
   );
   const hasSourceData = games.length > 0;

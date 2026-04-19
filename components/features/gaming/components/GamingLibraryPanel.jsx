@@ -100,7 +100,7 @@ export default function GamingLibraryPanel({
           <div style={{ minWidth: 0 }}>
             <h2 style={styles.sectionTitle}>Gaming Library</h2>
             <p style={styles.sectionText}>
-              Unified Steam and Xbox playtime, normalized for one dashboard.
+              Unified Steam and Xbox library data, playtime, and artwork in one dashboard.
             </p>
           </div>
 
@@ -224,40 +224,91 @@ function SourceStatusPill({ label, status }) {
       ? {
           background: "rgba(239,68,68,0.1)",
           color: "#dc2626",
+          border: "1px solid rgba(239,68,68,0.16)",
         }
       : {
           background: "rgba(16,185,129,0.12)",
           color: "#059669",
+          border: "1px solid rgba(16,185,129,0.18)",
         }
     : {
         background: "var(--app-surface-soft)",
         color: "var(--app-text-muted)",
+        border: "1px solid var(--app-border-soft)",
       };
+
+  const statusLabel = status.loading
+    ? "Loading"
+    : status.configured
+      ? status.error
+        ? "Issue"
+        : "Connected"
+      : "Not configured";
 
   return (
     <div
+      title={`${label}: ${statusLabel}`}
+      aria-label={`${label}: ${statusLabel}`}
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "8px",
-        padding: "7px 10px",
+        justifyContent: "center",
+        width: "34px",
+        height: "34px",
         borderRadius: "999px",
-        fontSize: "11px",
-        fontWeight: 700,
         ...tone,
       }}
     >
-      <span>{label}</span>
-      <span>
-        {status.loading
-          ? "Loading"
-          : status.configured
-            ? status.error
-              ? "Issue"
-              : "Connected"
-            : "Not configured"}
-      </span>
+      {label === "Steam" ? (
+        <SteamGlyph color={tone.color} />
+      ) : (
+        <XboxGlyph color={tone.color} />
+      )}
     </div>
+  );
+}
+
+function SteamGlyph({ color }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="8.5" cy="15.5" r="3" stroke={color} strokeWidth="1.8" />
+      <circle cx="16.5" cy="7.5" r="3" stroke={color} strokeWidth="1.8" />
+      <path
+        d="M11 14.2l3.7-3.7"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6.2 13.4L3.8 12"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="16.5" cy="7.5" r="6" stroke={color} strokeWidth="1.4" opacity="0.55" />
+    </svg>
+  );
+}
+
+function XboxGlyph({ color }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
+      <path
+        d="M7.2 8.6c1.3-.8 2.8-1.3 4.8 1 2-2.3 3.5-1.8 4.8-1"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.4 16.4c1.2-2 2.4-3.5 3.6-4.9 1.2 1.4 2.4 2.9 3.6 4.9"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

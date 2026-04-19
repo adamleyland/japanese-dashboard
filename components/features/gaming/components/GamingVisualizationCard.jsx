@@ -54,7 +54,7 @@ export default function GamingVisualizationCard({
             letterSpacing: "0.05em",
           }}
         >
-          Overall Gaming Total
+          Tracked Gaming Total
         </p>
       </div>
 
@@ -132,7 +132,7 @@ export default function GamingVisualizationCard({
           })
         ) : (
           <div style={{ ...styles.playerSub, padding: "8px 0" }}>
-            Your top included games will appear here once source data is available.
+            Your top included games with tracked hours will appear here once source data is available.
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ import {
   formatRelativeLastPlayed,
   getPlatformLabel,
   getSourceLabel,
+  supportsTrackedPlaytime,
 } from "@/lib/gaming/gaming-utils";
 
 export default function GamingLibraryListView({
@@ -54,6 +55,9 @@ export default function GamingLibraryListView({
 }
 
 function DesktopRow({ styles, game, onToggleInclude }) {
+  const canShowTrackedHours = supportsTrackedPlaytime(game);
+  const playtimeLabel = canShowTrackedHours ? formatPlaytimeHours(game.minutesPlayedTotal) : "0h";
+
   return (
     <>
       <div
@@ -108,16 +112,16 @@ function DesktopRow({ styles, game, onToggleInclude }) {
               style={{
                 fontSize: "24px",
                 fontWeight: 800,
-                lineHeight: 1,
+                lineHeight: 1.1,
                 letterSpacing: "-0.03em",
                 color: "var(--app-text)",
               }}
             >
-              {formatPlaytimeHours(game.minutesPlayedTotal)}
+              {playtimeLabel}
             </div>
           </div>
           <div style={{ fontSize: "11px", color: "var(--app-text-muted)", fontWeight: 700 }}>
-            Total played
+            Tracked hours
           </div>
         </div>
       </div>
@@ -126,6 +130,9 @@ function DesktopRow({ styles, game, onToggleInclude }) {
 }
 
 function CompactRow({ styles, game, onToggleInclude }) {
+  const canShowTrackedHours = supportsTrackedPlaytime(game);
+  const playtimeLabel = canShowTrackedHours ? formatPlaytimeHours(game.minutesPlayedTotal) : "0h";
+
   return (
     <>
       <div
@@ -170,12 +177,13 @@ function CompactRow({ styles, game, onToggleInclude }) {
                 style={{
                   fontSize: "20px",
                   fontWeight: 800,
-                  lineHeight: 1,
+                  lineHeight: 1.1,
                   letterSpacing: "-0.03em",
                   whiteSpace: "nowrap",
+                  color: "var(--app-text)",
                 }}
               >
-                {formatPlaytimeHours(game.minutesPlayedTotal)}
+                {playtimeLabel}
               </div>
             </div>
           </div>

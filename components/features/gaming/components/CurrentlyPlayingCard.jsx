@@ -9,9 +9,12 @@ import {
   formatRelativeLastPlayed,
   getPlatformLabel,
   getSourceLabel,
+  supportsTrackedPlaytime,
 } from "@/lib/gaming/gaming-utils";
 
 export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
+  const canShowTrackedPlaytime = supportsTrackedPlaytime(currentGame);
+
   if (!currentGame && !loading) {
     return (
       <div style={styles.sideCard}>
@@ -189,11 +192,19 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
           >
             <StatCard
               label="Total"
-              value={formatPlaytimeCompact(currentGame.minutesPlayedTotal)}
+              value={
+                canShowTrackedPlaytime
+                  ? formatPlaytimeCompact(currentGame.minutesPlayedTotal)
+                  : "Activity only"
+              }
             />
             <StatCard
               label="Recent"
-              value={formatPlaytimeDetailed(currentGame.minutesPlayedRecent)}
+              value={
+                canShowTrackedPlaytime
+                  ? formatPlaytimeDetailed(currentGame.minutesPlayedRecent)
+                  : "No tracked time"
+              }
             />
           </div>
 

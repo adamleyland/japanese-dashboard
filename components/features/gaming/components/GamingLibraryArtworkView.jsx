@@ -39,11 +39,28 @@ export default function GamingLibraryArtworkView({
 
 function ArtworkCard({ game, onToggleInclude }) {
   const [isHovered, setIsHovered] = useState(false);
+  const isLaunchable = Boolean(game.launchUrl);
 
   return (
-    <button
-      type="button"
-      onClick={() => openGameLauncher(game)}
+    <div
+      role={isLaunchable ? "button" : undefined}
+      tabIndex={isLaunchable ? 0 : -1}
+      aria-label={isLaunchable ? `Launch ${game.title}` : game.title}
+      onClick={() => {
+        if (isLaunchable) {
+          openGameLauncher(game);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (!isLaunchable) {
+          return;
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openGameLauncher(game);
+        }
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onFocus={() => setIsHovered(true)}
@@ -59,12 +76,13 @@ function ArtworkCard({ game, onToggleInclude }) {
             ? "1px solid rgba(148,163,184,0.32)"
             : "1px solid var(--app-border-soft)",
         background: "linear-gradient(180deg, rgba(139,92,246,0.16), rgba(15,23,42,0.06))",
-        cursor: game.launchUrl ? "pointer" : "default",
+        cursor: isLaunchable ? "pointer" : "default",
         padding: 0,
         textAlign: "left",
         boxShadow: isHovered ? "0 18px 40px rgba(15,23,42,0.18)" : "0 8px 22px rgba(15,23,42,0.1)",
         transform: isHovered ? "translateY(-1px)" : "translateY(0)",
         transition: "all 180ms ease",
+        outline: "none",
       }}
     >
       <GameArtworkImage
@@ -109,7 +127,7 @@ function ArtworkCard({ game, onToggleInclude }) {
       >
         {game.includeInOverallTotal === false ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
       </button>
-    </button>
+    </div>
   );
 }
 
