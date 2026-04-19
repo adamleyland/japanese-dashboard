@@ -29,6 +29,7 @@ const TRACKING_SOURCE_DEFAULTS = {
   writing: { positive: "manual", negative: "adjustment" },
   gaming: { positive: "gaming", negative: "adjustment" },
 };
+const TRACKER_FOCUS_MODE_STORAGE_KEY = "jp_tracker_focus_mode";
 
 export default function Home() {
   const [tab, setTab] = useState("listening");
@@ -39,6 +40,13 @@ export default function Home() {
   const [wordsWritten, setWordsWritten] = useState(260000);
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [trackerFocusMode, setTrackerFocusMode] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem(TRACKER_FOCUS_MODE_STORAGE_KEY) === "true";
+  });
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [authSession, setAuthSession] = useState(null);
@@ -66,6 +74,14 @@ export default function Home() {
     wordsReadRef.current = wordsRead;
     wordsWrittenRef.current = wordsWritten;
   }, [gamingHours, listeningHours, shadowingHours, wordsRead, wordsWritten]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(TRACKER_FOCUS_MODE_STORAGE_KEY, String(trackerFocusMode));
+  }, [trackerFocusMode]);
 
   const persistMetricDelta = useCallback(
     async ({ metric, delta, metadata = {}, previousValue, nextValue, ref, setValue }) => {
@@ -350,29 +366,46 @@ export default function Home() {
           <section
             style={{
               ...styles.heroGrid,
-              gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : trackerFocusMode
+                ? "minmax(0, 1fr) 0fr"
+                : "minmax(0, 1.6fr) minmax(320px, 1fr)",
+              gap: isMobile ? "14px" : trackerFocusMode ? "0px" : "14px",
             }}
           >
-            <MainTracker
-              overallHoursLabel={formatHours(overallHours)}
-              listeningHoursLabel={formatHours(listeningHours)}
-              listeningHours={listeningHours}
-              wordsReadLabel={formatWords(wordsRead)}
-              wordsRead={wordsRead}
-              gamingHoursLabel={formatHours(gamingHours)}
-              gamingHours={gamingHours}
-              shadowingHoursLabel={formatHours(shadowingHours)}
-              shadowingHours={shadowingHours}
-              wordsWrittenLabel={formatWords(wordsWritten)}
-              wordsWritten={wordsWritten}
-              onAdjustMetric={adjustMetricByDelta}
-              isCompact={isCompact}
-              isAdditionalOpen={isAdditionalOpen}
-              setIsAdditionalOpen={setIsAdditionalOpen}
-              styles={styles}
-            />
+            <div style={styles.dashboardPrimaryColumn}>
+              <MainTracker
+                overallHoursLabel={formatHours(overallHours)}
+                listeningHoursLabel={formatHours(listeningHours)}
+                listeningHours={listeningHours}
+                wordsReadLabel={formatWords(wordsRead)}
+                wordsRead={wordsRead}
+                gamingHoursLabel={formatHours(gamingHours)}
+                gamingHours={gamingHours}
+                shadowingHoursLabel={formatHours(shadowingHours)}
+                shadowingHours={shadowingHours}
+                wordsWrittenLabel={formatWords(wordsWritten)}
+                wordsWritten={wordsWritten}
+                onAdjustMetric={adjustMetricByDelta}
+                isCompact={isCompact}
+                focusMode={trackerFocusMode}
+                onToggleFocusMode={() => setTrackerFocusMode((currentValue) => !currentValue)}
+                isAdditionalOpen={isAdditionalOpen}
+                setIsAdditionalOpen={setIsAdditionalOpen}
+                styles={styles}
+              />
+            </div>
 
-            <DictionaryCarousel styles={styles} />
+            {!isMobile ? (
+              <div style={styles.dashboardSecondaryColumn}>
+                <div style={styles.dashboardSecondaryInner(trackerFocusMode)}>
+                  <DictionaryCarousel styles={styles} />
+                </div>
+              </div>
+            ) : !trackerFocusMode ? (
+              <DictionaryCarousel styles={styles} />
+            ) : null}
           </section>
         )}
 
@@ -499,17 +532,38 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "1.6fr 1fr",
     gap: "14px",
+    alignItems: "stretch",
+    transition: "grid-template-columns 280ms cubic-bezier(0.22, 1, 0.36, 1), gap 280ms ease",
   },
+  dashboardPrimaryColumn: {
+    minWidth: 0,
+    height: "100%",
+  },
+  dashboardSecondaryColumn: {
+    minWidth: 0,
+    overflow: "hidden",
+    height: "100%",
+  },
+  dashboardSecondaryInner: (hidden) => ({
+    minWidth: 0,
+    height: "100%",
+    opacity: hidden ? 0 : 1,
+    transform: hidden ? "translateX(18px) scale(0.985)" : "translateX(0) scale(1)",
+    pointerEvents: hidden ? "none" : "auto",
+    transition: "opacity 220ms ease, transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+  }),
   heroCard: {
     ...glass,
     borderRadius: "26px",
     padding: "20px",
+    height: "100%",
   },
   wordCard: {
     ...glass,
     borderRadius: "26px",
     padding: "20px",
     minHeight: "390px",
+    height: "100%",
     display: "grid",
     gridTemplateRows: "auto 1fr",
     gap: "14px",

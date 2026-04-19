@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { Blocks, Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
+import ExpandedTrackerOverview from "@/components/dashboard/ExpandedTrackerOverview";
 import MetricCard from "@/components/dashboard/MetricCard";
-import SubMetricCard from "@/components/dashboard/SubMetricCard";
 import MetricAdjustmentModal from "@/components/dashboard/MetricAdjustmentModal";
+import SubMetricCard from "@/components/dashboard/SubMetricCard";
+import TrackerFocusToggle from "@/components/dashboard/TrackerFocusToggle";
 
 export default function MainTracker({
   overallHoursLabel,
@@ -21,6 +23,8 @@ export default function MainTracker({
   authControl,
   onAdjustMetric,
   isCompact,
+  focusMode,
+  onToggleFocusMode,
   isAdditionalOpen,
   setIsAdditionalOpen,
   styles,
@@ -73,6 +77,102 @@ export default function MainTracker({
     [gamingHours, listeningHours, shadowingHours, wordsRead, wordsWritten],
   );
 
+  const overallMetric = useMemo(
+    () => ({
+      label: "Overall hours",
+      value: overallHoursLabel,
+      icon: <Blocks size={20} strokeWidth={2} color="#ef4444" />,
+    }),
+    [overallHoursLabel],
+  );
+
+  const primaryMetrics = useMemo(
+    () => [
+      {
+        key: "listening",
+        label: "Listening",
+        value: listeningHoursLabel,
+        icon: metricConfig.listening.iconNode,
+        onAdjust: () => setSelectedMetric("listening"),
+      },
+      {
+        key: "reading",
+        label: "Reading",
+        value: wordsReadLabel,
+        icon: metricConfig.reading.iconNode,
+        onAdjust: () => setSelectedMetric("reading"),
+      },
+      {
+        key: "gaming",
+        label: "Gaming",
+        value: gamingHoursLabel,
+        icon: metricConfig.gaming.iconNode,
+        onAdjust: () => setSelectedMetric("gaming"),
+      },
+    ],
+    [gamingHoursLabel, listeningHoursLabel, metricConfig, wordsReadLabel],
+  );
+
+  const secondaryMetrics = useMemo(
+    () => [
+      {
+        key: "shadowing",
+        label: "Shadowing",
+        value: shadowingHoursLabel,
+        icon: metricConfig.shadowing.iconNode,
+        onAdjust: () => setSelectedMetric("shadowing"),
+      },
+      {
+        key: "writing",
+        label: "Written",
+        value: wordsWrittenLabel,
+        icon: metricConfig.writing.iconNode,
+        onAdjust: () => setSelectedMetric("writing"),
+      },
+    ],
+    [metricConfig, shadowingHoursLabel, wordsWrittenLabel],
+  );
+
+  const distributionItems = useMemo(
+    () => [
+      {
+        key: "listening",
+        label: "Listening",
+        value: listeningHours,
+        valueLabel: listeningHoursLabel,
+        color: "#eab308",
+        colorSoft: "rgba(234,179,8,0.18)",
+        unitLabel: "Hours",
+      },
+      {
+        key: "gaming",
+        label: "Gaming",
+        value: gamingHours,
+        valueLabel: gamingHoursLabel,
+        color: "#8b5cf6",
+        colorSoft: "rgba(139,92,246,0.18)",
+        unitLabel: "Hours",
+      },
+      {
+        key: "shadowing",
+        label: "Shadowing",
+        value: shadowingHours,
+        valueLabel: shadowingHoursLabel,
+        color: "#ef4444",
+        colorSoft: "rgba(239,68,68,0.18)",
+        unitLabel: "Hours",
+      },
+    ],
+    [
+      gamingHours,
+      gamingHoursLabel,
+      listeningHours,
+      listeningHoursLabel,
+      shadowingHours,
+      shadowingHoursLabel,
+    ],
+  );
+
   const selectedMetricConfig = selectedMetric ? metricConfig[selectedMetric] : null;
 
   return (
@@ -94,87 +194,100 @@ export default function MainTracker({
               margin: 0,
             }}
           >
-            日本語トラッカー
+            Japanese Tracker
           </h1>
-
-          {authControl}
-        </div>
-
-        <div style={styles.overallRow}>
-          <MetricCard
-            label="Overall hours"
-            value={overallHoursLabel}
-            icon={<Blocks size={20} strokeWidth={2} color="#ef4444" />}
-            featured
-          />
-        </div>
-
-        <div
-          style={{
-            ...styles.metricsGridThree,
-            gridTemplateColumns: isCompact ? "1fr" : "repeat(3, 1fr)",
-          }}
-        >
-          <MetricCard
-            label="Listening"
-            value={listeningHoursLabel}
-            icon={metricConfig.listening.iconNode}
-            onAdjust={() => setSelectedMetric("listening")}
-          />
-          <MetricCard
-            label="Reading"
-            value={wordsReadLabel}
-            icon={metricConfig.reading.iconNode}
-            onAdjust={() => setSelectedMetric("reading")}
-          />
-          <MetricCard
-            label="Gaming"
-            value={gamingHoursLabel}
-            icon={metricConfig.gaming.iconNode}
-            onAdjust={() => setSelectedMetric("gaming")}
-          />
-        </div>
-
-        <details
-          style={styles.expandableWrap}
-          open={isAdditionalOpen}
-          onToggle={(event) => setIsAdditionalOpen(event.currentTarget.open)}
-        >
-          <summary style={styles.expandableSummary}>
-            <span>Additional metrics</span>
-            <span
-              style={{
-                display: "inline-block",
-                width: 0,
-                height: 0,
-                borderLeft: "6px solid transparent",
-                borderRight: "6px solid transparent",
-                borderBottom: isAdditionalOpen ? "8px solid var(--app-text-faint)" : "none",
-                borderTop: isAdditionalOpen ? "none" : "8px solid var(--app-text-faint)",
-              }}
-            />
-          </summary>
 
           <div
             style={{
-              ...styles.subMetricsGrid,
-              gridTemplateColumns: isCompact ? "1fr" : "repeat(2, minmax(0, 1fr))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: "10px",
+              flexWrap: "wrap",
+              marginLeft: "auto",
             }}
           >
-            <SubMetricCard
-              label="Shadowing"
-              value={shadowingHoursLabel}
-              icon={metricConfig.shadowing.iconNode}
-              onAdjust={() => setSelectedMetric("shadowing")}
-            />
-            <SubMetricCard
-              label="Written"
-              value={wordsWrittenLabel}
-              icon={metricConfig.writing.iconNode}
-              onAdjust={() => setSelectedMetric("writing")}
-            />
+            {authControl}
+            <TrackerFocusToggle active={focusMode} onToggle={onToggleFocusMode} />
           </div>
-        </details>
+        </div>
+
+        {focusMode ? (
+          <ExpandedTrackerOverview
+            styles={styles}
+            isCompact={isCompact}
+            overallMetric={overallMetric}
+            primaryMetrics={primaryMetrics}
+            secondaryMetrics={secondaryMetrics}
+            distributionItems={distributionItems}
+          />
+        ) : (
+          <>
+            <div style={styles.overallRow}>
+              <MetricCard
+                label={overallMetric.label}
+                value={overallMetric.value}
+                icon={overallMetric.icon}
+                featured
+              />
+            </div>
+
+            <div
+              style={{
+                ...styles.metricsGridThree,
+                gridTemplateColumns: isCompact ? "1fr" : "repeat(3, 1fr)",
+              }}
+            >
+              {primaryMetrics.map((metric) => (
+                <MetricCard
+                  key={metric.key}
+                  label={metric.label}
+                  value={metric.value}
+                  icon={metric.icon}
+                  onAdjust={metric.onAdjust}
+                />
+              ))}
+            </div>
+
+            <details
+              style={styles.expandableWrap}
+              open={isAdditionalOpen}
+              onToggle={(event) => setIsAdditionalOpen(event.currentTarget.open)}
+            >
+              <summary style={styles.expandableSummary}>
+                <span>Additional metrics</span>
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 0,
+                    height: 0,
+                    borderLeft: "6px solid transparent",
+                    borderRight: "6px solid transparent",
+                    borderBottom: isAdditionalOpen ? "8px solid var(--app-text-faint)" : "none",
+                    borderTop: isAdditionalOpen ? "none" : "8px solid var(--app-text-faint)",
+                  }}
+                />
+              </summary>
+
+              <div
+                style={{
+                  ...styles.subMetricsGrid,
+                  gridTemplateColumns: isCompact ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                }}
+              >
+                {secondaryMetrics.map((metric) => (
+                  <SubMetricCard
+                    key={metric.key}
+                    label={metric.label}
+                    value={metric.value}
+                    icon={metric.icon}
+                    onAdjust={metric.onAdjust}
+                  />
+                ))}
+              </div>
+            </details>
+          </>
+        )}
       </div>
 
       {selectedMetricConfig && (
