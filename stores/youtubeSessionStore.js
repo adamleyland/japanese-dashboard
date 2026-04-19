@@ -17,6 +17,12 @@ import {
   SEEDED_VIDEOS,
   normalizeSeededChannels,
 } from "@/lib/youtubeDefaults";
+import { supabase } from "@/lib/supabase";
+import {
+  addExcludedYoutubeChannel,
+  fetchExcludedYoutubeChannels,
+  removeExcludedYoutubeChannel,
+} from "@/lib/exclusions";
 
 const YOUTUBE_SESSION_STORAGE_KEY = "jp_dashboard_youtube_session_v2";
 const LEGACY_WATCH_STATE_STORAGE_KEY = "jp_dashboard_youtube_session";
@@ -166,6 +172,20 @@ function applyChannelPreferences(channels, preferences) {
       enabled: preferences[channelId] ?? channel.enabled ?? true,
     };
   });
+}
+
+function buildChannelPreferencesFromExcludedRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) {
+    return {};
+  }
+
+  return rows.reduce((preferences, row) => {
+    if (row?.channel_id) {
+      preferences[row.channel_id] = false;
+    }
+
+    return preferences;
+  }, {});
 }
 
 function readPersistedSessionSnapshot() {
@@ -475,6 +495,8 @@ function getGoogleTokenClient(clientId) {
 export function YoutubeSessionProvider({ children }) {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
   const youtubeApiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "";
+  const [authUserId, setAuthUserId] = useState("");
+  const [authResolved, setAuthResolved] = useState(false);
   const [state, setState] = useState(createDefaultState);
   const stateRef = useRef(state);
   const silentRestoreAttemptedRef = useRef(false);
@@ -486,6 +508,43 @@ export function YoutubeSessionProvider({ children }) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const resolveAuthUser = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("Failed to resolve the current Supabase user for YouTube exclusions", error);
+      }
+
+      if (!isActive) {
+        return;
+      }
+
+      setAuthUserId(data.session?.user?.id || "");
+      setAuthResolved(true);
+    };
+
+    void resolveAuthUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isActive) {
+        return;
+      }
+
+      setAuthUserId(session?.user?.id || "");
+      setAuthResolved(true);
+    });
+
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const setSelectedVideoId = useCallback((videoId) => {
     const nextVideoId = videoId || DEFAULT_VIDEO_ID;
@@ -588,6 +647,12 @@ export function YoutubeSessionProvider({ children }) {
   }, []);
 
   const toggleChannelEnabled = useCallback((channelId) => {
+    const currentChannel = stateRef.current.subscribedChannels.find(
+      (channel) => (channel.channelId || channel.id) === channelId,
+    );
+    const previousEnabled = currentChannel?.enabled !== false;
+    const nextEnabled = !previousEnabled;
+
     setState((currentState) => ({
       ...currentState,
       subscribedChannels: currentState.subscribedChannels.map((channel) => {
@@ -598,11 +663,43 @@ export function YoutubeSessionProvider({ children }) {
 
         return {
           ...channel,
-          enabled: !(channel.enabled !== false),
+          enabled: nextEnabled,
         };
       }),
     }));
-  }, []);
+
+    if (!authUserId) {
+      return;
+    }
+
+    const syncExcludedChannel = async () => {
+      try {
+        if (nextEnabled) {
+          await removeExcludedYoutubeChannel(authUserId, channelId);
+        } else {
+          await addExcludedYoutubeChannel(authUserId, channelId);
+        }
+      } catch (error) {
+        console.error("Failed to sync excluded YouTube channel to Supabase", error);
+        setState((currentState) => ({
+          ...currentState,
+          subscribedChannels: currentState.subscribedChannels.map((channel) => {
+            const currentChannelId = channel.channelId || channel.id;
+            if (currentChannelId !== channelId) {
+              return channel;
+            }
+
+            return {
+              ...channel,
+              enabled: previousEnabled,
+            };
+          }),
+        }));
+      }
+    };
+
+    void syncExcludedChannel();
+  }, [authUserId]);
 
   const fetchVideoDetailsMap = useCallback(
     async (videoIds, options = {}) => {
@@ -1482,6 +1579,46 @@ export function YoutubeSessionProvider({ children }) {
       "Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID. Set it in both local env and Vercel project env vars before using YouTube OAuth.",
     );
   }, [googleClientId]);
+
+  useEffect(() => {
+    if (!state.hydrated || !authResolved || !authUserId) {
+      return;
+    }
+
+    let isActive = true;
+
+    const loadExcludedChannels = async () => {
+      try {
+        const excludedChannels = await fetchExcludedYoutubeChannels(authUserId);
+
+        if (!isActive) {
+          return;
+        }
+
+        const channelPreferences = buildChannelPreferencesFromExcludedRows(excludedChannels);
+
+        setState((currentState) => ({
+          ...currentState,
+          subscribedChannels: currentState.subscribedChannels.map((channel) => {
+            const channelId = channel.channelId || channel.id;
+
+            return {
+              ...channel,
+              enabled: channelPreferences[channelId] !== false,
+            };
+          }),
+        }));
+      } catch (error) {
+        console.error("Failed to load excluded YouTube channels from Supabase", error);
+      }
+    };
+
+    void loadExcludedChannels();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authResolved, authUserId, state.hydrated]);
 
   useEffect(() => {
     const persistedSnapshot = readPersistedSessionSnapshot();
