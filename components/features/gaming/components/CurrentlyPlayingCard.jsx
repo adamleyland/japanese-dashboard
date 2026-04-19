@@ -1,11 +1,13 @@
 "use client";
 
-import { Clock3, Gamepad2, Sparkles } from "lucide-react";
-import LaunchGameButton from "@/components/features/gaming/components/LaunchGameButton";
+import { Clock3, Gamepad2, Play, Sparkles } from "lucide-react";
+import GameArtworkImage from "@/components/features/gaming/components/GameArtworkImage";
+import { openGameLauncher } from "@/lib/gaming/launchers";
 import {
   formatPlaytimeCompact,
   formatPlaytimeDetailed,
   formatRelativeLastPlayed,
+  getPlatformLabel,
   getSourceLabel,
 } from "@/lib/gaming/gaming-utils";
 
@@ -71,15 +73,12 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: "3px", minWidth: 0 }}>
-            <div style={styles.eyebrow}>Currently Playing</div>
-            <div style={{ fontSize: "12px", color: "var(--app-text-muted)" }}>
-              Freshest session across connected sources
+            <div style={{ display: "grid", gap: "3px", minWidth: 0 }}>
+              <div style={styles.eyebrow}>Currently Playing</div>
+              
             </div>
           </div>
-        </div>
 
-        {currentGame ? <LaunchGameButton game={currentGame} label="Play now" /> : null}
       </div>
 
       {loading && !currentGame ? (
@@ -89,6 +88,24 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
       {currentGame ? (
         <div style={{ display: "grid", gap: "14px" }}>
           <div
+            role={currentGame.launchUrl ? "button" : undefined}
+            tabIndex={currentGame.launchUrl ? 0 : -1}
+            aria-label={currentGame.launchUrl ? `Launch ${currentGame.title}` : currentGame.title}
+            onClick={() => {
+              if (currentGame.launchUrl) {
+                openGameLauncher(currentGame);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (!currentGame.launchUrl) {
+                return;
+              }
+
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openGameLauncher(currentGame);
+              }
+            }}
             style={{
               width: "100%",
               aspectRatio: "16 / 9",
@@ -97,33 +114,61 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
               background:
                 "linear-gradient(135deg, rgba(76,29,149,0.18), rgba(15,23,42,0.08))",
               border: "1px solid var(--app-border-soft)",
+              position: "relative",
+              cursor: currentGame.launchUrl ? "pointer" : "default",
+              outline: "none",
             }}
           >
-            {currentGame.artworkUrl ? (
-              <img
-                src={currentGame.artworkUrl}
-                alt={currentGame.title}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
-            ) : (
+            <GameArtworkImage
+              key={`${currentGame.source}:${currentGame.sourceGameId}`}
+              game={currentGame}
+              alt={currentGame.title}
+              imageStyle={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+              placeholder={
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--app-text-muted)",
+                    fontWeight: 700,
+                  }}
+                >
+                  {currentGame.title}
+                </div>
+              }
+            />
+
+            {currentGame.launchUrl ? (
               <div
                 style={{
-                  width: "100%",
-                  height: "100%",
+                  position: "absolute",
+                  left: "12px",
+                  bottom: "12px",
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(255,255,255,0.16)",
+                  color: "#f8fafc",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "var(--app-text-muted)",
-                  fontWeight: 700,
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                  boxShadow: "0 10px 20px rgba(15,23,42,0.18)",
+                  pointerEvents: "none",
                 }}
               >
-                {currentGame.title}
+                <Play size={13} fill="currentColor" />
               </div>
-            )}
+            ) : null}
           </div>
 
           <div style={{ display: "grid", gap: "8px" }}>
@@ -131,7 +176,7 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
               {currentGame.title}
             </h3>
             <p style={{ ...styles.playerSub, margin: 0 }}>
-              {getSourceLabel(currentGame.source)} | {currentGame.platform}
+              {getSourceLabel(currentGame.source)} | {getPlatformLabel(currentGame.platform)}
             </p>
           </div>
 

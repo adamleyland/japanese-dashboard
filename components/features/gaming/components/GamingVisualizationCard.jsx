@@ -1,7 +1,11 @@
 "use client";
 
-import { BarChart3, Gamepad2 } from "lucide-react";
-import { formatPlaytimeCompact, getSourceLabel } from "@/lib/gaming/gaming-utils";
+import { Gamepad2 } from "lucide-react";
+import {
+  formatPercentage,
+  formatPlaytimeCompact,
+  formatPlaytimeHours,
+} from "@/lib/gaming/gaming-utils";
 
 export default function GamingVisualizationCard({
   styles,
@@ -10,8 +14,6 @@ export default function GamingVisualizationCard({
   excludedCount,
   topGames,
 }) {
-  const maxMinutes = Math.max(1, ...topGames.map((game) => game.minutesPlayedTotal || 0));
-
   return (
     <div style={styles.sideCard}>
       <div
@@ -36,9 +38,6 @@ export default function GamingVisualizationCard({
 
           <div style={{ display: "grid", gap: "3px", minWidth: 0 }}>
             <div style={styles.eyebrow}>Progress</div>
-            <div style={{ fontSize: "12px", color: "var(--app-text-muted)" }}>
-              Included playtime total
-            </div>
           </div>
         </div>
       </div>
@@ -74,7 +73,10 @@ export default function GamingVisualizationCard({
       <div style={{ display: "grid", gap: "10px" }}>
         {topGames.length ? (
           topGames.map((game) => {
-            const width = Math.max(10, (game.minutesPlayedTotal / maxMinutes) * 100);
+            const percentage = formatPercentage(game.minutesPlayedTotal, totalMinutes);
+            const width = totalMinutes
+              ? Math.max(6, (game.minutesPlayedTotal / totalMinutes) * 100)
+              : 0;
 
             return (
               <div
@@ -104,12 +106,16 @@ export default function GamingVisualizationCard({
                     >
                       {game.title}
                     </div>
-                    <div style={{ color: "var(--app-text-muted)" }}>{getSourceLabel(game.source)}</div>
                   </div>
 
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <BarChart3 size={12} />
-                    <span style={{ fontWeight: 700 }}>{formatPlaytimeCompact(game.minutesPlayedTotal)}</span>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: "var(--app-text-soft)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatPlaytimeHours(game.minutesPlayedTotal)} • {percentage}
                   </div>
                 </div>
 
@@ -117,7 +123,7 @@ export default function GamingVisualizationCard({
                   <div
                     style={{
                       ...styles.progressBarFill(width),
-                      background: game.includeInOverallTotal === false ? "#94a3b8" : "#8b5cf6",
+                      background: "#8b5cf6",
                     }}
                   />
                 </div>
@@ -126,7 +132,7 @@ export default function GamingVisualizationCard({
           })
         ) : (
           <div style={{ ...styles.playerSub, padding: "8px 0" }}>
-            Your top games will appear here once source data is available.
+            Your top included games will appear here once source data is available.
           </div>
         )}
       </div>

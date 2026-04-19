@@ -33,14 +33,19 @@ export function useSteamGames() {
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(payload?.message || "Unable to load Steam games.");
+          throw new Error(payload?.error || payload?.message || "Unable to load Steam games.");
         }
 
+        const games =
+          Array.isArray(payload?.games) && payload.games.every((game) => game?.source === "steam")
+            ? payload.games
+            : normalizeSteamGamesResponse(payload);
+
         setState({
-          games: normalizeSteamGamesResponse(payload),
+          games,
           loading: false,
           error: null,
-          configured: payload?.configured !== false,
+          configured: true,
         });
       } catch (error) {
         if (abortController.signal.aborted) {
