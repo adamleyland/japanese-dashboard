@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import { getSafeAuthUser } from "@/lib/auth";
+import { logAuthError, logAuthInfo, summarizeSupabaseSession } from "@/lib/authLogging";
 import { supabase } from "@/lib/supabase";
 import { addTrackingEvent, fetchTrackingTotals, reduceTrackingEvent } from "@/lib/trackingEvents";
 import { ensureUserProfile } from "@/lib/profiles";
@@ -268,6 +269,16 @@ export default function Home() {
     let isActive = true;
 
     const loadUser = async () => {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        logAuthError("Home", "Failed to restore Supabase session on load", sessionError);
+      } else {
+        logAuthInfo("Home", "Supabase session restoration on app load", {
+          session: summarizeSupabaseSession(sessionData?.session ?? null),
+        });
+      }
+
       const user = await getSafeAuthUser();
 
       if (!isActive) return;
@@ -280,8 +291,13 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isActive) return;
+
+      logAuthInfo("Home", "Supabase auth state changed", {
+        event,
+        session: summarizeSupabaseSession(session),
+      });
 
       setAuthUser(session?.user ?? null);
       setAuthLoading(false);

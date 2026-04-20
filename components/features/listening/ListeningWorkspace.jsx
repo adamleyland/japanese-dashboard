@@ -36,7 +36,6 @@ export default function ListeningWorkspace({
   discoverLoading,
   selectedVideo,
   selectedChannelAvatar,
-  showDiscoverSubscribe,
   queueTotal,
   queueIndex,
   skipCurrentVideo,
@@ -47,7 +46,6 @@ export default function ListeningWorkspace({
   isPlayerPlaying,
   onSelectVideo,
   onSelectDiscoverVideo,
-  onOpenSelectedDiscoverChannel,
   onToggleChannelEnabled,
   playerHostRef,
   focusPlayerHostRef,
@@ -67,7 +65,6 @@ export default function ListeningWorkspace({
     { key: "account", label: "Account" },
     { key: "channels", label: "Channels" },
     { key: "recommended", label: "Queue" },
-    { key: "discover", label: "Discover" },
   ];
   const discoverFilters = ["ゲーム", "æ—…è¡Œ", "æ—¥æœ¬èªž"];
   const visibleQueueIndex = queueTotal ? queueIndex + 1 : 0;
@@ -260,11 +257,6 @@ export default function ListeningWorkspace({
         <LampDesk size={12} />
         {focusMode ? "Exit Focus" : "Deep Focus"}
       </button>
-      {showDiscoverSubscribe && (
-        <button style={styles.miniActionButton("blue")} onClick={onOpenSelectedDiscoverChannel}>
-          <Link2 size={12} /> Subscribe
-        </button>
-      )}
     </div>
   );
 

@@ -1,10 +1,9 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
-import {
-  ensureUserProfile,
-  persistGoogleProviderTokens,
-} from "@/lib/profiles";
+import { ensureUserProfile } from "@/lib/profiles";
+import { upsertGoogleOAuthTokens } from "@/lib/googleOAuthTokens";
+import { logAuthError, logAuthInfo, summarizeSupabaseSession } from "@/lib/authLogging";
 
 function buildRedirectUrl(request, params = {}) {
   const redirectUrl = new URL("/", request.url);
@@ -35,7 +34,7 @@ export async function GET(request) {
   const authErrorDescription = requestUrl.searchParams.get("error_description");
 
   if (authError) {
-    console.error("Supabase Google auth callback returned an error", {
+    logAuthError("Callback", "Supabase Google auth callback returned an error", null, {
       authError,
       authErrorDescription,
     });
@@ -47,7 +46,7 @@ export async function GET(request) {
   }
 
   if (!code) {
-    console.error("Supabase Google auth callback is missing an auth code");
+    logAuthError("Callback", "Supabase Google auth callback is missing an auth code");
 
     return redirectWithCookies(request, [], {
       auth_error: "missing_code",
@@ -86,7 +85,7 @@ export async function GET(request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    console.error("Failed to exchange Supabase auth code for session", error);
+    logAuthError("Callback", "Failed to exchange Supabase auth code for session", error);
 
     return redirectWithCookies(request, pendingCookies, {
       auth_error: error.code || "oauth_exchange_failed",
@@ -97,26 +96,40 @@ export async function GET(request) {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
   if (sessionError) {
-    console.error("Failed to read Supabase session after Google auth callback", sessionError);
+    logAuthError(
+      "Callback",
+      "Failed to read Supabase session after Google auth callback",
+      sessionError,
+    );
   }
 
   const session = sessionData?.session ?? null;
   const providerToken = session?.provider_token || "";
   const providerRefreshToken = session?.provider_refresh_token || "";
+  logAuthInfo("Callback", "Google auth callback session restored", {
+    session: summarizeSupabaseSession(session),
+  });
 
   if (session?.user?.id) {
     await ensureUserProfile(session.user, supabase);
-    await persistGoogleProviderTokens(
-      {
+    try {
+      await upsertGoogleOAuthTokens({
         userId: session.user.id,
         email: session.user.email ?? null,
         providerToken,
         providerRefreshToken,
-      },
-      supabase,
-    );
+        tokenType: "Bearer",
+        scope: session?.granted_scopes || "",
+      });
+    } catch (tokenPersistError) {
+      logAuthError(
+        "Callback",
+        "Failed to persist Google OAuth tokens to private storage",
+        tokenPersistError,
+      );
+    }
   } else {
-    console.error("Missing session user after Google auth callback");
+    logAuthError("Callback", "Missing session user after Google auth callback");
   }
 
   return redirectWithCookies(request, pendingCookies, {
