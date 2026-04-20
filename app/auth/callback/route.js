@@ -1,0 +1,125 @@
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse } from "next/server";
+import {
+  ensureUserProfile,
+  persistGoogleProviderTokens,
+} from "@/lib/profiles";
+
+function buildRedirectUrl(request, params = {}) {
+  const redirectUrl = new URL("/", request.url);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      redirectUrl.searchParams.set(key, value);
+    }
+  });
+
+  return redirectUrl;
+}
+
+function redirectWithCookies(request, pendingCookies = [], params = {}) {
+  const response = NextResponse.redirect(buildRedirectUrl(request, params));
+
+  pendingCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options);
+  });
+
+  return response;
+}
+
+export async function GET(request) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const authError = requestUrl.searchParams.get("error");
+  const authErrorDescription = requestUrl.searchParams.get("error_description");
+
+  if (authError) {
+    console.error("Supabase Google auth callback returned an error", {
+      authError,
+      authErrorDescription,
+    });
+
+    return redirectWithCookies(request, [], {
+      auth_error: authError === "access_denied" ? "oauth_cancelled" : authError,
+      auth_message: authErrorDescription || "Google auth could not be completed.",
+    });
+  }
+
+  if (!code) {
+    console.error("Supabase Google auth callback is missing an auth code");
+
+    return redirectWithCookies(request, [], {
+      auth_error: "missing_code",
+    });
+  }
+
+  const cookieStore = await cookies();
+  const pendingCookies = [];
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      auth: {
+        flowType: "pkce",
+      },
+      cookies: {
+        get(name) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name, value, options) {
+          pendingCookies.push({ name, value, options });
+          cookieStore.set(name, value, options);
+        },
+        remove(name, options) {
+          const removeOptions = {
+            ...options,
+            maxAge: 0,
+          };
+
+          pendingCookies.push({ name, value: "", options: removeOptions });
+          cookieStore.set(name, "", removeOptions);
+        },
+      },
+    },
+  );
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    console.error("Failed to exchange Supabase auth code for session", error);
+
+    return redirectWithCookies(request, pendingCookies, {
+      auth_error: error.code || "oauth_exchange_failed",
+      auth_message: error.message || "Google auth could not be completed.",
+    });
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.error("Failed to read Supabase session after Google auth callback", sessionError);
+  }
+
+  const session = sessionData?.session ?? null;
+  const providerToken = session?.provider_token || "";
+  const providerRefreshToken = session?.provider_refresh_token || "";
+
+  if (session?.user?.id) {
+    await ensureUserProfile(session.user, supabase);
+    await persistGoogleProviderTokens(
+      {
+        userId: session.user.id,
+        email: session.user.email ?? null,
+        providerToken,
+        providerRefreshToken,
+      },
+      supabase,
+    );
+  } else {
+    console.error("Missing session user after Google auth callback");
+  }
+
+  return redirectWithCookies(request, pendingCookies, {
+    auth_status: "google_authenticated",
+  });
+}

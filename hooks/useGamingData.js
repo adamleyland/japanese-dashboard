@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getSafeAuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import {
   addExcludedGame,
@@ -15,11 +16,24 @@ import { useXboxGames } from "@/hooks/useXboxGames";
 
 const GAMING_INCLUDE_STORAGE_KEY = "jp_gaming_include_overrides";
 
-export function useGamingData() {
+export function useGamingData(options = {}) {
+  const {
+    authUserId: providedAuthUserId = null,
+    authResolved: providedAuthResolved = false,
+  } = options;
+  const usesExternalAuthState = providedAuthUserId !== null;
   const steamGames = useSteamGames();
   const xboxGames = useXboxGames();
-  const [authUserId, setAuthUserId] = useState("");
-  const [authResolved, setAuthResolved] = useState(false);
+  const [internalAuthState, setInternalAuthState] = useState({
+    authUserId: "",
+    authResolved: false,
+  });
+  const authUserId = usesExternalAuthState
+    ? providedAuthUserId || ""
+    : internalAuthState.authUserId;
+  const authResolved = usesExternalAuthState
+    ? Boolean(providedAuthResolved)
+    : internalAuthState.authResolved;
   const [includeOverrides, setIncludeOverrides] = useState(() => {
     if (typeof window === "undefined") {
       return {};
@@ -51,21 +65,23 @@ export function useGamingData() {
   }, [includeOverrides]);
 
   useEffect(() => {
+    if (usesExternalAuthState) {
+      return;
+    }
+
     let isActive = true;
 
     const resolveAuthUser = async () => {
-      const { data, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error("Failed to resolve the current Supabase user for gaming exclusions", error);
-      }
+      const user = await getSafeAuthUser();
 
       if (!isActive) {
         return;
       }
 
-      setAuthUserId(data.session?.user?.id || "");
-      setAuthResolved(true);
+      setInternalAuthState({
+        authUserId: user?.id || "",
+        authResolved: true,
+      });
     };
 
     void resolveAuthUser();
@@ -77,15 +93,17 @@ export function useGamingData() {
         return;
       }
 
-      setAuthUserId(session?.user?.id || "");
-      setAuthResolved(true);
+      setInternalAuthState({
+        authUserId: session?.user?.id || "",
+        authResolved: true,
+      });
     });
 
     return () => {
       isActive = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [usesExternalAuthState]);
 
   useEffect(() => {
     if (!authResolved || !authUserId) {

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GamingLibraryPanel from "@/components/features/gaming/components/GamingLibraryPanel";
 import CurrentlyPlayingCard from "@/components/features/gaming/components/CurrentlyPlayingCard";
 import GamingVisualizationCard from "@/components/features/gaming/components/GamingVisualizationCard";
-import useGamingData from "@/hooks/useGamingData";
 import useGamingTotals from "@/hooks/useGamingTotals";
 import {
   DEFAULT_GAMING_LIBRARY_VIEW,
@@ -26,11 +25,11 @@ const GAMING_LAYOUT_MODE_STORAGE_KEY = "jp_gaming_layout_mode";
 export default function GamingTab({
   styles,
   gamingHours,
-  adjustGamingHours,
+  gamingData,
   isMobile,
   isCompact,
 }) {
-  const { games, loading, error, toggleGameIncluded, refreshAll, sourceStatus } = useGamingData();
+  const { games, loading, error, toggleGameIncluded, refreshAll, sourceStatus } = gamingData;
   const rightColumnRef = useRef(null);
   const [libraryHeight, setLibraryHeight] = useState(null);
   const [sortKey, setSortKey] = useState(() => {
@@ -147,25 +146,6 @@ export default function GamingTab({
     [includedGames],
   );
   const hasSourceData = games.length > 0;
-
-  useEffect(() => {
-    if (!hasSourceData) {
-      return;
-    }
-
-    const nextGamingHours = totalMinutes / 60;
-    const deltaHours = nextGamingHours - gamingHours;
-
-    if (Math.abs(deltaHours) < 0.001) {
-      return;
-    }
-
-    adjustGamingHours(deltaHours, {
-      kind: "adjustment",
-      source: "gaming-library-sync",
-      note: "Synced gaming total from connected gaming library sources.",
-    });
-  }, [adjustGamingHours, gamingHours, hasSourceData, totalMinutes]);
 
   const handleRefresh = useCallback(() => {
     refreshAll();

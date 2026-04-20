@@ -1,11 +1,39 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LogOut, Mail, Moon, Sun, UserCircle2, X } from "lucide-react";
+import { Link2, LogOut, Mail, Moon, Sun, UserCircle2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  linkGoogleIdentity,
+  normalizeAuthStatusFromUrl,
+  signInWithGoogle,
+} from "@/lib/auth";
 import { useTheme } from "@/components/providers/ThemeProvider";
 
-export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
+function GoogleMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.56 2.68-3.86 2.68-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.46-.8 5.95-2.18l-2.92-2.26c-.81.54-1.85.86-3.03.86-2.33 0-4.3-1.57-5-3.68H1.98V13c1.48 2.94 4.52 5 7.02 5Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M4 10.74A5.4 5.4 0 0 1 3.72 9c0-.6.1-1.18.28-1.74V4.98H1.98A9 9 0 0 0 1 9c0 1.45.35 2.82.98 4l2.02-2.26Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.45 3.44 1.33l2.58-2.58C13.45.9 11.42 0 9 0 5.5 0 2.46 2.06.98 4.98L4 7.26c.7-2.11 2.67-3.68 5-3.68Z"
+      />
+    </svg>
+  );
+}
+
+export default function MagicLinkAuth({ user, isCompact, isLoading }) {
   const { isDarkMode, toggleTheme } = useTheme();
   const [email, setEmail] = useState(user?.email || "");
   const [isOpen, setIsOpen] = useState(false);
@@ -13,6 +41,17 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState("neutral");
   const popupRef = useRef(null);
+  const googleIdentities = (user?.identities || []).filter(
+    (identity) => identity?.provider === "google",
+  );
+  const googleIdentityCount = googleIdentities.length;
+  const hasGoogleIdentity = googleIdentityCount > 0;
+  const googleIdentityLabel =
+    googleIdentityCount > 1
+      ? `${googleIdentityCount} Google accounts linked`
+      : hasGoogleIdentity
+        ? "Google account linked"
+        : "";
 
   useEffect(() => {
     if (user?.email) {
@@ -47,6 +86,27 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextStatus = normalizeAuthStatusFromUrl(new URLSearchParams(window.location.search));
+    if (!nextStatus) {
+      return;
+    }
+
+    setStatusTone(nextStatus.tone);
+    setStatusMessage(nextStatus.message);
+    setIsOpen(true);
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("auth_status");
+    nextUrl.searchParams.delete("auth_error");
+    nextUrl.searchParams.delete("auth_message");
+    window.history.replaceState({}, "", nextUrl.toString());
+  }, []);
 
   const sendMagicLink = async () => {
     const trimmedEmail = email.trim();
@@ -91,6 +151,49 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
     }
   };
 
+  const continueWithGoogle = async () => {
+    setIsSubmitting(true);
+    setStatusMessage("");
+    setStatusTone("neutral");
+
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error("Failed to start Supabase Google sign-in", error);
+      setStatusTone("error");
+      setStatusMessage(error.message || "Unable to continue with Google.");
+      setIsSubmitting(false);
+    }
+  };
+
+  const linkGoogleAccount = async () => {
+    if (!user?.id) {
+      console.error("A signed-in session is required before linking a Google identity");
+      setStatusTone("error");
+      setStatusMessage("Sign in before linking a Google account.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatusMessage("");
+    setStatusTone("neutral");
+
+    try {
+      const { error } = await linkGoogleIdentity();
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error("Failed to start Supabase Google identity linking", error);
+      setStatusTone("error");
+      setStatusMessage(error.message || "Unable to link Google account.");
+      setIsSubmitting(false);
+    }
+  };
+
   const signOut = async () => {
     setIsSubmitting(true);
     setStatusMessage("");
@@ -112,7 +215,7 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
     }
   };
 
-  const signedIn = !!session?.user;
+  const signedIn = !!user?.id;
 
   return (
     <div ref={popupRef} style={styles.wrapper}>
@@ -148,6 +251,8 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
                 <span style={styles.accountLabel}>{user?.email || "Signed in"}</span>
               </div>
 
+              {hasGoogleIdentity && <div style={styles.message("success")}>{googleIdentityLabel}</div>}
+
               <button type="button" onClick={toggleTheme} style={styles.themeRow}>
                 <span style={styles.themeMeta}>
                   <span style={styles.themeIcon}>
@@ -162,6 +267,16 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
 
               {!!statusMessage && <div style={styles.message(statusTone)}>{statusMessage}</div>}
 
+              <button
+                type="button"
+                onClick={linkGoogleAccount}
+                disabled={isSubmitting}
+                style={styles.secondaryButton}
+              >
+                <Link2 size={14} strokeWidth={2} />
+                {hasGoogleIdentity ? "Link another Google account" : "Link Google account"}
+              </button>
+
               <button type="button" onClick={signOut} disabled={isSubmitting} style={styles.secondaryButton}>
                 <LogOut size={14} strokeWidth={2} />
                 Sign out
@@ -169,6 +284,13 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
             </>
           ) : (
             <>
+              <button type="button" onClick={continueWithGoogle} disabled={isSubmitting || isLoading} style={styles.primaryButton}>
+                <span style={styles.googleIconWrap}>
+                  <GoogleMark />
+                </span>
+                {isSubmitting ? "Redirecting..." : "Continue with Google"}
+              </button>
+
               <label style={styles.inputWrap}>
                 <Mail size={14} strokeWidth={2} />
                 <input
@@ -181,8 +303,9 @@ export default function MagicLinkAuth({ session, user, isCompact, isLoading }) {
                 />
               </label>
 
-              <button type="button" onClick={sendMagicLink} disabled={isSubmitting || isLoading} style={styles.primaryButton}>
-                {isSubmitting ? "Sending..." : "Send magic link"}
+              <button type="button" onClick={sendMagicLink} disabled={isSubmitting || isLoading} style={styles.secondaryButton}>
+                <Mail size={14} strokeWidth={2} />
+                {isSubmitting ? "Sending..." : "Sign in with Email"}
               </button>
 
               <button type="button" onClick={toggleTheme} style={styles.themeRow}>
@@ -305,14 +428,29 @@ const styles = {
     color: "var(--app-text)",
   },
   primaryButton: {
-    border: "none",
+    border: "1px solid rgba(15,23,42,0.12)",
     borderRadius: "12px",
     padding: "10px 12px",
-    background: "#111827",
-    color: "#fff",
+    background: "#ffffff",
+    color: "#111827",
     fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+  },
+  googleIconWrap: {
+    width: "22px",
+    height: "22px",
+    borderRadius: "999px",
+    background: "#ffffff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   secondaryButton: {
     border: "1px solid var(--app-border)",

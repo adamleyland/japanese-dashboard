@@ -27,6 +27,7 @@ export default function ListeningWorkspace({
   focusMode,
   setFocusMode,
   youtubeConnected,
+  youtubeStatusMessage,
   subscribedChannels,
   approvedFeed,
   discoverVideos,
@@ -397,6 +398,10 @@ export default function ListeningWorkspace({
                               : "Connect your account to unlock a daily shuffled listening queue."}
                           </span>
                         </div>
+
+                        {!!youtubeStatusMessage && (
+                          <div style={styles.playerSub}>{youtubeStatusMessage}</div>
+                        )}
                       </div>
                     )}
 

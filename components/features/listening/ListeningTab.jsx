@@ -9,6 +9,7 @@ import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 
 const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
+const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 
 export default function ListeningTab({
   styles,
@@ -45,6 +46,7 @@ export default function ListeningTab({
     toggleChannelEnabled,
     workspaceTab,
     youtubeConnected,
+    youtubeStatusMessage,
   } = useYoutubeSession();
 
   const [focusMode, setFocusMode] = useState(false);
@@ -579,6 +581,15 @@ export default function ListeningTab({
     const mountPlayer = () => {
       const host = focusMode ? focusPlayerHostRef.current : playerHostRef.current;
       if (initRef.current || !window.YT?.Player || !host) return;
+      const playerOrigin = window.location.origin;
+
+      if (playerRef.current) {
+        playerRef.current.destroy?.();
+        playerRef.current = null;
+        playerVideoIdRef.current = "";
+        playerReadyRef.current = false;
+        activePlayerHostRef.current = null;
+      }
 
       playerRef.current = new window.YT.Player(host, {
         videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
@@ -586,6 +597,7 @@ export default function ListeningTab({
           controls: 1,
           rel: 0,
           playsinline: 1,
+          origin: playerOrigin,
         },
         events: {
           onReady: onPlayerReady,
@@ -612,13 +624,11 @@ export default function ListeningTab({
       return undefined;
     }
 
-    const existingScript = document.querySelector(
-      "script[src='https://www.youtube.com/iframe_api']",
-    );
+    const existingScript = document.querySelector(`script[src='${YOUTUBE_IFRAME_API_SRC}']`);
 
     if (!existingScript) {
       const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
+      tag.src = YOUTUBE_IFRAME_API_SRC;
       document.body.appendChild(tag);
     }
 
@@ -851,6 +861,7 @@ export default function ListeningTab({
         focusMode={focusMode}
         setFocusMode={setFocusMode}
         youtubeConnected={youtubeConnected}
+        youtubeStatusMessage={youtubeStatusMessage}
         subscribedChannels={subscribedChannels}
         approvedFeed={activeFeed}
         discoverVideos={discoverVideos}

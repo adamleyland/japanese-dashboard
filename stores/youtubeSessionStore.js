@@ -17,6 +17,8 @@ import {
   SEEDED_VIDEOS,
   normalizeSeededChannels,
 } from "@/lib/youtubeDefaults";
+import { getSafeAuthUser } from "@/lib/auth";
+import { fetchStoredGoogleAccessToken } from "@/lib/profiles";
 import { supabase } from "@/lib/supabase";
 import {
   addExcludedYoutubeChannel,
@@ -354,6 +356,34 @@ function parseDurationToSeconds(duration) {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+function logYoutubeFailure(contextLabel, requestUrl, errorInfo) {
+  console.error(`[YouTube] ${contextLabel} failed`, {
+    requestUrl,
+    status: errorInfo?.status || 0,
+    body: errorInfo?.parsedBody || errorInfo?.bodyText || null,
+  });
+}
+
+function getYoutubeStatusMessage(lastError) {
+  if (!lastError) {
+    return "";
+  }
+
+  if (lastError === "quotaExceeded") {
+    return "YouTube is connected, but fresh data is temporarily unavailable right now.";
+  }
+
+  if (lastError === "reconnect-required") {
+    return "Reconnect your Google account to refresh YouTube access.";
+  }
+
+  if (lastError === "youtube-connect-failed") {
+    return "Google sign-in worked, but YouTube could not be connected yet.";
+  }
+
+  return "Google sign-in worked, but YouTube data could not be loaded yet.";
+}
+
 function formatDurationLabel(seconds) {
   const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(safeSeconds / 3600);
@@ -504,6 +534,8 @@ export function YoutubeSessionProvider({ children }) {
   const initializationPromiseRef = useRef(null);
   const discoverInFlightFiltersRef = useRef(new Set());
   const discoverLoadedFiltersRef = useRef(new Set());
+  const pendingAuthBootstrapRef = useRef(null);
+  const restoreYoutubeSessionRef = useRef(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -513,17 +545,13 @@ export function YoutubeSessionProvider({ children }) {
     let isActive = true;
 
     const resolveAuthUser = async () => {
-      const { data, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error("Failed to resolve the current Supabase user for YouTube exclusions", error);
-      }
+      const user = await getSafeAuthUser();
 
       if (!isActive) {
         return;
       }
 
-      setAuthUserId(data.session?.user?.id || "");
+      setAuthUserId(user?.id || "");
       setAuthResolved(true);
     };
 
@@ -531,13 +559,69 @@ export function YoutubeSessionProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isActive) {
         return;
       }
 
       setAuthUserId(session?.user?.id || "");
       setAuthResolved(true);
+
+      void (async () => {
+        const nextUserId = session?.user?.id || "";
+        const isBootstrapEvent =
+          event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED";
+
+        if (!nextUserId) {
+          pendingAuthBootstrapRef.current = null;
+          if (isBootstrapEvent) {
+            console.info("[YouTube] auth event received", { event, hasUser: false });
+          }
+          return;
+        }
+
+        const hasSessionProviderToken = Boolean(session?.provider_token);
+        const storedGoogleToken = await fetchStoredGoogleAccessToken(nextUserId);
+        const hasStoredGoogleToken = Boolean(storedGoogleToken);
+        const hasGoogleToken = hasSessionProviderToken || hasStoredGoogleToken;
+        const shouldBootstrap = isBootstrapEvent && hasGoogleToken;
+
+        if (isBootstrapEvent) {
+          console.info("[YouTube] auth event received", {
+            event,
+            hasUser: true,
+            tokenResolved: hasGoogleToken,
+          });
+        }
+
+        if (!shouldBootstrap) {
+          if (isBootstrapEvent) {
+            console.info("[YouTube] bootstrap called", { event, called: false });
+          }
+          return;
+        }
+
+        pendingAuthBootstrapRef.current = {
+          event,
+          userId: nextUserId,
+        };
+        silentRestoreAttemptedRef.current = false;
+
+        const canRunBootstrap =
+          stateRef.current.hydrated &&
+          stateRef.current.connectionStatus !== "connecting" &&
+          typeof restoreYoutubeSessionRef.current === "function";
+
+        console.info("[YouTube] bootstrap called", {
+          event,
+          called: canRunBootstrap,
+        });
+
+        if (canRunBootstrap) {
+          pendingAuthBootstrapRef.current = null;
+          void restoreYoutubeSessionRef.current({ forceRefresh: true });
+        }
+      })();
     });
 
     return () => {
@@ -833,7 +917,7 @@ export function YoutubeSessionProvider({ children }) {
   );
 
   const markSessionDisconnected = useCallback(
-    ({ clearPersistentConnection = false } = {}) => {
+    ({ clearPersistentConnection = false, nextError } = {}) => {
       setState((currentState) => ({
         ...currentState,
         connectionStatus: "disconnected",
@@ -845,11 +929,40 @@ export function YoutubeSessionProvider({ children }) {
           ? normalizeSeededChannels()
           : currentState.subscribedChannels,
         accountVideos: clearPersistentConnection ? [] : currentState.accountVideos,
-        lastError: clearPersistentConnection ? "reconnect-required" : currentState.lastError,
+        lastError:
+          nextError ??
+          (clearPersistentConnection ? "reconnect-required" : currentState.lastError),
       }));
     },
     [],
   );
+
+  const getYouTubeAccessToken = useCallback(async () => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error("Failed to read Supabase session for YouTube token resolution", sessionError);
+    }
+
+    const session = sessionData?.session ?? null;
+    const sessionUserId = session?.user?.id || "";
+    const sessionToken = session?.provider_token || "";
+    const fallbackUser = sessionUserId ? null : await getSafeAuthUser();
+    const resolvedUserId = sessionUserId || fallbackUser?.id || authUserId || "";
+    const storedToken = resolvedUserId
+      ? await fetchStoredGoogleAccessToken(resolvedUserId)
+      : "";
+
+    if (sessionToken) {
+      return sessionToken;
+    }
+
+    if (storedToken) {
+      return storedToken;
+    }
+
+    return null;
+  }, [authUserId]);
 
   const ensureFreshAccessToken = useCallback(
     async ({ interactive = false } = {}) => {
@@ -862,6 +975,19 @@ export function YoutubeSessionProvider({ children }) {
 
       if (hasFreshToken) {
         return currentState.accessToken;
+      }
+
+      const resolvedToken = await getYouTubeAccessToken();
+      if (resolvedToken) {
+        setState((prevState) => ({
+          ...prevState,
+          accessToken: resolvedToken,
+          connectionStatus: prevState.connectionStatus === "connecting" ? "connecting" : "connected",
+          wasConnected: true,
+          lastError: "",
+        }));
+
+        return resolvedToken;
       }
 
       if (!interactive && !currentState.wasConnected) {
@@ -888,21 +1014,27 @@ export function YoutubeSessionProvider({ children }) {
 
       return response.access_token;
     },
-    [requestAccessToken],
+    [getYouTubeAccessToken, requestAccessToken],
   );
 
   const verifyYoutubeAccountAccess = useCallback(async (accessToken) => {
-    const response = await fetch(
-      "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+    const requestUrl =
+      "https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&mine=true";
+
+    console.info("[YouTube] channels request starting", { requestUrl });
+
+    const response = await fetch(requestUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
       },
-    );
+    });
+
+    console.info("[YouTube] channels status", { status: response.status });
 
     if (!response.ok) {
       const errorInfo = await readYouTubeErrorResponse(response, "YouTube account verification");
+      console.info("[YouTube] channels body", errorInfo?.parsedBody || errorInfo?.bodyText || null);
+      logYoutubeFailure("YouTube account verification", requestUrl, errorInfo);
       if (isQuotaExceededError(errorInfo)) {
         return {
           ok: false,
@@ -920,6 +1052,7 @@ export function YoutubeSessionProvider({ children }) {
     }
 
     const data = await response.json();
+    console.info("[YouTube] channels body", data);
 
     return {
       ok: true,
@@ -970,6 +1103,11 @@ export function YoutubeSessionProvider({ children }) {
         const errorInfo = await readYouTubeErrorResponse(
           subscriptionsResponse,
           "Subscriptions fetch",
+        );
+        logYoutubeFailure(
+          "Subscriptions fetch",
+          `https://www.googleapis.com/youtube/v3/subscriptions?${params.toString()}`,
+          errorInfo,
         );
 
         if (isQuotaExceededError(errorInfo)) {
@@ -1097,17 +1235,17 @@ export function YoutubeSessionProvider({ children }) {
       const channelVideoGroups = await Promise.all(
         channelIds.map(async (channelId) => {
           try {
-            const videosResponse = await fetch(
-              `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=5&order=date&type=video`,
-              {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
+            const requestUrl =
+              `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=5&order=date&type=video`;
+            const videosResponse = await fetch(requestUrl, {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
               },
-            );
+            });
 
             if (!videosResponse.ok) {
               const errorInfo = await readYouTubeErrorResponse(videosResponse, "Channel video fetch");
+              logYoutubeFailure("Channel video fetch", requestUrl, errorInfo);
               throw createRequestError(
                 `Video fetch failed for ${channelId}: ${errorInfo.status}`,
                 errorInfo.status,
@@ -1249,16 +1387,24 @@ export function YoutubeSessionProvider({ children }) {
 
           return true;
         } catch (error) {
+          console.error("Failed to refresh YouTube account data", {
+            message: error?.message || "youtube-refresh-failed",
+            status: error?.status || 0,
+            body: error?.errorInfo?.parsedBody || error?.errorInfo?.bodyText || null,
+          });
           const status = Number(error?.status || 0);
           const authInvalid = status === 401 || status === 403;
 
           if (authInvalid) {
-            markSessionDisconnected({ clearPersistentConnection: true });
+            markSessionDisconnected({
+              clearPersistentConnection: true,
+              nextError: "reconnect-required",
+            });
           } else {
             setState((currentState) => ({
               ...currentState,
               connectionStatus: currentState.wasConnected ? "connected" : "disconnected",
-              lastError: error?.message || "youtube-refresh-failed",
+              lastError: "youtube-refresh-failed",
             }));
           }
 
@@ -1273,7 +1419,7 @@ export function YoutubeSessionProvider({ children }) {
     [choosePreferredVideoId, fetchAccountQueueVideos, fetchSubscribedChannels, markSessionDisconnected],
   );
 
-  const restoreYoutubeSession = useCallback(async () => {
+  const restoreYoutubeSession = useCallback(async ({ forceRefresh = false } = {}) => {
     if (silentRestoreAttemptedRef.current) {
       return;
     }
@@ -1283,7 +1429,10 @@ export function YoutubeSessionProvider({ children }) {
     try {
       const accessToken = await ensureFreshAccessToken({ interactive: false });
       if (!accessToken) {
-        markSessionDisconnected({ clearPersistentConnection: true });
+        markSessionDisconnected({
+          clearPersistentConnection: true,
+          nextError: "",
+        });
         return;
       }
 
@@ -1291,21 +1440,39 @@ export function YoutubeSessionProvider({ children }) {
       const hasFreshAccountData =
         currentState.lastSyncedAt &&
         Date.now() - currentState.lastSyncedAt < ACCOUNT_DATA_TTL_MS &&
-        (currentState.accountProfile || currentState.accountVideos.length || currentState.subscribedChannels.length);
+        (currentState.accountProfile || currentState.accountVideos.length);
 
-      if (!hasFreshAccountData) {
+      if (forceRefresh || !hasFreshAccountData) {
         await refreshYoutubeAccountData(accessToken, {
           preserveSelectedVideo: true,
         });
       }
     } catch (error) {
-      if (error?.isOAuthError) {
-        markSessionDisconnected({ clearPersistentConnection: true });
-      } else {
-        markSessionDisconnected({ clearPersistentConnection: true });
-      }
+      markSessionDisconnected({
+        clearPersistentConnection: true,
+        nextError: error?.isOAuthError ? "reconnect-required" : "youtube-refresh-failed",
+      });
     }
   }, [ensureFreshAccessToken, markSessionDisconnected, refreshYoutubeAccountData]);
+
+  useEffect(() => {
+    restoreYoutubeSessionRef.current = restoreYoutubeSession;
+  }, [restoreYoutubeSession]);
+
+  useEffect(() => {
+    if (!state.hydrated || !authResolved || !authUserId) {
+      return;
+    }
+
+    const pendingBootstrap = pendingAuthBootstrapRef.current;
+    if (!pendingBootstrap || pendingBootstrap.userId !== authUserId) {
+      return;
+    }
+
+    pendingAuthBootstrapRef.current = null;
+    silentRestoreAttemptedRef.current = false;
+    void restoreYoutubeSession({ forceRefresh: true });
+  }, [authResolved, authUserId, restoreYoutubeSession, state.hydrated]);
 
   const connectYoutube = useCallback(async () => {
     setState((currentState) => ({
@@ -1332,7 +1499,7 @@ export function YoutubeSessionProvider({ children }) {
       setState((currentState) => ({
         ...currentState,
         connectionStatus: "disconnected",
-        lastError: error?.message || "youtube-connect-failed",
+        lastError: "youtube-connect-failed",
       }));
     }
   }, [ensureFreshAccessToken, refreshYoutubeAccountData]);
@@ -1721,6 +1888,7 @@ export function YoutubeSessionProvider({ children }) {
 
   const youtubeConnected =
     state.connectionStatus === "connected" || state.connectionStatus === "restoring";
+  const youtubeStatusMessage = getYoutubeStatusMessage(state.lastError);
 
   const approvedFeed = useMemo(() => {
     if (!youtubeConnected) {
@@ -1857,6 +2025,7 @@ export function YoutubeSessionProvider({ children }) {
       toggleChannelEnabled,
       workspaceTab: state.workspaceTab,
       youtubeConnected,
+      youtubeStatusMessage,
     }),
     [
       activeFeed,
@@ -1884,6 +2053,7 @@ export function YoutubeSessionProvider({ children }) {
       state.workspaceTab,
       toggleChannelEnabled,
       youtubeConnected,
+      youtubeStatusMessage,
     ],
   );
 

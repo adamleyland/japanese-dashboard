@@ -13,6 +13,7 @@
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
     "@scriptin/jmdict-simplified-loader": "^3.6.1",
+    "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "jmdict-simplified-node": "^1.1.2",
     "lucide-react": "^1.8.0",

@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
+import { getSafeAuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { addTrackingEvent, fetchTrackingTotals, reduceTrackingEvent } from "@/lib/trackingEvents";
+import { ensureUserProfile } from "@/lib/profiles";
 import TopNav from "@/components/layout/TopNav";
 import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
 import MainTracker from "@/components/dashboard/MainTracker";
@@ -13,6 +15,9 @@ import ReadingWorkspace from "@/components/features/reading/ReadingWorkspace";
 import ShadowingWorkspace from "@/components/features/shadowing/ShadowingWorkspace";
 import WritingWorkspace from "@/components/features/writing/WritingWorkspace";
 import GamingTab from "@/components/features/gaming/GamingTab";
+import useGamingData from "@/hooks/useGamingData";
+import useGamingTotals from "@/hooks/useGamingTotals";
+
 
 const MODULE_TABS = [
   { key: "listening", label: "Listening", icon: Ear },
@@ -49,9 +54,9 @@ export default function Home() {
   });
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
-  const [authSession, setAuthSession] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [trackingHydrated, setTrackingHydrated] = useState(false);
   const [audiobooksData, setAudiobooksData] = useState([]);
   const [audiobooksError, setAudiobooksError] = useState(null);
   const [audiobooksLoading, setAudiobooksLoading] = useState(true);
@@ -66,6 +71,12 @@ export default function Home() {
     () => listeningHours + gamingHours + shadowingHours,
     [listeningHours, gamingHours, shadowingHours],
   );
+  const gamingData = useGamingData({
+    authUserId,
+    authResolved: !authLoading,
+  });
+  const { totalMinutes: gamingTotalMinutes } = useGamingTotals(gamingData.games);
+  const hasGamingSourceData = gamingData.games.length > 0;
 
   useEffect(() => {
     listeningHoursRef.current = listeningHours;
@@ -228,18 +239,6 @@ export default function Home() {
     [updateListeningHours],
   );
 
-  const adjustGamingHours = useCallback(
-    (deltaHours, metadata = {}) => {
-      if (!Number.isFinite(deltaHours) || !deltaHours) return;
-
-      updateGamingHours(
-        (currentHours) => Math.max(0, currentHours + deltaHours),
-        metadata,
-      );
-    },
-    [updateGamingHours],
-  );
-
   const handleTabChange = useCallback((nextTab) => {
     setTab((currentTab) => (currentTab === nextTab ? null : nextTab));
   }, []);
@@ -258,28 +257,22 @@ export default function Home() {
   useEffect(() => {
     let isActive = true;
 
-    const loadSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error("Failed to load Supabase auth session", error);
-      }
+    const loadUser = async () => {
+      const user = await getSafeAuthUser();
 
       if (!isActive) return;
 
-      setAuthSession(data.session ?? null);
-      setAuthUser(data.session?.user ?? null);
+      setAuthUser(user);
       setAuthLoading(false);
     };
 
-    loadSession();
+    void loadUser();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!isActive) return;
 
-      setAuthSession(session ?? null);
       setAuthUser(session?.user ?? null);
       setAuthLoading(false);
     });
@@ -289,6 +282,14 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!authUser?.id) {
+      return;
+    }
+
+    void ensureUserProfile(authUser);
+  }, [authUser]);
 
   useEffect(() => {
     const fetchAudiobooks = async () => {
@@ -308,12 +309,23 @@ export default function Home() {
     let cancelled = false;
 
     const hydrateTrackingState = async () => {
-      if (!authUserId) {
+      if (authLoading) {
         return;
       }
 
+      if (!authUserId) {
+        setTrackingHydrated(true);
+        return;
+      }
+
+      setTrackingHydrated(false);
       const totals = await fetchTrackingTotals(authUserId);
-      if (cancelled || !totals) {
+      if (cancelled) {
+        return;
+      }
+
+      if (!totals) {
+        setTrackingHydrated(true);
         return;
       }
 
@@ -328,6 +340,7 @@ export default function Home() {
       setGamingHours(totals.gaming);
       setWordsRead(totals.reading);
       setWordsWritten(totals.writing);
+      setTrackingHydrated(true);
     };
 
     void hydrateTrackingState();
@@ -335,7 +348,33 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [authUserId]);
+  }, [authLoading, authUserId]);
+
+  useEffect(() => {
+    if (authLoading || !trackingHydrated || !authUserId || !hasGamingSourceData) {
+      return;
+    }
+
+    const nextGamingHours = gamingTotalMinutes / 60;
+    const currentGamingHours = gamingHoursRef.current;
+
+    if (Math.abs(nextGamingHours - currentGamingHours) < 0.001) {
+      return;
+    }
+
+    updateGamingHours(nextGamingHours, {
+      kind: "adjustment",
+      source: "gaming-library-sync",
+      note: "Synced gaming total from connected gaming library sources.",
+    });
+  }, [
+    authLoading,
+    authUserId,
+    gamingTotalMinutes,
+    hasGamingSourceData,
+    trackingHydrated,
+    updateGamingHours,
+  ]);
 
   return (
     <main style={styles.page}>
@@ -347,7 +386,6 @@ export default function Home() {
           activeTab={tab}
           authControl={
             <MagicLinkAuth
-              session={authSession}
               user={authUser}
               isCompact={isCompact}
               isLoading={authLoading}
@@ -449,7 +487,7 @@ export default function Home() {
             <GamingTab
               styles={styles}
               gamingHours={gamingHours}
-              adjustGamingHours={adjustGamingHours}
+              gamingData={gamingData}
               isMobile={isMobile}
               isCompact={isCompact}
             />
