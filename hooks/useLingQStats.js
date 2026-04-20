@@ -7,6 +7,11 @@ export default function useLingQStats(options = {}) {
   const [stats, setStats] = useState({
     configured: false,
     totalWordsRead: null,
+    estimatedReadingHours: null,
+    bookTitle: null,
+    chapterTitle: null,
+    bookImage: null,
+    bookProgress: null,
     loading: enabled,
     error: null,
     source: "lingq",
@@ -37,7 +42,7 @@ export default function useLingQStats(options = {}) {
       }));
 
       try {
-        const response = await fetch("/api/reading/lingq", {
+        const response = await fetch("/api/lingq", {
           method: "GET",
           cache: "no-store",
           signal: controller.signal,
@@ -51,7 +56,18 @@ export default function useLingQStats(options = {}) {
         setStats({
           configured: Boolean(payload?.configured),
           totalWordsRead:
-            typeof payload?.totalWordsRead === "number" ? payload.totalWordsRead : null,
+            typeof payload?.wordsRead === "number" ? payload.wordsRead : null,
+          estimatedReadingHours:
+            typeof payload?.estimatedReadingHours === "number"
+              ? payload.estimatedReadingHours
+              : null,
+          bookTitle: typeof payload?.bookTitle === "string" ? payload.bookTitle : null,
+          chapterTitle:
+            typeof payload?.chapterTitle === "string" ? payload.chapterTitle : null,
+          bookImage:
+            typeof payload?.bookImage === "string" ? payload.bookImage : null,
+          bookProgress:
+            typeof payload?.bookProgress === "number" ? payload.bookProgress : null,
           loading: false,
           error: null,
           source: payload?.source || "lingq",
@@ -83,4 +99,3 @@ export default function useLingQStats(options = {}) {
     refresh,
   };
 }
-

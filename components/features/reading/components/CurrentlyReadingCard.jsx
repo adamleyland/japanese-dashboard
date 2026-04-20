@@ -55,10 +55,16 @@ export default function CurrentlyReadingCard({ styles, item, loading }) {
                 >
                   {item.title}
                 </h3>
-                <p style={{ ...styles.playerSub, margin: "4px 0 0 0" }}>{item.author}</p>
+                {item.subtitle || item.author ? (
+                  <p style={{ ...styles.playerSub, margin: "4px 0 0 0" }}>
+                    {item.subtitle || item.author}
+                  </p>
+                ) : null}
               </div>
 
-              <div style={{ ...styles.playerSub, margin: 0 }}>{item.progressLabel}</div>
+              {item.progressLabel ? (
+                <div style={{ ...styles.playerSub, margin: 0 }}>{item.progressLabel}</div>
+              ) : null}
 
               {item.progressPercent !== null ? (
                 <div style={{ display: "grid", gap: "6px" }}>

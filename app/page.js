@@ -68,11 +68,6 @@ export default function Home() {
   const gamingHoursRef = useRef(gamingHours);
   const wordsReadRef = useRef(wordsRead);
   const wordsWrittenRef = useRef(wordsWritten);
-
-  const overallHours = useMemo(
-    () => listeningHours + gamingHours + shadowingHours,
-    [listeningHours, gamingHours, shadowingHours],
-  );
   const gamingData = useGamingData({
     authUserId,
     authResolved: !authLoading,
@@ -84,6 +79,12 @@ export default function Home() {
   const lingqStats = useLingQStats({
     enabled: !authLoading,
   });
+  const estimatedReadingHours =
+    typeof lingqStats.estimatedReadingHours === "number" ? lingqStats.estimatedReadingHours : 0;
+  const overallHours = useMemo(
+    () => listeningHours + gamingHours + shadowingHours + estimatedReadingHours,
+    [estimatedReadingHours, listeningHours, gamingHours, shadowingHours],
+  );
   const { totalMinutes: gamingTotalMinutes } = useGamingTotals(gamingData.games);
   const hasGamingSourceData = gamingData.games.length > 0;
 
@@ -453,6 +454,7 @@ export default function Home() {
                 listeningHours={listeningHours}
                 wordsReadLabel={formatWords(wordsRead)}
                 wordsRead={wordsRead}
+                estimatedReadingHours={estimatedReadingHours}
                 gamingHoursLabel={formatHours(gamingHours)}
                 gamingHours={gamingHours}
                 shadowingHoursLabel={formatHours(shadowingHours)}

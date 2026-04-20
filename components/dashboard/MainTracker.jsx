@@ -14,6 +14,7 @@ export default function MainTracker({
   listeningHours,
   wordsReadLabel,
   wordsRead,
+  estimatedReadingHours,
   gamingHoursLabel,
   gamingHours,
   shadowingHoursLabel,
@@ -145,6 +146,15 @@ export default function MainTracker({
         unitLabel: "Hours",
       },
       {
+        key: "reading",
+        label: "Reading",
+        value: estimatedReadingHours,
+        valueLabel: `${estimatedReadingHours.toLocaleString()}h`,
+        color: "#3b82f6",
+        colorSoft: "rgba(59,130,246,0.18)",
+        unitLabel: "Hours",
+      },
+      {
         key: "gaming",
         label: "Gaming",
         value: gamingHours,
@@ -166,6 +176,7 @@ export default function MainTracker({
     [
       gamingHours,
       gamingHoursLabel,
+      estimatedReadingHours,
       listeningHours,
       listeningHoursLabel,
       shadowingHours,

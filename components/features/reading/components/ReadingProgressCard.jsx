@@ -148,7 +148,7 @@ export default function ReadingProgressCard({
 
       {!configured && !loading ? (
         <ReadingEmptyState
-          label="LingQ sync is ready for wiring. Add LINGQ_STATS_URL plus your preferred token env to enable automatic words-read totals."
+          label="LingQ sync is ready for wiring. Add LINGQ_API_KEY to enable automatic words-read totals."
           align="left"
         />
       ) : error ? (
@@ -180,7 +180,7 @@ export default function ReadingProgressCard({
           </div>
           <div style={{ ...styles.playerSub, margin: 0 }}>
             {currentBook
-              ? currentBook.progressLabel
+              ? currentBook.subtitle || currentBook.author || currentBook.progressLabel || "Latest LingQ lesson"
               : "Your LingQ total is ready. Mark a book as currently reading to tie this progress to a title."}
           </div>
         </div>

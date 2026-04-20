@@ -72,7 +72,37 @@ export default function ReadingTab({
   }, [isMobile]);
 
   const readingItems = readingLibrary.items;
-  const currentBook = useMemo(() => getCurrentlyReadingItem(readingItems), [readingItems]);
+  const libraryCurrentBook = useMemo(() => getCurrentlyReadingItem(readingItems), [readingItems]);
+  const currentBook = useMemo(() => {
+    const bookProgress =
+      typeof lingqStats.bookProgress === "number"
+        ? lingqStats.bookProgress <= 1
+          ? lingqStats.bookProgress * 100
+          : lingqStats.bookProgress
+        : null;
+
+    if (lingqStats.bookTitle || lingqStats.chapterTitle || lingqStats.bookImage) {
+      return {
+        id: "lingq-current",
+        title: lingqStats.bookTitle || "Untitled",
+        author: lingqStats.chapterTitle || "",
+        subtitle: lingqStats.chapterTitle || "",
+        coverUrl: lingqStats.bookImage || null,
+        coverCandidates: lingqStats.bookImage ? [lingqStats.bookImage] : [],
+        progressPercent: bookProgress,
+        progressLabel:
+          bookProgress !== null ? `${Math.round(bookProgress)}% complete` : null,
+      };
+    }
+
+    return libraryCurrentBook;
+  }, [
+    libraryCurrentBook,
+    lingqStats.bookTitle,
+    lingqStats.chapterTitle,
+    lingqStats.bookImage,
+    lingqStats.bookProgress,
+  ]);
   const visibleItems = useMemo(
     () => getVisibleReadingItems(readingItems, filterKey),
     [filterKey, readingItems],
@@ -121,4 +151,3 @@ export default function ReadingTab({
     </div>
   );
 }
-
