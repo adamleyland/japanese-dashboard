@@ -69,7 +69,7 @@ export default function ListeningWorkspace({
     { key: "recommended", label: "Queue" },
     { key: "discover", label: "Discover" },
   ];
-  const discoverFilters = ["ã‚²ãƒ¼ãƒ ", "æ—…è¡Œ", "æ—¥æœ¬èªž"];
+  const discoverFilters = ["ゲーム", "æ—…è¡Œ", "æ—¥æœ¬èªž"];
   const visibleQueueIndex = queueTotal ? queueIndex + 1 : 0;
 
   const visibleChannels = useMemo(() => {

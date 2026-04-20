@@ -13,8 +13,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "日本語 Dashboard",
+  title: "\u65e5\u672c\u8a9e Dashboard",
   description: "Adam's Japanese Learning Dashboard",
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
 };
 
 export default function RootLayout({ children }) {

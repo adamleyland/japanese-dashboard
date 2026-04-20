@@ -11,12 +11,14 @@ import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
 import MainTracker from "@/components/dashboard/MainTracker";
 import DictionaryCarousel from "@/components/dashboard/DictionaryCarousel";
 import ListeningTab from "@/components/features/listening/ListeningTab";
-import ReadingWorkspace from "@/components/features/reading/ReadingWorkspace";
+import ReadingTab from "@/components/features/reading/ReadingTab";
 import ShadowingWorkspace from "@/components/features/shadowing/ShadowingWorkspace";
 import WritingWorkspace from "@/components/features/writing/WritingWorkspace";
 import GamingTab from "@/components/features/gaming/GamingTab";
 import useGamingData from "@/hooks/useGamingData";
 import useGamingTotals from "@/hooks/useGamingTotals";
+import useReadingLibrary from "@/hooks/useReadingLibrary";
+import useLingQStats from "@/hooks/useLingQStats";
 
 
 const MODULE_TABS = [
@@ -74,6 +76,13 @@ export default function Home() {
   const gamingData = useGamingData({
     authUserId,
     authResolved: !authLoading,
+  });
+  const readingLibrary = useReadingLibrary({
+    authUserId,
+    authResolved: !authLoading,
+  });
+  const lingqStats = useLingQStats({
+    enabled: !authLoading,
   });
   const { totalMinutes: gamingTotalMinutes } = useGamingTotals(gamingData.games);
   const hasGamingSourceData = gamingData.games.length > 0;
@@ -376,6 +385,31 @@ export default function Home() {
     updateGamingHours,
   ]);
 
+  useEffect(() => {
+    if (authLoading || !trackingHydrated || !lingqStats.hasStats) {
+      return;
+    }
+
+    const nextWordsRead = lingqStats.totalWordsRead;
+    const currentWordsRead = wordsReadRef.current;
+
+    if (Math.abs(nextWordsRead - currentWordsRead) < 1) {
+      return;
+    }
+
+    updateWordsRead(nextWordsRead, {
+      kind: "adjustment",
+      source: "lingq-sync",
+      note: "Synced reading total from LingQ words read.",
+    });
+  }, [
+    authLoading,
+    lingqStats.hasStats,
+    lingqStats.totalWordsRead,
+    trackingHydrated,
+    updateWordsRead,
+  ]);
+
   return (
     <main style={styles.page}>
       <div style={styles.bgOrb1} />
@@ -463,10 +497,12 @@ export default function Home() {
             />
           )}
           {tab === "reading" && (
-            <ReadingWorkspace
+            <ReadingTab
               styles={styles}
               wordsRead={wordsRead}
-              setWordsRead={updateWordsRead}
+              readingLibrary={readingLibrary}
+              lingqStats={lingqStats}
+              isMobile={isMobile}
             />
           )}
           {tab === "shadowing" && (
