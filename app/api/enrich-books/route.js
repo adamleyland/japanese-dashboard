@@ -14,7 +14,7 @@ export const revalidate = 0;
 
 const RAKUTEN_BOOKS_ENDPOINT =
   "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
-const APP_REQUEST_ORIGIN = "https://www.jpdashboard.app";
+const RAKUTEN_ORIGIN = "https://jpdashboard.app";
 const BATCH_SIZE = 20;
 const REQUEST_DELAY_MS = 500;
 const STRONG_MATCH_THRESHOLD = 90;
@@ -212,17 +212,14 @@ async function searchRakutenBooks({
 
   const requestUrl = `${RAKUTEN_BOOKS_ENDPOINT}?${params.toString()}`;
   const requestHeaders = {
-    Origin: APP_REQUEST_ORIGIN,
-    Referer: `${APP_REQUEST_ORIGIN}/`,
+    "Content-Type": "application/json",
+    Origin: RAKUTEN_ORIGIN,
+    Referer: `${RAKUTEN_ORIGIN}/`,
   };
 
-  console.log("Rakuten request config:", {
-    endpoint: RAKUTEN_BOOKS_ENDPOINT,
-    title,
-    hasApplicationId: Boolean(process.env.RAKUTEN_APP_ID),
-    hasAccessKey: Boolean(process.env.RAKUTEN_ACCESS_KEY),
-    hasReferer: Boolean(requestHeaders.Referer),
-    hasOrigin: Boolean(requestHeaders.Origin),
+  console.log("Rakuten headers:", {
+    origin: RAKUTEN_ORIGIN,
+    referer: `${RAKUTEN_ORIGIN}/`,
   });
 
   const response = await fetch(requestUrl, {
