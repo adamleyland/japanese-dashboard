@@ -15,8 +15,9 @@ export const revalidate = 0;
 const RAKUTEN_BOOKS_ENDPOINT =
   "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
 const RAKUTEN_ORIGIN = "https://jpdashboard.app";
-const BATCH_SIZE = 20;
-const REQUEST_DELAY_MS = 500;
+const BATCH_SIZE = 10;
+const REQUEST_DELAY_MS = 1200;
+const RATE_LIMIT_RETRY_DELAY_MS = 2000;
 const STRONG_MATCH_THRESHOLD = 90;
 const REVIEW_MATCH_THRESHOLD = 60;
 const BOOK_SELECT_COLUMNS = [
@@ -41,7 +42,24 @@ const TRAILING_VOLUME_MARKER_PATTERNS = [
   /\s*\u7B2C?\s*\d+\s*\u5DFB\s*$/u,
   /\s*(?:vol(?:ume)?\.?\s*\d+)\s*$/iu,
   /\s*[\u4E0A\u4E0B\u4E2D]\s*$/u,
+  /\s*[\u524D\u5F8C]\u7DE8\s*$/u,
+  /\s*#\s*\d+\s*$/u,
+  /\s*book\s*\d+\s*$/iu,
 ];
+
+const BRACKETED_SUBTITLE_PATTERNS = [
+  /\s*[\u3008<][^<>\u3008\u3009]*[\u3009>]\s*/gu,
+  /\s*[(][^()]*[)]\s*/g,
+  /\s*[\uFF08][^\uFF08\uFF09]*[\uFF09]\s*/gu,
+  /\s*[\u3014][^\u3014\u3015]*[\u3015]\s*/gu,
+];
+
+class RakutenRateLimitError extends Error {
+  constructor(message = "Rakuten rate limited the request.") {
+    super(message);
+    this.name = "RakutenRateLimitError";
+  }
+}
 
 function getRequiredEnv() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -124,11 +142,15 @@ function normalizeText(value) {
 function cleanTitleForFallback(title) {
   let cleanedTitle = cleanValue(title).normalize("NFKC");
 
+  for (const pattern of BRACKETED_SUBTITLE_PATTERNS) {
+    cleanedTitle = cleanedTitle.replace(pattern, " ");
+  }
+
   for (const pattern of TRAILING_VOLUME_MARKER_PATTERNS) {
     cleanedTitle = cleanedTitle.replace(pattern, "");
   }
 
-  return cleanedTitle.trim();
+  return cleanedTitle.replace(/\s+/g, " ").trim();
 }
 
 function scoreTextOverlap(candidate, expected) {
@@ -222,33 +244,49 @@ async function searchRakutenBooks({
     referer: `${RAKUTEN_ORIGIN}/`,
   });
 
-  const response = await fetch(requestUrl, {
-    headers: requestHeaders,
-    cache: "no-store",
-  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(requestUrl, {
+      headers: requestHeaders,
+      cache: "no-store",
+    });
 
-  if (delayMs > 0) {
-    await sleep(delayMs);
-  }
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
 
-  if (response.status === 404) {
+    if (response.status === 429) {
+      if (attempt === 0) {
+        console.log("Rakuten returned 429. Waiting before one retry.");
+        await sleep(RATE_LIMIT_RETRY_DELAY_MS);
+        continue;
+      }
+
+      throw new RakutenRateLimitError(
+        "Rakuten request failed with 429 after one retry.",
+      );
+    }
+
+    if (response.status === 404) {
+      return [];
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Rakuten request failed with ${response.status}: ${errorText || "unknown error"}`,
+      );
+    }
+
+    const payload = await response.json();
+    if (Array.isArray(payload?.items)) {
+      return payload.items;
+    }
+
+    if (Array.isArray(payload?.Items)) {
+      return payload.Items;
+    }
+
     return [];
-  }
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Rakuten request failed with ${response.status}: ${errorText || "unknown error"}`,
-    );
-  }
-
-  const payload = await response.json();
-  if (Array.isArray(payload?.items)) {
-    return payload.items;
-  }
-
-  if (Array.isArray(payload?.Items)) {
-    return payload.Items;
   }
 
   return [];
@@ -484,6 +522,7 @@ export async function GET(request) {
         reviewNeeded: 0,
         unmatched: 0,
         errors: 0,
+        rateLimited: 0,
         message: "No books with null match_status found.",
       });
     }
@@ -496,6 +535,7 @@ export async function GET(request) {
       reviewNeeded: 0,
       unmatched: 0,
       errors: 0,
+      rateLimited: 0,
       results: [],
     };
 
@@ -560,6 +600,17 @@ export async function GET(request) {
           confidence: result.confidence,
         });
       } catch (error) {
+        if (error instanceof RakutenRateLimitError) {
+          summary.rateLimited += 1;
+          summary.results.push({
+            id: book.id,
+            title: book.title,
+            outcome: "rate_limited",
+            error: error.message,
+          });
+          continue;
+        }
+
         summary.errors += 1;
         summary.results.push({
           id: book.id,
