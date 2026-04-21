@@ -463,7 +463,7 @@ export default function ListeningWorkspace({
                                   <div style={styles.playerSub}>
                                     {[channel.handle, formatSubscribers(channel.subscriberCount)]
                                       .filter(Boolean)
-                                      .join(" Â· ") || channel.category}
+                                      .join(" · ") || channel.category}
                                   </div>
                                 </div>
                               </div>

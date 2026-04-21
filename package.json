@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "enrich:books": "node ./scripts/enrich-books.js",
     "enrich:audiobooks": "node ./scripts/enrich-audiobooks.js",
     "sync:audiobooks": "node ./scripts/sync-audiobooks.js"
   },
@@ -15,6 +16,7 @@
     "@scriptin/jmdict-simplified-loader": "^3.6.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
+    "dotenv": "^17.4.2",
     "jmdict-simplified-node": "^1.1.2",
     "lucide-react": "^1.8.0",
     "next": "16.2.3",

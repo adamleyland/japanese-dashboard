@@ -11,8 +11,15 @@ export default function ReadingCoverArtwork({
   borderRadius = 16,
 }) {
   const [candidateIndex, setCandidateIndex] = useState(0);
-  const candidates = item?.coverCandidates || [];
-  const activeSource = candidates[candidateIndex] || item?.coverUrl || null;
+  const candidates = [
+    ...(Array.isArray(item?.coverCandidates) ? item.coverCandidates : []),
+    item?.image_url,
+    item?.coverUrl,
+    item?.imageUrl,
+    item?.raw?.image_url,
+  ].filter(Boolean).filter((candidate, index, values) => values.indexOf(candidate) === index);
+  const activeSource = candidates[candidateIndex] || null;
+  const resolvedWidth = typeof width === "number" ? `${width}px` : width;
 
   if (!activeSource) {
     return (
@@ -30,7 +37,7 @@ export default function ReadingCoverArtwork({
       src={activeSource}
       alt={item?.title || "Book cover"}
       style={{
-        width: `${width}px`,
+        width: resolvedWidth,
         aspectRatio,
         borderRadius: `${borderRadius}px`,
         objectFit: "cover",
@@ -40,7 +47,7 @@ export default function ReadingCoverArtwork({
       }}
       onError={() => {
         setCandidateIndex((currentValue) =>
-          currentValue + 1 <= candidates.length ? currentValue + 1 : currentValue,
+          currentValue + 1 < candidates.length ? currentValue + 1 : candidates.length,
         );
       }}
     />
@@ -48,10 +55,14 @@ export default function ReadingCoverArtwork({
 }
 
 function ReadingCoverPlaceholder({ item, width, aspectRatio, borderRadius }) {
+  const placeholderLabel = item?.image_url
+    ? "Cover unavailable"
+    : "No cover yet";
+
   return (
     <div
       style={{
-        width: `${width}px`,
+        width: typeof width === "number" ? `${width}px` : width,
         aspectRatio,
         borderRadius: `${borderRadius}px`,
         border: "1px dashed var(--app-border-soft)",
@@ -74,8 +85,8 @@ function ReadingCoverPlaceholder({ item, width, aspectRatio, borderRadius }) {
           padding: "8px",
           textAlign: "center",
         }}
-      >
-        <BookOpenText size={18} strokeWidth={2.3} />
+        >
+          <BookOpenText size={18} strokeWidth={2.3} />
         <span
           style={{
             fontSize: "10px",
@@ -84,7 +95,7 @@ function ReadingCoverPlaceholder({ item, width, aspectRatio, borderRadius }) {
             fontWeight: 700,
           }}
         >
-          No cover
+          {placeholderLabel}
         </span>
       </div>
     </div>

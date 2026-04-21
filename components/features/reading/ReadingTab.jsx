@@ -2,14 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import CurrentlyReadingCard from "@/components/features/reading/components/CurrentlyReadingCard";
-import ReadingListCard from "@/components/features/reading/components/ReadingListCard";
+import ReadingLibraryPanel from "@/components/features/reading/components/ReadingLibraryPanel";
 import ReadingProgressCard from "@/components/features/reading/components/ReadingProgressCard";
 import {
   DEFAULT_READING_FILTER,
+  DEFAULT_READING_LAYOUT_MODE,
   DEFAULT_READING_GOAL,
   READING_GOAL_STORAGE_KEY,
+  READING_FILTER_STORAGE_KEY,
+  READING_FILTERS,
+  READING_LAYOUT_MODE_STORAGE_KEY,
 } from "@/lib/reading/constants";
 import { getCurrentlyReadingItem, getReadingCounts, getVisibleReadingItems } from "@/lib/reading/selectors";
+
+const FILTER_KEYS = new Set(READING_FILTERS.map((filter) => filter.key));
+const LAYOUT_KEYS = new Set(["list", "artwork"]);
 
 export default function ReadingTab({
   styles,
@@ -17,10 +24,26 @@ export default function ReadingTab({
   readingLibrary,
   lingqStats,
   isMobile,
+  isCompact,
 }) {
   const rightColumnRef = useRef(null);
   const [libraryHeight, setLibraryHeight] = useState(null);
-  const [filterKey, setFilterKey] = useState(DEFAULT_READING_FILTER);
+  const [filterKey, setFilterKey] = useState(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_READING_FILTER;
+    }
+
+    const storedValue = window.localStorage.getItem(READING_FILTER_STORAGE_KEY);
+    return FILTER_KEYS.has(storedValue) ? storedValue : DEFAULT_READING_FILTER;
+  });
+  const [layoutMode, setLayoutMode] = useState(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_READING_LAYOUT_MODE;
+    }
+
+    const storedValue = window.localStorage.getItem(READING_LAYOUT_MODE_STORAGE_KEY);
+    return LAYOUT_KEYS.has(storedValue) ? storedValue : DEFAULT_READING_LAYOUT_MODE;
+  });
   const [goalWords, setGoalWords] = useState(() => {
     if (typeof window === "undefined") {
       return DEFAULT_READING_GOAL;
@@ -30,6 +53,22 @@ export default function ReadingTab({
     return Number.isFinite(storedValue) && storedValue > 0 ? storedValue : DEFAULT_READING_GOAL;
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(READING_FILTER_STORAGE_KEY, filterKey);
+  }, [filterKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(READING_LAYOUT_MODE_STORAGE_KEY, layoutMode);
+  }, [layoutMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -120,15 +159,18 @@ export default function ReadingTab({
         minHeight: 0,
       }}
     >
-      <ReadingListCard
+      <ReadingLibraryPanel
         styles={styles}
         items={visibleItems}
         loading={readingLibrary.loading}
         error={readingLibrary.error}
         filterKey={filterKey}
         onFilterChange={setFilterKey}
+        layoutMode={layoutMode}
+        onLayoutModeChange={setLayoutMode}
         counts={counts}
         onRefresh={readingLibrary.refresh}
+        isCompact={isCompact}
         targetHeight={isMobile ? null : libraryHeight}
       />
 

@@ -521,6 +521,7 @@ export default function Home() {
               readingLibrary={readingLibrary}
               lingqStats={lingqStats}
               isMobile={isMobile}
+              isCompact={isCompact}
             />
           )}
           {tab === "shadowing" && (

@@ -60,8 +60,6 @@ export default function StudyDistributionChart({
     [chartItems],
   );
 
-  const activeItem = chartItems.find((item) => item.key === activeKey) || null;
-
   const clearTooltip = () => {
     setActiveKey(null);
     setTooltipState(null);
@@ -348,27 +346,6 @@ export default function StudyDistributionChart({
           );
         })}
       </div>
-
-      {activeItem ? (
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            alignSelf: "flex-start",
-            padding: "8px 12px",
-            borderRadius: "999px",
-            border: "1px solid var(--app-border-soft)",
-            background: "rgba(255,255,255,0.04)",
-            color: "var(--app-text-soft)",
-            fontSize: "12px",
-            fontWeight: 700,
-          }}
-        >
-          <span style={{ color: activeItem.color }}>{activeItem.label}</span>
-          <span>leads with {activeItem.percentageLabel}</span>
-        </div>
-      ) : null}
     </div>
   );
 }

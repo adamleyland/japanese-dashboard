@@ -2,33 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { DEFAULT_READING_LIBRARY_TABLE } from "@/lib/reading/constants";
+import {
+  DEFAULT_READING_LIBRARY_TABLE,
+  READING_BOOKS_SELECT_COLUMNS,
+} from "@/lib/reading/constants";
 import { normalizeReadingItems } from "@/lib/reading/normalizers";
 
-function getRowUserId(row) {
-  return row?.user_id || row?.userId || row?.profile_id || row?.owner_id || null;
-}
-
-function filterRowsForUser(rows, authUserId) {
-  const hasOwnedRows = rows.some((row) => Boolean(getRowUserId(row)));
-
-  if (!hasOwnedRows) {
-    return rows;
-  }
-
-  if (!authUserId) {
-    return [];
-  }
-
-  return rows.filter((row) => getRowUserId(row) === authUserId);
-}
-
 export default function useReadingLibrary(options = {}) {
-  const {
-    authResolved = true,
-    authUserId = "",
-    tableName = DEFAULT_READING_LIBRARY_TABLE,
-  } = options;
+  const { authResolved = true, tableName = DEFAULT_READING_LIBRARY_TABLE } = options;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,7 +30,10 @@ export default function useReadingLibrary(options = {}) {
       setLoading(true);
       setError(null);
 
-      const { data, error: nextError } = await supabase.from(tableName).select("*");
+      const { data, error: nextError } = await supabase
+        .from(tableName)
+        .select(READING_BOOKS_SELECT_COLUMNS)
+        .order("created_at", { ascending: false });
 
       if (!isActive) {
         return;
@@ -62,8 +46,7 @@ export default function useReadingLibrary(options = {}) {
         return;
       }
 
-      const filteredRows = filterRowsForUser(data || [], authUserId);
-      setItems(normalizeReadingItems(filteredRows));
+      setItems(normalizeReadingItems(data || []));
       setLoading(false);
     };
 
@@ -72,7 +55,7 @@ export default function useReadingLibrary(options = {}) {
     return () => {
       isActive = false;
     };
-  }, [authResolved, authUserId, refreshToken, tableName]);
+  }, [authResolved, refreshToken, tableName]);
 
   return {
     items,
@@ -82,4 +65,3 @@ export default function useReadingLibrary(options = {}) {
     tableName,
   };
 }
-
