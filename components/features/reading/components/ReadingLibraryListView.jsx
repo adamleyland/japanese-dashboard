@@ -4,9 +4,15 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import ReadingBookDetails from "@/components/features/reading/components/ReadingBookDetails";
 import ReadingCoverArtwork from "@/components/features/reading/components/ReadingCoverArtwork";
-import ReadingStatusBadge from "@/components/features/reading/components/ReadingStatusBadge";
+import ReadingStatusControl from "@/components/features/reading/components/ReadingStatusControl";
 
-export default function ReadingLibraryListView({ styles, items, isCompact }) {
+export default function ReadingLibraryListView({
+  styles,
+  items,
+  isCompact,
+  onStatusChange,
+  statusUpdatingIds,
+}) {
   const [expandedBookId, setExpandedBookId] = useState(null);
   const resolvedExpandedBookId = items.some((item) => item.id === expandedBookId)
     ? expandedBookId
@@ -33,17 +39,26 @@ export default function ReadingLibraryListView({ styles, items, isCompact }) {
               transition: "border-color 160ms ease, box-shadow 160ms ease",
             }}
           >
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() =>
                 setExpandedBookId((currentValue) =>
                   (resolvedExpandedBookId ?? currentValue) === item.id ? null : item.id,
                 )
               }
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setExpandedBookId((currentValue) =>
+                    (resolvedExpandedBookId ?? currentValue) === item.id ? null : item.id,
+                  );
+                }
+              }}
               aria-expanded={isExpanded}
               style={{
                 width: "100%",
-                border: "none",
+                outline: "none",
                 background: "transparent",
                 cursor: "pointer",
                 padding: "12px",
@@ -85,7 +100,14 @@ export default function ReadingLibraryListView({ styles, items, isCompact }) {
                     ) : null}
                   </div>
 
-                  {!isCompact ? <ReadingStatusBadge status={item.status} /> : null}
+                  {!isCompact ? (
+                    <ReadingStatusControl
+                      bookId={item.id}
+                      status={item.status}
+                      onChange={onStatusChange}
+                      disabled={Boolean(statusUpdatingIds?.[item.id])}
+                    />
+                  ) : null}
                 </div>
 
                 <div
@@ -97,7 +119,14 @@ export default function ReadingLibraryListView({ styles, items, isCompact }) {
                     flexWrap: "wrap",
                   }}
                 >
-                  {isCompact ? <ReadingStatusBadge status={item.status} /> : null}
+                  {isCompact ? (
+                    <ReadingStatusControl
+                      bookId={item.id}
+                      status={item.status}
+                      onChange={onStatusChange}
+                      disabled={Boolean(statusUpdatingIds?.[item.id])}
+                    />
+                  ) : null}
                   <span
                     style={{
                       display: "inline-flex",
@@ -113,7 +142,7 @@ export default function ReadingLibraryListView({ styles, items, isCompact }) {
                   </span>
                 </div>
               </div>
-            </button>
+            </div>
 
             {isExpanded ? (
               <div

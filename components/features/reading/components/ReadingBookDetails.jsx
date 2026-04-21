@@ -11,17 +11,6 @@ export default function ReadingBookDetails({
   const detailItems = [
     { key: "author", label: "Author", value: book.author },
     { key: "isbn", label: "ISBN", value: book.isbn },
-    { key: "sales-date", label: "Sales date", value: book.salesDateLabel || book.salesDate },
-    {
-      key: "match-status",
-      label: "Match status",
-      value: book.matchStatusLabel || book.matchStatus,
-    },
-    {
-      key: "match-confidence",
-      label: "Match confidence",
-      value: book.matchConfidenceLabel,
-    },
     ...(includeStatus ? [{ key: "status", label: "Status", value: book.statusLabel }] : []),
   ].filter((item) => item.value);
 

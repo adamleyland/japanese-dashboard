@@ -18,6 +18,8 @@ export default function ReadingLibraryPanel({
   onLayoutModeChange,
   counts,
   onRefresh,
+  onStatusChange,
+  statusUpdatingIds,
   isCompact,
   targetHeight,
 }) {
@@ -35,10 +37,26 @@ export default function ReadingLibraryPanel({
     }
 
     if (layoutMode === "artwork") {
-      return <ReadingLibraryArtworkView styles={styles} items={items} isCompact={isCompact} />;
+      return (
+        <ReadingLibraryArtworkView
+          styles={styles}
+          items={items}
+          isCompact={isCompact}
+          onStatusChange={onStatusChange}
+          statusUpdatingIds={statusUpdatingIds}
+        />
+      );
     }
 
-    return <ReadingLibraryListView styles={styles} items={items} isCompact={isCompact} />;
+    return (
+      <ReadingLibraryListView
+        styles={styles}
+        items={items}
+        isCompact={isCompact}
+        onStatusChange={onStatusChange}
+        statusUpdatingIds={statusUpdatingIds}
+      />
+    );
   };
 
   return (

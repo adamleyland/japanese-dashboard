@@ -5,9 +5,16 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import ReadingBookDetails from "@/components/features/reading/components/ReadingBookDetails";
 import ReadingCoverArtwork from "@/components/features/reading/components/ReadingCoverArtwork";
-import ReadingStatusBadge from "@/components/features/reading/components/ReadingStatusBadge";
+import ReadingStatusControl from "@/components/features/reading/components/ReadingStatusControl";
 
-export default function ReadingBookModal({ book, onClose, styles, isCompact }) {
+export default function ReadingBookModal({
+  book,
+  onClose,
+  styles,
+  isCompact,
+  onStatusChange,
+  statusUpdatingIds,
+}) {
   useEffect(() => {
     if (!book) {
       return undefined;
@@ -76,7 +83,12 @@ export default function ReadingBookModal({ book, onClose, styles, isCompact }) {
           }}
         >
           <div style={{ display: "grid", gap: "8px", minWidth: 0 }}>
-            <ReadingStatusBadge status={book.status} />
+            <ReadingStatusControl
+              bookId={book.id}
+              status={book.status}
+              onChange={onStatusChange}
+              disabled={Boolean(statusUpdatingIds?.[book.id])}
+            />
             <div style={{ minWidth: 0 }}>
               <h3
                 style={{

@@ -170,6 +170,8 @@ export default function ReadingTab({
         onLayoutModeChange={setLayoutMode}
         counts={counts}
         onRefresh={readingLibrary.refresh}
+        onStatusChange={readingLibrary.updateStatus}
+        statusUpdatingIds={readingLibrary.statusUpdatingIds}
         isCompact={isCompact}
         targetHeight={isMobile ? null : libraryHeight}
       />
