@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Check,
   Clock3,
+  Timer,
   Plus,
   Minus,
 } from "lucide-react";
@@ -131,7 +132,12 @@ export default function TimerStopwatch({
   });
 
   return (
-    <div style={styles.sideCard}>
+    <div
+      style={{
+        ...styles.sideCard,
+        padding: isDesktop ? styles.sideCard.padding : "16px",
+      }}
+    >
       <div
         style={{
           ...styles.wordCardHeader,
@@ -163,12 +169,13 @@ export default function TimerStopwatch({
           <PillSliderToggle
             value={clockMode}
             options={[
-              { value: "stopwatch", label: "Stopwatch" },
-              { value: "timer", label: "Timer" },
+              { value: "stopwatch", label: "Stopwatch", icon: Clock3, ariaLabel: "Stopwatch mode" },
+              { value: "timer", label: "Timer", icon: Timer, ariaLabel: "Timer mode" },
             ]}
             onChange={setClockMode}
-            width={isDesktop ? 216 : 188}
+            width={isDesktop ? 216 : 96}
             size="sm"
+            iconOnly={!isDesktop}
           />
         </div>
       </div>

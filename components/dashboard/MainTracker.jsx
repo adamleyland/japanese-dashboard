@@ -195,6 +195,7 @@ export default function MainTracker({
             alignItems: "flex-start",
             justifyContent: "space-between",
             gap: "12px",
+            flexWrap: isCompact ? "wrap" : "nowrap",
             marginBottom: isCompact ? "24px" : "35px",
           }}
         >
@@ -216,10 +217,11 @@ export default function MainTracker({
               gap: "10px",
               flexWrap: "wrap",
               marginLeft: "auto",
+              width: isCompact ? "100%" : "auto",
             }}
           >
             {authControl}
-            <TrackerFocusToggle active={focusMode} onToggle={onToggleFocusMode} />
+            <TrackerFocusToggle active={focusMode} onToggle={onToggleFocusMode} compact={isCompact} />
           </div>
         </div>
 

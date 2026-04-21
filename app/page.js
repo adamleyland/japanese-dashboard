@@ -444,6 +444,7 @@ export default function Home() {
           }
           authUserId={authUserId}
           isCompact={isCompact}
+          isMobile={isMobile}
           moduleTabs={MODULE_TABS}
           onChange={handleTabChange}
           onToggleDashboard={() => setShowDashboard((visible) => !visible)}
@@ -584,12 +585,14 @@ const glass = {
 const styles = {
   page: {
     minHeight: "100vh",
+    width: "100%",
     background: "var(--app-page-bg)",
     fontFamily: "Inter, system-ui, -apple-system, sans-serif",
     color: "var(--app-page-text)",
     padding: "16px",
     position: "relative",
     overflowX: "hidden",
+    boxSizing: "border-box",
   },
   bgOrb1: {
     position: "absolute",
@@ -615,11 +618,13 @@ const styles = {
   },
   container: {
     maxWidth: "1300px",
+    width: "100%",
     margin: "0 auto",
     position: "relative",
     zIndex: 1,
     display: "grid",
     gap: "14px",
+    minWidth: 0,
   },
   heroGrid: {
     display: "grid",
@@ -650,6 +655,9 @@ const styles = {
     borderRadius: "26px",
     padding: "20px",
     height: "100%",
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   wordCard: {
     ...glass,
@@ -660,6 +668,9 @@ const styles = {
     display: "grid",
     gridTemplateRows: "auto 1fr",
     gap: "14px",
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   wordCardHeader: {
     display: "flex",
@@ -1102,12 +1113,12 @@ const styles = {
     display: "flex",
     justifyContent: "center",
   },
-  topNavShell: (isCompact) => ({
+  topNavShell: (isCompact, isMobile) => ({
     ...glass,
     borderRadius: "26px",
     padding: isCompact ? "10px 12px" : "12px 14px",
     display: "grid",
-    gridTemplateColumns: isCompact ? "minmax(0, 1fr) auto auto" : "1fr auto 1fr",
+    gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) auto" : "1fr auto 1fr",
     alignItems: "center",
     gap: isCompact ? "8px" : "14px",
     position: "relative",
@@ -1162,7 +1173,7 @@ const styles = {
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
-  contentWrap: { minWidth: 0 },
+  contentWrap: { minWidth: 0, width: "100%" },
   moduleNavTrack: {
     display: "flex",
     gap: "10px",
@@ -1195,20 +1206,29 @@ const styles = {
   listeningMainGrid: {
     display: "grid",
     gap: "14px",
+    minWidth: 0,
+    width: "100%",
   },
   largeCard: {
     ...glass,
     borderRadius: "26px",
     padding: "20px",
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   sideColumn: {
     display: "grid",
     gap: "14px",
+    minWidth: 0,
   },
   sideCard: {
     ...glass,
     borderRadius: "26px",
     padding: "20px",
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   sideTitle: {
     margin: 0,
@@ -1242,6 +1262,9 @@ const styles = {
     gap: "12px",
     position: "relative",
     zIndex: 2,
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   },
   playerShellFocus: {
     width: "min(1200px, 100%)",
@@ -1409,6 +1432,9 @@ const styles = {
     background: "var(--app-card-muted)",
     border: "1px solid var(--app-border-soft)",
     padding: "12px",
+    minWidth: 0,
+    width: "100%",
+    boxSizing: "border-box",
   },
   accountIdentity: {
     display: "flex",
@@ -1443,6 +1469,7 @@ const styles = {
     background: "var(--app-surface)",
     borderRadius: "10px",
     border: "1px solid var(--app-border-soft)",
+    minWidth: 0,
   },
   simpleTitle: { fontSize: "13px", fontWeight: 600 },
   videoFeedButton: (active) => ({
@@ -1619,8 +1646,8 @@ const styles = {
     gap: "12px",
     alignItems: "flex-start",
   },
-  controlGridSingle: { marginTop: "20px" },
-  inputCard: { display: "grid", gap: "6px" },
+  controlGridSingle: { marginTop: "20px", minWidth: 0 },
+  inputCard: { display: "grid", gap: "6px", minWidth: 0 },
   inputLabel: {
     fontSize: "11px",
     fontWeight: 700,
@@ -1628,11 +1655,13 @@ const styles = {
     textTransform: "uppercase",
   },
   input: {
+    width: "100%",
     padding: "10px",
     borderRadius: "10px",
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
     color: "var(--app-text)",
     fontSize: "14px",
+    boxSizing: "border-box",
   },
 };

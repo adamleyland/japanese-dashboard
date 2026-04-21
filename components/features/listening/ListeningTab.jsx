@@ -9,6 +9,7 @@ import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 
 const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
+const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 
 export default function ListeningTab({
@@ -57,11 +58,32 @@ export default function ListeningTab({
   const [timerDurationSeconds, setTimerDurationSeconds] = useState(300);
   const [timerSeconds, setTimerSeconds] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [listeningGoal, setListeningGoal] = useState(1200);
-  const [workspaceSource, setWorkspaceSource] = useState("youtube");
+  const [listeningGoal, setListeningGoal] = useState(() => {
+    if (typeof window === "undefined") {
+      return 1200;
+    }
+
+    const storedValue = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
+    return Number.isFinite(storedValue) && storedValue > 0 ? storedValue : 1200;
+  });
+  const [workspaceSource, setWorkspaceSource] = useState(() => {
+    if (typeof window === "undefined") {
+      return "youtube";
+    }
+
+    return window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY) === "audiobooks"
+      ? "audiobooks"
+      : "youtube";
+  });
   const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("bar");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem(LISTENING_GOAL_SETTINGS_STORAGE_KEY) === "true";
+  });
   const [isMounted, setIsMounted] = useState(false);
   const isYoutubeMode = workspaceSource === "youtube";
 
@@ -105,17 +127,6 @@ export default function ListeningTab({
     if (!isMounted) {
       return;
     }
-
-    const storedGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
-    if (Number.isFinite(storedGoal) && storedGoal > 0) {
-      setListeningGoal((currentValue) => (currentValue === storedGoal ? currentValue : storedGoal));
-    }
-
-    const storedSource =
-      window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY) === "audiobooks"
-        ? "audiobooks"
-        : "youtube";
-    setWorkspaceSource((currentValue) => (currentValue === storedSource ? currentValue : storedSource));
   }, [isMounted]);
 
   useEffect(() => {
@@ -712,6 +723,11 @@ export default function ListeningTab({
 
   useEffect(() => {
     if (!isMounted) return;
+    window.localStorage.setItem(LISTENING_GOAL_SETTINGS_STORAGE_KEY, String(settingsOpen));
+  }, [isMounted, settingsOpen]);
+
+  useEffect(() => {
+    if (!isMounted) return;
     window.localStorage.setItem(LISTENING_SOURCE_STORAGE_KEY, workspaceSource);
   }, [isMounted, workspaceSource]);
 
@@ -853,6 +869,7 @@ export default function ListeningTab({
     >
       <ListeningWorkspace
         styles={styles}
+        isMobile={isMobile}
         isCompact={isCompact}
         workspaceSource={workspaceSource}
         setWorkspaceSource={setWorkspaceSource}
@@ -923,6 +940,7 @@ export default function ListeningTab({
 
         <ListeningVisualization
           styles={styles}
+          isMobile={isMobile}
           listeningHours={listeningHours}
           setListeningHours={handleListeningHoursUpdate}
           listeningGoal={listeningGoal}

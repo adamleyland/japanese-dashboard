@@ -10,6 +10,7 @@ export default function TopNav({
   authControl,
   authUserId,
   isCompact,
+  isMobile,
   moduleTabs,
   onChange,
   onToggleDashboard,
@@ -45,7 +46,7 @@ export default function TopNav({
   }, [calendarOpen]);
 
   return (
-    <section style={styles.topNavShell(isCompact)}>
+    <section style={styles.topNavShell(isCompact, isMobile)}>
       <div style={styles.topNavLeft}>
         <button
           type="button"
@@ -57,7 +58,7 @@ export default function TopNav({
           <LayoutDashboard size={16} />
         </button>
 
-        {!isCompact && (
+        {!isMobile && (
           <div ref={calendarRef} style={styles.topNavCalendarWrap}>
             <button
               type="button"
@@ -78,9 +79,16 @@ export default function TopNav({
         )}
       </div>
 
-      <div style={styles.topNavCenter}>
+      <div
+        style={{
+          ...styles.topNavCenter,
+          justifyContent: isMobile ? "flex-start" : styles.topNavCenter.justifyContent,
+          width: isMobile ? "100%" : "auto",
+        }}
+      >
         <NavigationBar
           activeTab={activeTab}
+          isMobile={isMobile}
           moduleTabs={moduleTabs}
           onChange={onChange}
           styles={styles}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings2, BarChart3, Ear } from "lucide-react";
+import { Settings2, BarChart3, Ear, LayoutGrid } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
 
 function NumberField({ label, value, onChange, step = 1, styles }) {
@@ -21,6 +21,7 @@ function NumberField({ label, value, onChange, step = 1, styles }) {
 
 export default function ListeningVisualization({
   styles,
+  isMobile = false,
   listeningHours,
   setListeningHours,
   listeningGoal,
@@ -34,7 +35,12 @@ export default function ListeningVisualization({
   listeningProgress,
 }) {
   return (
-    <div style={styles.sideCard}>
+    <div
+      style={{
+        ...styles.sideCard,
+        padding: isMobile ? "16px" : styles.sideCard.padding,
+      }}
+    >
       <div
         style={{
           ...styles.wordCardHeader,
@@ -130,12 +136,13 @@ export default function ListeningVisualization({
           <PillSliderToggle
             value={vizMode}
             options={[
-              { value: "blocks", label: "Blocks" },
-              { value: "bar", label: "Bar" },
+              { value: "blocks", label: "Blocks", icon: LayoutGrid, ariaLabel: "Blocks view" },
+              { value: "bar", label: "Bar", icon: BarChart3, ariaLabel: "Bar view" },
             ]}
             onChange={setVizMode}
-            width={200}
+            width={isMobile ? 96 : 200}
             size="sm"
+            iconOnly={isMobile}
           />
         </div>
       )}

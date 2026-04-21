@@ -63,6 +63,7 @@ export default function ReadingLibraryPanel({
     <div
       style={{
         ...styles.largeCard,
+        padding: isCompact ? "16px" : styles.largeCard.padding,
         display: "grid",
         gridTemplateRows: "auto 1fr",
         minHeight: 0,
@@ -198,7 +199,7 @@ function ReadingLibraryLoadingState({ layoutMode, isCompact }) {
           display: "grid",
           gridTemplateColumns: isCompact
             ? "repeat(2, minmax(0, 1fr))"
-            : "repeat(auto-fill, minmax(150px, 1fr))",
+            : "repeat(auto-fill, minmax(100px, 1fr))",
           gap: "12px",
         }}
       >

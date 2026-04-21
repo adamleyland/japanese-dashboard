@@ -16,7 +16,14 @@ import { supabase } from "@/lib/supabase";
 
 const CAROUSEL_INTERVAL = 15000;
 
-export function PillSliderToggle({ value, options, onChange, width = 110, size = "md" }) {
+export function PillSliderToggle({
+  value,
+  options,
+  onChange,
+  width = 110,
+  size = "md",
+  iconOnly = false,
+}) {
   const activeIndex = Math.max(0, options.findIndex((o) => o.value === value));
   const inset = 4;
   const toggleHeight = size === "sm" ? 38 : 44;
@@ -29,8 +36,24 @@ export function PillSliderToggle({ value, options, onChange, width = 110, size =
           key={option.value}
           onClick={() => onChange(option.value)}
           style={localStyles.pillToggleButton(option.value === value, toggleHeight)}
+          aria-label={option.ariaLabel || option.label}
+          title={option.ariaLabel || option.label}
         >
-          {option.label}
+          {option.icon ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: iconOnly ? 0 : "6px",
+              }}
+            >
+              <option.icon size={14} />
+              {!iconOnly ? option.label : null}
+            </span>
+          ) : (
+            option.label
+          )}
         </button>
       ))}
     </div>

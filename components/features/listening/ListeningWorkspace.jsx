@@ -13,12 +13,16 @@ import {
   Power,
   Search,
   LampDesk,
+  ListVideo,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import ListeningSourceToggle from "@/components/features/listening/ListeningSourceToggle";
 import AudiobookWorkspace from "@/components/features/listening/audiobooks/AudiobookWorkspace";
 
 export default function ListeningWorkspace({
   styles,
+  isMobile,
   isCompact,
   workspaceSource,
   setWorkspaceSource,
@@ -62,9 +66,9 @@ export default function ListeningWorkspace({
   const isAudiobookMode = workspaceSource === "audiobooks";
 
   const panelItems = [
-    { key: "account", label: "Account" },
-    { key: "channels", label: "Channels" },
-    { key: "recommended", label: "Queue" },
+    { key: "account", label: "Account", icon: UserCircle2 },
+    { key: "channels", label: "Channels", icon: Search },
+    { key: "recommended", label: "Queue", icon: ListVideo },
   ];
   const discoverFilters = ["ゲーム", "æ—…è¡Œ", "æ—¥æœ¬èªž"];
   const visibleQueueIndex = queueTotal ? queueIndex + 1 : 0;
@@ -88,7 +92,9 @@ export default function ListeningWorkspace({
     background: "var(--app-pill-track)",
     border: "1px solid var(--app-border-soft)",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-    flexWrap: "wrap",
+    flexWrap: isMobile ? "nowrap" : "wrap",
+    width: isMobile ? "100%" : "auto",
+    boxSizing: "border-box",
   };
 
   const segmentedButtonStyle = (active) => ({
@@ -96,12 +102,18 @@ export default function ListeningWorkspace({
     background: active ? "var(--app-selected-surface)" : "transparent",
     color: active ? "var(--app-selected-text)" : "var(--app-text-muted)",
     borderRadius: "999px",
-    padding: "8px 14px",
+    padding: isMobile ? "10px" : "8px 14px",
     fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
     transition: "all 160ms ease",
     boxShadow: active ? "0 6px 18px rgba(15,23,42,0.08)" : "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: isMobile ? 0 : "8px",
+    flex: isMobile ? "1 1 0" : "0 0 auto",
+    minWidth: 0,
   });
 
   const accountCardStyle = {
@@ -141,12 +153,16 @@ export default function ListeningWorkspace({
   const toggleButtonStyle = (enabled) => ({
     border: "none",
     borderRadius: "999px",
-    padding: "7px 12px",
+    padding: isMobile ? "7px" : "7px 12px",
     fontSize: "11px",
     fontWeight: 800,
     cursor: "pointer",
     background: enabled ? "rgba(34,197,94,0.14)" : "var(--app-surface-soft)",
     color: enabled ? "#22c55e" : "var(--app-text-muted)",
+    minWidth: isMobile ? "32px" : "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   });
 
   const discoverFilterButtonStyle = (active) => ({
@@ -245,24 +261,65 @@ export default function ListeningWorkspace({
   };
 
   const renderPlayerControls = () => (
-    <div style={styles.playerControlRow}>
-      <button style={styles.miniActionButton("blue")} onClick={onTogglePlayback}>
+    <div
+      style={{
+        ...styles.playerControlRow,
+        flexWrap: isMobile ? "wrap" : "nowrap",
+      }}
+    >
+      <button
+        style={{
+          ...styles.miniActionButton("blue"),
+          minWidth: isMobile ? "40px" : "auto",
+          justifyContent: "center",
+          padding: isMobile ? "8px" : styles.miniActionButton("blue").padding,
+        }}
+        onClick={onTogglePlayback}
+        aria-label={isPlayerPlaying ? "Pause video" : "Play video"}
+        title={isPlayerPlaying ? "Pause video" : "Play video"}
+      >
         {isPlayerPlaying ? <PauseCircle size={12} /> : <PlayCircle size={12} />}
-        {isPlayerPlaying ? "Pause" : "Play"}
+        {!isMobile ? (isPlayerPlaying ? "Pause" : "Play") : null}
       </button>
-      <button style={styles.miniActionButton("orange")} onClick={skipCurrentVideo}>
-        <SkipForward size={12} /> Skip
+      <button
+        style={{
+          ...styles.miniActionButton("orange"),
+          minWidth: isMobile ? "40px" : "auto",
+          justifyContent: "center",
+          padding: isMobile ? "8px" : styles.miniActionButton("orange").padding,
+        }}
+        onClick={skipCurrentVideo}
+        aria-label="Skip current video"
+        title="Skip current video"
+      >
+        <SkipForward size={12} />
+        {!isMobile ? "Skip" : null}
       </button>
-      <button style={styles.miniActionButton("grey")} onClick={() => setFocusMode(!focusMode)}>
+      <button
+        style={{
+          ...styles.miniActionButton("grey"),
+          minWidth: isMobile ? "40px" : "auto",
+          justifyContent: "center",
+          padding: isMobile ? "8px" : styles.miniActionButton("grey").padding,
+        }}
+        onClick={() => setFocusMode(!focusMode)}
+        aria-label={focusMode ? "Exit focus mode" : "Enable focus mode"}
+        title={focusMode ? "Exit focus mode" : "Enable focus mode"}
+      >
         <LampDesk size={12} />
-        {focusMode ? "Exit Focus" : "Deep Focus"}
+        {!isMobile ? (focusMode ? "Exit Focus" : "Deep Focus") : null}
       </button>
     </div>
   );
 
   return (
     <>
-      <div style={styles.largeCard}>
+      <div
+        style={{
+          ...styles.largeCard,
+          padding: isCompact ? "16px" : styles.largeCard.padding,
+        }}
+      >
         <div
           style={{
             ...styles.sectionHeader,
@@ -290,6 +347,7 @@ export default function ListeningWorkspace({
             value={workspaceSource}
             onChange={setWorkspaceSource}
             isCompact={isCompact}
+            isMobile={isMobile}
           />
         </div>
 
@@ -345,8 +403,11 @@ export default function ListeningWorkspace({
                       onClick={() =>
                         setWorkspaceTab((currentTab) => (currentTab === item.key ? null : item.key))
                       }
+                      aria-label={item.label}
+                      title={item.label}
                     >
-                      {item.label}
+                      <item.icon size={15} />
+                      {!isMobile ? item.label : null}
                     </button>
                   ))}
                 </div>
@@ -472,8 +533,28 @@ export default function ListeningWorkspace({
                                 type="button"
                                 style={toggleButtonStyle(channel.enabled !== false)}
                                 onClick={() => onToggleChannelEnabled(channel.channelId || channel.id)}
+                                aria-label={
+                                  channel.enabled !== false
+                                    ? `Disable ${channel.name}`
+                                    : `Enable ${channel.name}`
+                                }
+                                title={
+                                  channel.enabled !== false
+                                    ? `Disable ${channel.name}`
+                                    : `Enable ${channel.name}`
+                                }
                               >
-                                {channel.enabled !== false ? "ON" : "OFF"}
+                                {isMobile ? (
+                                  channel.enabled !== false ? (
+                                    <ToggleRight size={16} />
+                                  ) : (
+                                    <ToggleLeft size={16} />
+                                  )
+                                ) : channel.enabled !== false ? (
+                                  "ON"
+                                ) : (
+                                  "OFF"
+                                )}
                               </button>
                             </div>
                           ))}

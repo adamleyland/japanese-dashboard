@@ -177,6 +177,7 @@ export default function GamingTab({
         games={visibleGames}
         loading={loading}
         error={error}
+        isMobile={isMobile}
         sourceFilter={sourceFilter}
         onSourceFilterChange={handleSourceFilterChange}
         showExcludedOnly={libraryView === "excluded"}

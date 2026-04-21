@@ -17,7 +17,7 @@ export default function ReadingLibraryArtworkView({
       return "repeat(2, minmax(0, 1fr))";
     }
 
-    return "repeat(auto-fill, minmax(150px, 1fr))";
+    return "repeat(auto-fill, minmax(100px, 1fr))";
   }, [isCompact]);
   const selectedBook = items.find((item) => item.id === selectedBookId) || null;
 

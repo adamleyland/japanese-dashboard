@@ -17,6 +17,7 @@ import { getCurrentlyReadingItem, getReadingCounts, getVisibleReadingItems } fro
 
 const FILTER_KEYS = new Set(READING_FILTERS.map((filter) => filter.key));
 const LAYOUT_KEYS = new Set(["list", "artwork"]);
+const READING_GOAL_SETTINGS_STORAGE_KEY = "jp_reading_goal_settings_open";
 
 export default function ReadingTab({
   styles,
@@ -52,7 +53,13 @@ export default function ReadingTab({
     const storedValue = Number(window.localStorage.getItem(READING_GOAL_STORAGE_KEY));
     return Number.isFinite(storedValue) && storedValue > 0 ? storedValue : DEFAULT_READING_GOAL;
   });
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem(READING_GOAL_SETTINGS_STORAGE_KEY) === "true";
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -77,6 +84,14 @@ export default function ReadingTab({
 
     window.localStorage.setItem(READING_GOAL_STORAGE_KEY, String(goalWords));
   }, [goalWords]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(READING_GOAL_SETTINGS_STORAGE_KEY, String(settingsOpen));
+  }, [settingsOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isMobile) {
