@@ -14,6 +14,8 @@ export const revalidate = 0;
 
 const RAKUTEN_BOOKS_ENDPOINT =
   "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
+const RAKUTEN_KOBO_ENDPOINT =
+  "https://openapi.rakuten.co.jp/services/api/Kobo/EbookSearch/20170426";
 const RAKUTEN_ORIGIN = "https://jpdashboard.app";
 const BATCH_SIZE = 10;
 const REQUEST_DELAY_MS = 1200;
@@ -33,6 +35,8 @@ const BOOK_SELECT_COLUMNS = [
   "sales_date",
   "match_status",
   "match_confidence",
+  "manual_identifier",
+  "manual_identifier_type",
   "created_at",
   "updated_at",
 ].join(",");
@@ -52,6 +56,23 @@ const BRACKETED_SUBTITLE_PATTERNS = [
   /\s*[(][^()]*[)]\s*/g,
   /\s*[\uFF08][^\uFF08\uFF09]*[\uFF09]\s*/gu,
   /\s*[\u3014][^\u3014\u3015]*[\u3015]\s*/gu,
+];
+
+const DASH_VARIANT_PATTERN = /[\u2010\u2012\u2013\u2014\u2015\u2212]/gu;
+const NUMERIC_VOLUME_MARKER_PATTERNS = [
+  /\bbook\s*\d+\b/giu,
+  /#\s*\d+\b/gu,
+  /[\uFF08(]\s*\d+\s*[\uFF09)]/gu,
+];
+const TRAILING_VOLUME_TOKEN_PATTERN =
+  /\s*(?:book\s*\d+|#\s*\d+|[\u4E0A\u4E0B\u4E2D]|[\u524D\u5F8C]\u7DE8|[\uFF08(]\s*(?:\d+|[\u4E0A\u4E0B\u4E2D]|[\u524D\u5F8C]\u7DE8)\s*[\uFF09)])\s*$/iu;
+const BRACKETED_VOLUME_TOKEN_PATTERN =
+  /[\uFF08(]\s*(\d+|[\u4E0A\u4E0B\u4E2D]|[\u524D\u5F8C]\u7DE8)\s*[\uFF09)]/iu;
+const INLINE_VOLUME_TOKEN_PATTERNS = [
+  /\bbook\s*(\d+)\b/iu,
+  /#\s*(\d+)\b/u,
+  /(?:^|\s)([\u524D\u5F8C]\u7DE8)(?=$|\s)/u,
+  /(?:^|\s)([\u4E0A\u4E0B\u4E2D])(?=$|\s)/u,
 ];
 
 class RakutenRateLimitError extends Error {
@@ -139,18 +160,138 @@ function normalizeText(value) {
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
-function cleanTitleForFallback(title) {
-  let cleanedTitle = cleanValue(title).normalize("NFKC");
+function normalizeWhitespace(value) {
+  return cleanValue(value).replace(/\s+/g, " ").trim();
+}
+
+function normalizeDashCharacters(value) {
+  return cleanValue(value).replace(DASH_VARIANT_PATTERN, "-");
+}
+
+function removeBracketedSegments(value) {
+  let strippedValue = normalizeDashCharacters(value);
 
   for (const pattern of BRACKETED_SUBTITLE_PATTERNS) {
-    cleanedTitle = cleanedTitle.replace(pattern, " ");
+    strippedValue = strippedValue.replace(pattern, " ");
   }
+
+  return normalizeWhitespace(strippedValue);
+}
+
+function removeNumericVolumeMarkers(value) {
+  let strippedValue = normalizeDashCharacters(value);
+
+  for (const pattern of NUMERIC_VOLUME_MARKER_PATTERNS) {
+    strippedValue = strippedValue.replace(pattern, " ");
+  }
+
+  return normalizeWhitespace(strippedValue);
+}
+
+function normalizeTitleForMatching(title) {
+  return normalizeWhitespace(removeNumericVolumeMarkers(removeBracketedSegments(title)));
+}
+
+function extractVolumeToken(title) {
+  const normalizedTitle = normalizeDashCharacters(cleanValue(title)).normalize("NFKC");
+  let matchedToken = "";
+
+  const bracketedMatch = normalizedTitle.match(BRACKETED_VOLUME_TOKEN_PATTERN);
+  if (bracketedMatch?.[1]) {
+    matchedToken = bracketedMatch[1];
+  }
+
+  for (const pattern of INLINE_VOLUME_TOKEN_PATTERNS) {
+    const matches = [...normalizedTitle.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))];
+    const lastMatch = matches[matches.length - 1];
+    if (lastMatch?.[1]) {
+      matchedToken = lastMatch[1];
+    }
+  }
+
+  const trailingMatch = normalizedTitle.match(TRAILING_VOLUME_TOKEN_PATTERN);
+  if (trailingMatch) {
+    const extractedMatch =
+      trailingMatch[0].match(/\d+|[\u4E0A\u4E0B\u4E2D]|[\u524D\u5F8C]\u7DE8/u);
+    if (extractedMatch?.[0]) {
+      matchedToken = extractedMatch[0];
+    }
+  }
+
+  return cleanValue(matchedToken);
+}
+
+function canonicalizeVolumeToken(token) {
+  const normalizedToken = cleanValue(token).normalize("NFKC").toLowerCase();
+
+  if (!normalizedToken) {
+    return "";
+  }
+
+  if (normalizedToken === "上" || normalizedToken === "前編" || normalizedToken === "1") {
+    return "1";
+  }
+
+  if (normalizedToken === "下" || normalizedToken === "後編" || normalizedToken === "2") {
+    return "2";
+  }
+
+  if (normalizedToken === "中" || normalizedToken === "3") {
+    return normalizedToken === "3" ? "3" : "middle";
+  }
+
+  return normalizedToken;
+}
+
+function areEquivalentVolumeTokens(leftToken, rightToken) {
+  const canonicalLeft = canonicalizeVolumeToken(leftToken);
+  const canonicalRight = canonicalizeVolumeToken(rightToken);
+
+  return Boolean(canonicalLeft && canonicalRight && canonicalLeft === canonicalRight);
+}
+
+function buildBaseTitle(title) {
+  let baseTitle = normalizeDashCharacters(cleanValue(title)).normalize("NFKC");
+
+  for (const pattern of NUMERIC_VOLUME_MARKER_PATTERNS) {
+    baseTitle = baseTitle.replace(pattern, " ");
+  }
+
+  baseTitle = baseTitle.replace(BRACKETED_VOLUME_TOKEN_PATTERN, " ");
+  baseTitle = baseTitle.replace(TRAILING_VOLUME_TOKEN_PATTERN, " ");
+
+  for (const pattern of BRACKETED_SUBTITLE_PATTERNS) {
+    baseTitle = baseTitle.replace(pattern, " ");
+  }
+
+  return normalizeWhitespace(baseTitle);
+}
+
+function extractStructuredTitle(title) {
+  const rawTitle = cleanValue(title);
+  const normalizedTitle = normalizeTitleForMatching(rawTitle);
+  const baseTitle = buildBaseTitle(rawTitle);
+  const volumeToken = extractVolumeToken(rawTitle);
+
+  return {
+    rawTitle,
+    normalizedTitle,
+    normalizedKey: normalizeText(normalizedTitle),
+    baseTitle,
+    baseKey: normalizeText(baseTitle),
+    volumeToken,
+    canonicalVolumeToken: canonicalizeVolumeToken(volumeToken),
+  };
+}
+
+function cleanTitleForFallback(title) {
+  let cleanedTitle = normalizeTitleForMatching(title);
 
   for (const pattern of TRAILING_VOLUME_MARKER_PATTERNS) {
     cleanedTitle = cleanedTitle.replace(pattern, "");
   }
 
-  return cleanedTitle.replace(/\s+/g, " ").trim();
+  return normalizeWhitespace(cleanedTitle);
 }
 
 function scoreTextOverlap(candidate, expected) {
@@ -184,17 +325,25 @@ function scoreTextOverlap(candidate, expected) {
 
 function buildSearchQueries(book) {
   const originalTitle = cleanValue(book.title);
-  const cleanedTitle = cleanTitleForFallback(originalTitle);
-  const normalizedTitle = cleanValue(book.title_normalized);
+  const normalizedFallbackTitle = cleanTitleForFallback(originalTitle);
+  const normalizedColumnTitle = cleanTitleForFallback(book.title_normalized);
   const author = cleanValue(book.author);
   const seen = new Set();
 
   return [
     { title: originalTitle, author, label: "original title + author" },
-    { title: cleanedTitle, author, label: "cleaned title + author" },
+    {
+      title: normalizedFallbackTitle,
+      author,
+      label: "normalized title + author",
+    },
     { title: originalTitle, author: "", label: "original title" },
-    { title: cleanedTitle, author: "", label: "cleaned title" },
-    { title: normalizedTitle, author: "", label: "normalized title" },
+    { title: normalizedFallbackTitle, author: "", label: "normalized title" },
+    {
+      title: normalizedColumnTitle,
+      author: "",
+      label: "title_normalized fallback",
+    },
   ].filter((query) => {
     const title = cleanValue(query.title);
     if (title.length < 2) {
@@ -218,21 +367,35 @@ async function searchRakutenBooks({
   author,
   delayMs,
 }) {
-  const params = new URLSearchParams({
+  return searchRakutenItems({
+    endpoint: RAKUTEN_BOOKS_ENDPOINT,
+    rakutenAppId,
+    rakutenAccessKey,
+    params: {
+      format: "json",
+      formatVersion: "2",
+      title,
+      hits: "10",
+      outOfStockFlag: "1",
+      ...(author ? { author } : {}),
+    },
+    delayMs,
+  });
+}
+
+async function searchRakutenItems({
+  endpoint,
+  rakutenAppId,
+  rakutenAccessKey,
+  params,
+  delayMs,
+}) {
+  const requestParams = new URLSearchParams({
     applicationId: rakutenAppId,
     accessKey: rakutenAccessKey,
-    format: "json",
-    formatVersion: "2",
-    title,
-    hits: "10",
-    outOfStockFlag: "1",
+    ...params,
   });
-
-  if (author) {
-    params.set("author", author);
-  }
-
-  const requestUrl = `${RAKUTEN_BOOKS_ENDPOINT}?${params.toString()}`;
+  const requestUrl = `${endpoint}?${requestParams.toString()}`;
   const requestHeaders = {
     "Content-Type": "application/json",
     Origin: RAKUTEN_ORIGIN,
@@ -292,47 +455,141 @@ async function searchRakutenBooks({
   return [];
 }
 
+async function searchRakutenBookByIsbn({
+  rakutenAppId,
+  rakutenAccessKey,
+  isbn,
+  delayMs,
+}) {
+  const normalizedIsbn = cleanValue(isbn);
+  if (!normalizedIsbn) {
+    return [];
+  }
+
+  return searchRakutenItems({
+    endpoint: RAKUTEN_BOOKS_ENDPOINT,
+    rakutenAppId,
+    rakutenAccessKey,
+    params: {
+      format: "json",
+      formatVersion: "2",
+      isbn: normalizedIsbn,
+      hits: "1",
+      outOfStockFlag: "1",
+    },
+    delayMs,
+  });
+}
+
+async function searchRakutenKoboByItemNumber({
+  rakutenAppId,
+  rakutenAccessKey,
+  itemNumber,
+  delayMs,
+}) {
+  const normalizedItemNumber = cleanValue(itemNumber);
+  if (!normalizedItemNumber) {
+    return [];
+  }
+
+  return searchRakutenItems({
+    endpoint: RAKUTEN_KOBO_ENDPOINT,
+    rakutenAppId,
+    rakutenAccessKey,
+    params: {
+      format: "json",
+      formatVersion: "2",
+      itemNumber: normalizedItemNumber,
+      hits: "1",
+    },
+    delayMs,
+  });
+}
+
+function scoreStructuredContainment(candidateKey, expectedKey) {
+  if (!candidateKey || !expectedKey) {
+    return 0;
+  }
+
+  if (candidateKey === expectedKey) {
+    return 100;
+  }
+
+  if (
+    candidateKey.includes(expectedKey) ||
+    expectedKey.includes(candidateKey)
+  ) {
+    return 72;
+  }
+
+  return 0;
+}
+
 function scoreRakutenCandidate(item, book, query) {
-  const originalTitle = cleanValue(book.title);
-  const cleanedTitle = cleanTitleForFallback(originalTitle);
+  const bookTitle = cleanValue(book.title);
   const candidateTitle = cleanValue(item.title);
   const candidateAuthor = cleanValue(item.author);
   const candidateIsbn = cleanValue(item.isbn);
   const originalAuthor = cleanValue(book.author);
   const originalIsbn = cleanValue(book.isbn);
-  const normalizedBookTitle = normalizeText(originalTitle);
-  const normalizedCleanedTitle = normalizeText(cleanedTitle);
-  const normalizedCandidateTitle = normalizeText(candidateTitle);
+  const bookStructured = extractStructuredTitle(bookTitle);
+  const candidateStructured = extractStructuredTitle(candidateTitle);
+  const normalizedQueryKey = normalizeText(query.title);
+  const shortBaseTitle = bookStructured.baseKey.length > 0 && bookStructured.baseKey.length < 5;
+  let hasVolumeMismatch = false;
+  let isMissingCandidateVolume = false;
 
   let score = 0;
 
-  if (normalizedCandidateTitle && normalizedCandidateTitle === normalizedBookTitle) {
-    score += 100;
-  } else if (
-    normalizedCandidateTitle &&
-    normalizedCleanedTitle &&
-    normalizedCandidateTitle === normalizedCleanedTitle
+  if (
+    candidateStructured.normalizedKey &&
+    candidateStructured.normalizedKey === bookStructured.normalizedKey
   ) {
-    score += 92;
+    score += 125;
   } else {
-    score += scoreTextOverlap(candidateTitle, originalTitle);
-    score += Math.round(scoreTextOverlap(candidateTitle, cleanedTitle) * 0.8);
+    score += Math.round(
+      scoreStructuredContainment(
+        candidateStructured.normalizedKey,
+        bookStructured.normalizedKey,
+      ) * 0.7,
+    );
+    score += Math.round(scoreTextOverlap(candidateTitle, bookTitle) * 0.45);
   }
 
   if (
-    normalizedCandidateTitle &&
-    normalizedBookTitle &&
-    normalizedCandidateTitle.includes(normalizedBookTitle)
+    candidateStructured.baseKey &&
+    candidateStructured.baseKey === bookStructured.baseKey
   ) {
-    score += 22;
+    score += 85;
+  } else {
+    score += Math.round(
+      scoreStructuredContainment(candidateStructured.baseKey, bookStructured.baseKey) * 0.6,
+    );
+    score += Math.round(
+      scoreTextOverlap(candidateStructured.baseTitle, bookStructured.baseTitle) * 0.5,
+    );
   }
 
   if (
-    normalizedCandidateTitle &&
-    normalizedCleanedTitle &&
-    normalizedCandidateTitle.includes(normalizedCleanedTitle)
+    bookStructured.volumeToken &&
+    candidateStructured.volumeToken
   ) {
-    score += 16;
+    if (candidateStructured.volumeToken === bookStructured.volumeToken) {
+      score += 42;
+    } else if (
+      areEquivalentVolumeTokens(
+        candidateStructured.volumeToken,
+        bookStructured.volumeToken,
+      )
+    ) {
+      score += 32;
+    } else {
+      hasVolumeMismatch = true;
+      score -= 60;
+    }
+  } else if (bookStructured.volumeToken && !candidateStructured.volumeToken) {
+    isMissingCandidateVolume = true;
+    score -= 14;
   }
 
   if (originalAuthor) {
@@ -351,15 +608,46 @@ function scoreRakutenCandidate(item, book, query) {
     score += 4;
   }
 
-  if (query.label.includes("cleaned")) {
-    score -= 6;
+  if (normalizedQueryKey && normalizedQueryKey === candidateStructured.normalizedKey) {
+    score += 10;
+  }
+
+  if (query.label.includes("normalized")) {
+    score -= 4;
   }
 
   if (!originalAuthor && candidateAuthor) {
     score += 2;
   }
 
-  return score;
+  if (
+    shortBaseTitle &&
+    candidateStructured.normalizedKey !== bookStructured.normalizedKey &&
+    candidateStructured.baseKey !== bookStructured.baseKey
+  ) {
+    score = Math.min(score, REVIEW_MATCH_THRESHOLD - 1);
+  }
+
+  if (
+    bookStructured.baseKey &&
+    candidateStructured.baseKey &&
+    scoreTextOverlap(candidateStructured.baseTitle, bookStructured.baseTitle) < 30
+  ) {
+    score -= 28;
+  }
+
+  if (hasVolumeMismatch) {
+    score = Math.min(score, REVIEW_MATCH_THRESHOLD - 1);
+  }
+
+  if (isMissingCandidateVolume) {
+    score = Math.min(score, STRONG_MATCH_THRESHOLD - 1);
+  }
+
+  return {
+    score,
+    structuredCandidate: candidateStructured,
+  };
 }
 
 function chooseBestRakutenMatch(book, searchResults) {
@@ -367,7 +655,7 @@ function chooseBestRakutenMatch(book, searchResults) {
     .map(({ item, query }) => ({
       item,
       query,
-      score: scoreRakutenCandidate(item, book, query),
+      ...scoreRakutenCandidate(item, book, query),
     }))
     .sort((left, right) => right.score - left.score);
 
@@ -377,6 +665,25 @@ function chooseBestRakutenMatch(book, searchResults) {
     bestMatch,
     scoredCandidates,
   };
+}
+
+function logMatchDiagnostics(book, scoredCandidates) {
+  const structuredBook = extractStructuredTitle(book.title);
+  const topCandidates = scoredCandidates.slice(0, 3).map((candidate) => ({
+    rawTitle: cleanValue(candidate.item.title),
+    normalizedTitle: candidate.structuredCandidate.normalizedTitle,
+    baseTitle: candidate.structuredCandidate.baseTitle,
+    volumeToken: candidate.structuredCandidate.volumeToken,
+    score: Number(candidate.score.toFixed(2)),
+  }));
+
+  console.log("Low-confidence Rakuten match diagnostics:", {
+    originalTitle: cleanValue(book.title),
+    normalizedTitle: structuredBook.normalizedTitle,
+    baseTitle: structuredBook.baseTitle,
+    volumeToken: structuredBook.volumeToken,
+    topCandidates,
+  });
 }
 
 function buildMatchPayload(match) {
@@ -395,6 +702,57 @@ function buildMatchPayload(match) {
   };
 }
 
+function buildManualMatchPayload(item) {
+  return {
+    image_url: cleanValue(item.largeImageUrl) || null,
+    caption: stripHtml(item.itemCaption) || null,
+    author: cleanValue(item.author) || null,
+    isbn: cleanValue(item.isbn) || null,
+    rakuten_url: cleanValue(item.itemUrl) || null,
+    sales_date: cleanValue(item.salesDate) || null,
+    match_status: "matched",
+    match_confidence: 999,
+  };
+}
+
+async function resolveManualBookMatch({
+  book,
+  rakutenAppId,
+  rakutenAccessKey,
+  delayMs,
+}) {
+  const manualIdentifier = cleanValue(book.manual_identifier);
+  const manualIdentifierType = cleanValue(book.manual_identifier_type).toLowerCase();
+
+  if (!manualIdentifier || !manualIdentifierType) {
+    return null;
+  }
+
+  if (manualIdentifierType === "isbn") {
+    const items = await searchRakutenBookByIsbn({
+      rakutenAppId,
+      rakutenAccessKey,
+      isbn: manualIdentifier,
+      delayMs,
+    });
+
+    return items[0] || null;
+  }
+
+  if (manualIdentifierType === "kobo_item_number") {
+    const items = await searchRakutenKoboByItemNumber({
+      rakutenAppId,
+      rakutenAccessKey,
+      itemNumber: manualIdentifier,
+      delayMs,
+    });
+
+    return items[0] || null;
+  }
+
+  return null;
+}
+
 async function enrichBookRow({
   supabase,
   book,
@@ -402,6 +760,32 @@ async function enrichBookRow({
   rakutenAccessKey,
   delayMs,
 }) {
+  const manualMatch = await resolveManualBookMatch({
+    book,
+    rakutenAppId,
+    rakutenAccessKey,
+    delayMs,
+  });
+
+  if (manualMatch) {
+    const manualUpdatePayload = buildManualMatchPayload(manualMatch);
+    const { error: manualUpdateError } = await supabase
+      .from("books")
+      .update(manualUpdatePayload)
+      .eq("id", book.id);
+
+    if (manualUpdateError) {
+      throw new Error(
+        `Failed updating manual override for "${book.title}": ${manualUpdateError.message}`,
+      );
+    }
+
+    return {
+      outcome: "matched",
+      confidence: 999,
+    };
+  }
+
   const searchQueries = buildSearchQueries(book);
   const collectedResults = [];
 
@@ -423,9 +807,11 @@ async function enrichBookRow({
     });
   }
 
-  const { bestMatch } = chooseBestRakutenMatch(book, collectedResults);
+  const { bestMatch, scoredCandidates } = chooseBestRakutenMatch(book, collectedResults);
 
   if (!bestMatch || bestMatch.score < REVIEW_MATCH_THRESHOLD) {
+    logMatchDiagnostics(book, scoredCandidates);
+
     const unmatchedPayload = {
       match_status: "unmatched",
       match_confidence: 0,
@@ -444,6 +830,10 @@ async function enrichBookRow({
       outcome: "unmatched",
       confidence: 0,
     };
+  }
+
+  if (bestMatch.score < STRONG_MATCH_THRESHOLD) {
+    logMatchDiagnostics(book, scoredCandidates);
   }
 
   const updatePayload = buildMatchPayload(bestMatch);
