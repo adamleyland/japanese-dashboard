@@ -47,11 +47,13 @@ export default function AudiobookPlayer({
   const shellStyle = isMobile
     ? {
         ...styles.shell,
-        gap: "14px",
+        gap: "30px",
         padding: "14px",
         borderRadius: "24px",
-        maxWidth: "min(100%, 560px)",
-        minHeight: "100%",
+        width: "100%",
+        maxWidth: "560px",
+        minHeight: "auto",
+        alignContent: "start",
         boxSizing: "border-box",
       }
     : styles.shell;
@@ -59,7 +61,8 @@ export default function AudiobookPlayer({
     ? {
         ...styles.playerHeader,
         alignItems: "flex-start",
-        gap: "10px",
+        gap: "20px",
+        flexWrap: "nowrap",
       }
     : styles.playerHeader;
   const headerCopyStyle = isMobile
@@ -90,6 +93,7 @@ export default function AudiobookPlayer({
         lineHeight: 1.6,
         WebkitLineClamp: 4,
         maxWidth: "100%",
+        display: "none",
       }
     : styles.description;
   const iconButtonStyle = isMobile
@@ -104,16 +108,10 @@ export default function AudiobookPlayer({
     ? {
         ...styles.playerGrid,
         gridTemplateColumns: "1fr",
-        gap: "14px",
+        gap: "40px",
       }
     : styles.playerGrid;
-  const coverWrapStyle = isMobile
-    ? {
-        ...styles.coverWrap,
-        width: "min(100%, 260px)",
-        justifySelf: "center",
-      }
-    : styles.coverWrap;
+  const coverWrapStyle = styles.coverWrap;
   const controlsColumnStyle = isMobile
     ? {
         ...styles.controlsColumn,
@@ -130,19 +128,23 @@ export default function AudiobookPlayer({
     ? {
         ...styles.actionRow,
         gap: "8px",
+        flexWrap: "nowrap",
       }
     : styles.actionRow;
   const primaryButtonStyle = isMobile
     ? {
-        ...styles.primaryButton(!hasPlayableAudio),
-        flex: "1 1 100%",
+        ...styles.iconControlButton(!hasPlayableAudio),
+        flex: "1 1 0",
+        width: "auto",
+        height: "44px",
         justifyContent: "center",
+        padding: 0,
       }
     : styles.primaryButton(!hasPlayableAudio);
   const iconControlButtonStyle = isMobile
     ? {
         ...styles.iconControlButton(!hasPlayableAudio),
-        flex: "1 1 calc(33.333% - 6px)",
+        flex: "1 1 0",
         width: "auto",
       }
     : styles.iconControlButton(!hasPlayableAudio);
@@ -166,10 +168,16 @@ export default function AudiobookPlayer({
           <div style={styles.eyebrow}>Audiobook Player</div>
           <h3 style={titleStyle}>{book.title}</h3>
           <p style={metaStyle}>{buildMetadataLine(book, durationSeconds)}</p>
-          <p style={descriptionStyle}>{plainDescription}</p>
+          {!isMobile ? <p style={descriptionStyle}>{plainDescription}</p> : null}
         </div>
 
-        <div style={styles.headerActions}>
+        <div
+          style={{
+            ...styles.headerActions,
+            alignSelf: "flex-start",
+            marginLeft: "auto",
+          }}
+        >
           <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
             <X size={18} />
           </button>
@@ -177,19 +185,33 @@ export default function AudiobookPlayer({
       </div>
 
       <div style={playerGridStyle}>
-        <div style={coverWrapStyle}>
-          <div style={styles.cover(book.coverGradient)}>
+        {isMobile ? (
+          <div style={styles.mobileCoverCard}>
             <img
               key={`${book.id}-${coverUrl}`}
               src={coverUrl}
               alt={`Cover artwork for ${book.title}`}
-              style={styles.coverImage}
+              style={styles.mobileCoverImage}
               onError={(event) => {
                 event.currentTarget.src = FALLBACK_COVER_URL;
               }}
             />
           </div>
-        </div>
+        ) : (
+          <div style={coverWrapStyle}>
+            <div style={styles.cover(book.coverGradient)}>
+              <img
+                key={`${book.id}-${coverUrl}`}
+                src={coverUrl}
+                alt={`Cover artwork for ${book.title}`}
+                style={styles.coverImage}
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_COVER_URL;
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         <div style={controlsColumnStyle}>
           <div style={timelineWrapStyle}>
@@ -225,9 +247,11 @@ export default function AudiobookPlayer({
               onClick={onTogglePlayback}
               disabled={!hasPlayableAudio}
               style={primaryButtonStyle}
+              aria-label={playing ? "Pause audiobook" : "Play audiobook"}
+              title={playing ? "Pause audiobook" : "Play audiobook"}
             >
               {playing ? <Pause size={18} /> : <Play size={18} />}
-              {playing ? "Pause" : "Play"}
+              {!isMobile ? (playing ? "Pause" : "Play") : null}
             </button>
 
             <button
@@ -412,6 +436,26 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "220px minmax(0, 1fr)",
     gap: "18px",
+  },
+  mobileCoverCard: {
+    width: "min(100%, 244px)",
+    aspectRatio: "1 / 1",
+    margin: "0 auto",
+    borderRadius: "20px",
+    overflow: "hidden",
+    background: "var(--app-surface)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.12)",
+    lineHeight: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mobileCoverImage: {
+    width: "100%",
+    height: "100%",
+    display: "block",
+    objectFit: "cover",
+    objectPosition: "center",
   },
   coverWrap: {
     width: "220px",

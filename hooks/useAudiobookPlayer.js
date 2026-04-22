@@ -1021,7 +1021,6 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     }
 
     seekTo(0);
-    setPlaybackState("playing");
   }, [seekTo]);
 
   return {

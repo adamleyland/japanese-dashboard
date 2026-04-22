@@ -43,10 +43,9 @@ export default function AudiobookCurrentlyListening({
   const coverStyle = isMobile
     ? {
         ...styles.cover(book.coverGradient),
-        width: "min(100%, 220px)",
+        width: "min(100%, 165px)",
         minHeight: 0,
         aspectRatio: "4 / 5",
-        justifySelf: "center",
       }
     : styles.cover(book.coverGradient);
   const coverImageStyle = isMobile
@@ -122,16 +121,18 @@ export default function AudiobookCurrentlyListening({
         aria-label={`Open player for ${book.title}`}
       >
         <div style={cardStyle}>
-          <div style={coverStyle} aria-hidden="true">
-            <img
-              key={`${book.id}-${coverUrl}`}
-              src={coverUrl}
-              alt=""
-              style={coverImageStyle}
-              onError={(event) => {
-                event.currentTarget.src = FALLBACK_COVER_URL;
-              }}
-            />
+          <div style={isMobile ? styles.mobileCoverWrap : undefined}>
+            <div style={coverStyle} aria-hidden="true">
+              <img
+                key={`${book.id}-${coverUrl}`}
+                src={coverUrl}
+                alt=""
+                style={coverImageStyle}
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_COVER_URL;
+                }}
+              />
+            </div>
           </div>
 
           <div style={metaStyle}>
@@ -241,6 +242,11 @@ const styles = {
     gap: "16px",
     textAlign: "left",
     boxShadow: "0 16px 36px rgba(15,23,42,0.08)",
+  },
+  mobileCoverWrap: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
   },
   cover: (coverGradient) => ({
     position: "relative",
