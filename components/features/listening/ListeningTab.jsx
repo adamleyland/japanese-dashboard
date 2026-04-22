@@ -87,32 +87,11 @@ export default function ListeningTab({
   const [timerDurationSeconds, setTimerDurationSeconds] = useState(300);
   const [timerSeconds, setTimerSeconds] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [listeningGoal, setListeningGoal] = useState(() => {
-    if (typeof window === "undefined") {
-      return 1200;
-    }
-
-    const storedValue = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
-    return Number.isFinite(storedValue) && storedValue > 0 ? storedValue : 1200;
-  });
-  const [workspaceSource, setWorkspaceSource] = useState(() => {
-    if (typeof window === "undefined") {
-      return "youtube";
-    }
-
-    return window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY) === "audiobooks"
-      ? "audiobooks"
-      : "youtube";
-  });
+  const [listeningGoal, setListeningGoal] = useState(1200);
+  const [workspaceSource, setWorkspaceSource] = useState("youtube");
   const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("bar");
-  const [settingsOpen, setSettingsOpen] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-
-    return window.localStorage.getItem(LISTENING_GOAL_SETTINGS_STORAGE_KEY) === "true";
-  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const isYoutubeMode = workspaceSource === "youtube";
   const playerCanMount = !isYoutubeMode || (connectionStatus !== "connecting" && connectionStatus !== "restoring" && playbackList.length > 0 && Boolean(selectedVideo?.id));
@@ -154,14 +133,26 @@ export default function ListeningTab({
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
 
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isMounted) {
+    if (typeof window === "undefined") {
       return;
     }
-  }, [isMounted]);
+
+    const storedListeningGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
+    const storedWorkspaceSource = window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY);
+    const storedSettingsOpen =
+      window.localStorage.getItem(LISTENING_GOAL_SETTINGS_STORAGE_KEY) === "true";
+
+    if (Number.isFinite(storedListeningGoal) && storedListeningGoal > 0) {
+      setListeningGoal(storedListeningGoal);
+    }
+
+    if (storedWorkspaceSource === "audiobooks") {
+      setWorkspaceSource("audiobooks");
+    }
+
+    setSettingsOpen(storedSettingsOpen);
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     playbackListRef.current = playbackList;

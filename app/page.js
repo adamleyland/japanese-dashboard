@@ -8,8 +8,9 @@ import { supabase } from "@/lib/supabase";
 import {
   addTrackingEvent,
   createEmptyTrackingTotals,
-  fetchTrackingTotals,
+  fetchTrackingTotalsWithSource,
   flushPendingTrackingEvents,
+  hasTrackingTotalsValue,
   getPendingTrackingTotals,
   reduceTrackingEvent,
 } from "@/lib/trackingEvents";
@@ -56,6 +57,10 @@ function mergeTrackingTotals(baseTotals, pendingTotals) {
   };
 }
 
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 export default function Home() {
   const [tab, setTab] = useState("listening");
   const [listeningHours, setListeningHours] = useState(1030);
@@ -86,6 +91,9 @@ export default function Home() {
   const gamingHoursRef = useRef(gamingHours);
   const wordsReadRef = useRef(wordsRead);
   const wordsWrittenRef = useRef(wordsWritten);
+  const trackingSourceRef = useRef("bootstrap-default");
+  const trackingReadStrategyRef = useRef("unknown");
+  const trackingReconcileRequestRef = useRef(0);
   const gamingData = useGamingData({
     authUserId,
     authResolved: !authLoading,
@@ -104,7 +112,6 @@ export default function Home() {
     [estimatedReadingHours, listeningHours, gamingHours, shadowingHours],
   );
   const { totalMinutes: gamingTotalMinutes } = useGamingTotals(gamingData.games);
-  const hasGamingSourceData = gamingData.games.length > 0;
 
   useEffect(() => {
     listeningHoursRef.current = listeningHours;
@@ -122,33 +129,435 @@ export default function Home() {
     window.localStorage.setItem(TRACKER_FOCUS_MODE_STORAGE_KEY, String(trackerFocusMode));
   }, [trackerFocusMode]);
 
+  const resolveReadingMetricSource = useCallback(() => {
+    const rawResult = {
+      configured: lingqStats.configured,
+      hasStats: lingqStats.hasStats,
+      totalWordsRead: lingqStats.totalWordsRead,
+      estimatedReadingHours: lingqStats.estimatedReadingHours,
+      loading: lingqStats.loading,
+      error: lingqStats.error,
+      source: lingqStats.source,
+      fetchedAt: lingqStats.fetchedAt,
+    };
+
+    console.info("[Dashboard Totals] Raw reading source loader result", rawResult);
+
+    if (isFiniteNumber(lingqStats.totalWordsRead)) {
+      return {
+        value: lingqStats.totalWordsRead,
+        source: "lingq",
+        reason: "loaded-from-lingq",
+        rawResult,
+      };
+    }
+
+    if (lingqStats.loading) {
+      return {
+        value: wordsReadRef.current,
+        source: "retain-current",
+        reason: "lingq-loading",
+        rawResult,
+      };
+    }
+
+    if (lingqStats.error) {
+      return {
+        value: 0,
+        source: "default-zero",
+        reason: `lingq-error:${lingqStats.error}`,
+        rawResult,
+      };
+    }
+
+    if (!lingqStats.configured) {
+      return {
+        value: 0,
+        source: "default-zero",
+        reason: "lingq-not-configured",
+        rawResult,
+      };
+    }
+
+    return {
+      value: 0,
+      source: "default-zero",
+      reason: "lingq-words-read-missing",
+      rawResult,
+    };
+  }, [
+    lingqStats.configured,
+    lingqStats.error,
+    lingqStats.estimatedReadingHours,
+    lingqStats.fetchedAt,
+    lingqStats.hasStats,
+    lingqStats.loading,
+    lingqStats.source,
+    lingqStats.totalWordsRead,
+  ]);
+
+  const resolveGamingMetricSource = useCallback(() => {
+    const rawResult = {
+      gamesCount: gamingData.games.length,
+      totalMinutes: gamingTotalMinutes,
+      totalHours: gamingTotalMinutes / 60,
+      loading: gamingData.loading,
+      error: gamingData.error,
+      steam: {
+        gamesCount: gamingData.sourceStatus?.steam?.games?.length ?? 0,
+        loading: gamingData.sourceStatus?.steam?.loading ?? false,
+        error: gamingData.sourceStatus?.steam?.error ?? null,
+      },
+      xbox: {
+        gamesCount: gamingData.sourceStatus?.xbox?.games?.length ?? 0,
+        loading: gamingData.sourceStatus?.xbox?.loading ?? false,
+        error: gamingData.sourceStatus?.xbox?.error ?? null,
+      },
+    };
+
+    console.info("[Dashboard Totals] Raw gaming source loader result", rawResult);
+
+    if (gamingData.games.length > 0 && isFiniteNumber(gamingTotalMinutes)) {
+      return {
+        value: gamingTotalMinutes / 60,
+        source: "steam-xbox",
+        reason: "computed-from-gaming-library",
+        rawResult,
+      };
+    }
+
+    if (gamingData.loading) {
+      return {
+        value: gamingHoursRef.current,
+        source: "retain-current",
+        reason: "gaming-sources-loading",
+        rawResult,
+      };
+    }
+
+    if (gamingData.error) {
+      return {
+        value: 0,
+        source: "default-zero",
+        reason: `gaming-source-error:${gamingData.error}`,
+        rawResult,
+      };
+    }
+
+    return {
+      value: 0,
+      source: "default-zero",
+      reason: "no-gaming-source-data",
+      rawResult,
+    };
+  }, [
+    gamingData.error,
+    gamingData.games,
+    gamingData.loading,
+    gamingData.sourceStatus,
+    gamingTotalMinutes,
+  ]);
+
+  const applyResolvedMetricValue = useCallback((metric, nextValue, sourceDetails = {}) => {
+    const metricRefs = {
+      reading: wordsReadRef,
+      gaming: gamingHoursRef,
+      listening: listeningHoursRef,
+      shadowing: shadowingHoursRef,
+      writing: wordsWrittenRef,
+    };
+    const metricSetters = {
+      reading: setWordsRead,
+      gaming: setGamingHours,
+      listening: setListeningHours,
+      shadowing: setShadowingHours,
+      writing: setWordsWritten,
+    };
+
+    const ref = metricRefs[metric];
+    const setValue = metricSetters[metric];
+    if (!ref || !setValue) {
+      return;
+    }
+
+    const currentValue = Number(ref.current || 0);
+    const normalizedNextValue = Math.max(0, Number(nextValue) || 0);
+    if (Math.abs(currentValue - normalizedNextValue) < 0.000001) {
+      return;
+    }
+
+    const nextTotals = {
+      listening: metric === "listening" ? normalizedNextValue : listeningHoursRef.current,
+      reading: metric === "reading" ? normalizedNextValue : wordsReadRef.current,
+      shadowing: metric === "shadowing" ? normalizedNextValue : shadowingHoursRef.current,
+      writing: metric === "writing" ? normalizedNextValue : wordsWrittenRef.current,
+      gaming: metric === "gaming" ? normalizedNextValue : gamingHoursRef.current,
+    };
+
+    console.info("[Dashboard Totals] Final merged totals object before setState", {
+      reason: `apply-${metric}-source`,
+      metric,
+      sourceDetails,
+      nextTotals,
+    });
+
+    ref.current = normalizedNextValue;
+    setValue(normalizedNextValue);
+  }, []);
+
+  const applyTrackingTotalsSnapshot = useCallback(
+    (
+      nextTotals,
+      {
+        reason = "unknown",
+        source = "unknown",
+        serverTotals = null,
+        pendingTotals = null,
+        flushResult = null,
+      } = {},
+    ) => {
+      const normalizedTotals = mergeTrackingTotals(createEmptyTrackingTotals(), nextTotals);
+      const readingResolution = authUserId
+        ? resolveReadingMetricSource()
+        : {
+            value: normalizedTotals.reading,
+            source,
+            reason: "using-tracking-reading-total-without-auth",
+          };
+      const gamingResolution = authUserId
+        ? resolveGamingMetricSource()
+        : {
+            value: normalizedTotals.gaming,
+            source,
+            reason: "using-tracking-gaming-total-without-auth",
+          };
+      const finalTotals = {
+        listening: normalizedTotals.listening,
+        reading: readingResolution.value,
+        shadowing: normalizedTotals.shadowing,
+        writing: normalizedTotals.writing,
+        gaming: gamingResolution.value,
+      };
+      const previousListening = listeningHoursRef.current;
+      const previousSource = trackingSourceRef.current;
+      const listeningChanged = Math.abs(previousListening - finalTotals.listening) > 0.000001;
+      const overwrite = listeningChanged && previousSource !== source;
+
+      console.info("[Tracking UI] Applying tracking totals snapshot", {
+        reason,
+        source,
+        previousSource,
+        overwrite,
+        listening: {
+          previous: previousListening,
+          next: finalTotals.listening,
+        },
+        serverListening: serverTotals?.listening ?? null,
+        pendingListening: pendingTotals?.listening ?? null,
+        flushResult,
+      });
+      console.info("[Dashboard Totals] Final merged totals object before setState", {
+        reason,
+        source,
+        trackingTotals: normalizedTotals,
+        readingResolution,
+        gamingResolution,
+        finalTotals,
+      });
+
+      if (readingResolution.source === "default-zero") {
+        console.warn("[Dashboard Totals] Reading defaulted to zero", {
+          reason: readingResolution.reason,
+          rawResult: readingResolution.rawResult,
+        });
+      }
+
+      if (gamingResolution.source === "default-zero") {
+        console.warn("[Dashboard Totals] Gaming defaulted to zero", {
+          reason: gamingResolution.reason,
+          rawResult: gamingResolution.rawResult,
+        });
+      }
+
+      if (Math.abs(finalTotals.listening) < 0.000001) {
+        console.warn("[Dashboard Totals] Listening defaulted to zero", {
+          reason,
+          source,
+          trackingTotals: normalizedTotals,
+          serverTotals,
+          pendingTotals,
+        });
+      }
+
+      trackingSourceRef.current = source;
+      listeningHoursRef.current = finalTotals.listening;
+      shadowingHoursRef.current = finalTotals.shadowing;
+      gamingHoursRef.current = finalTotals.gaming;
+      wordsReadRef.current = finalTotals.reading;
+      wordsWrittenRef.current = finalTotals.writing;
+
+      setListeningHours(finalTotals.listening);
+      setShadowingHours(finalTotals.shadowing);
+      setGamingHours(finalTotals.gaming);
+      setWordsRead(finalTotals.reading);
+      setWordsWritten(finalTotals.writing);
+      setTrackingHydrated(true);
+    },
+    [authUserId, resolveGamingMetricSource, resolveReadingMetricSource],
+  );
+
+  const reconcileTrackingStateFromServer = useCallback(
+    async (reason, context = {}) => {
+      if (!authUserId) {
+        return null;
+      }
+
+      const requestId = ++trackingReconcileRequestRef.current;
+      console.info("[Tracking UI] Reconciling tracking totals from Supabase", {
+        reason,
+        userId: authUserId,
+        context,
+        currentListening: listeningHoursRef.current,
+      });
+
+      const flushResult = await flushPendingTrackingEvents(authUserId);
+      const serverSnapshot = await fetchTrackingTotalsWithSource(authUserId);
+      const pendingTotals = getPendingTrackingTotals(authUserId);
+
+      console.info("[Dashboard Totals] Raw listening source loader result", {
+        reason,
+        serverSnapshot,
+        pendingTotals,
+      });
+
+      if (requestId !== trackingReconcileRequestRef.current) {
+        console.info("[Tracking UI] Ignoring stale reconciliation result", {
+          reason,
+          requestId,
+          latestRequestId: trackingReconcileRequestRef.current,
+        });
+        return null;
+      }
+
+      if (serverSnapshot?.totals) {
+        trackingReadStrategyRef.current = serverSnapshot.readSource;
+        const hasPendingTotals = hasTrackingTotalsValue(pendingTotals);
+        const displayTotals = hasPendingTotals
+          ? mergeTrackingTotals(serverSnapshot.totals, pendingTotals)
+          : serverSnapshot.totals;
+
+        if (hasPendingTotals) {
+          console.warn("[Tracking UI] Keeping pending local totals layered over fresh server totals", {
+            reason,
+            readSource: serverSnapshot.readSource,
+            pendingTotals,
+          });
+        }
+
+        applyTrackingTotalsSnapshot(displayTotals, {
+          reason,
+          source: hasPendingTotals ? `${serverSnapshot.readSource}+pending` : serverSnapshot.readSource,
+          serverTotals: serverSnapshot.totals,
+          pendingTotals,
+          flushResult,
+        });
+
+        return {
+          ok: true,
+          displayTotals,
+          serverTotals: serverSnapshot.totals,
+          pendingTotals,
+          readSource: serverSnapshot.readSource,
+        };
+      }
+
+      trackingReadStrategyRef.current = "local-pending-fallback";
+      applyTrackingTotalsSnapshot(pendingTotals, {
+        reason,
+        source: "local-pending-fallback",
+        pendingTotals,
+        flushResult,
+      });
+
+      return {
+        ok: false,
+        displayTotals: pendingTotals,
+        pendingTotals,
+        readSource: "local-pending-fallback",
+      };
+    },
+    [applyTrackingTotalsSnapshot, authUserId],
+  );
+
   const persistMetricDelta = useCallback(
     async ({ metric, delta, metadata = {}, previousValue, nextValue, ref, setValue }) => {
-      if (!authUserId || !delta) {
+      if (!delta) {
         return true;
       }
+
+      console.info("[Tracking UI] Persisting tracked metric delta", {
+        metric,
+        delta,
+        previousValue,
+        nextValue,
+        authUserId: authUserId || null,
+        uiSource: trackingSourceRef.current,
+        metadata,
+      });
 
       const sourceDefaults = TRACKING_SOURCE_DEFAULTS[metric];
       const persistEvent = delta > 0 ? addTrackingEvent : reduceTrackingEvent;
       const success = await persistEvent(metric, Math.abs(delta), {
         ...metadata,
-        userId: authUserId,
+        userId: authUserId || null,
         kind: metadata.kind || "adjustment",
         source: metadata.source || (delta > 0 ? sourceDefaults.positive : sourceDefaults.negative),
       });
 
       if (success) {
+        if (authUserId) {
+          const reconciliationMode =
+            trackingReadStrategyRef.current === "supabase-rpc" ? "server-reload" : "confirmed-delta";
+          trackingSourceRef.current = `server-confirmed:${reconciliationMode}`;
+          console.info("[Tracking UI] Tracking write confirmed by Supabase", {
+            metric,
+            nextValue,
+            reconciliationMode,
+            readStrategy: trackingReadStrategyRef.current,
+          });
+
+          if (trackingReadStrategyRef.current === "supabase-rpc") {
+            await reconcileTrackingStateFromServer(`${metric}-write-confirmed`, {
+              metric,
+              delta,
+              previousValue,
+              nextValue,
+            });
+          }
+        } else {
+          trackingSourceRef.current = "local-pending";
+          console.info("[Tracking UI] Tracking value is currently backed by local pending storage", {
+            metric,
+            nextValue,
+          });
+        }
+
         return true;
       }
 
       if (ref.current === nextValue) {
+        console.warn("[Tracking UI] Reverting optimistic tracking value after persistence failure", {
+          metric,
+          previousValue,
+          nextValue,
+        });
         ref.current = previousValue;
         setValue(previousValue);
       }
 
       return false;
     },
-    [authUserId],
+    [authUserId, reconcileTrackingStateFromServer],
   );
 
   const updateTrackedMetric = useCallback(
@@ -164,6 +573,14 @@ export default function Home() {
       if (!delta) {
         return;
       }
+
+      trackingSourceRef.current = "optimistic";
+      console.info("[Tracking UI] Applying optimistic metric update", {
+        metric,
+        previousValue,
+        nextValue,
+        delta,
+      });
 
       ref.current = nextValue;
       setValue(nextValue);
@@ -358,45 +775,20 @@ export default function Home() {
 
       if (!authUserId) {
         const pendingTotals = getPendingTrackingTotals("");
-        listeningHoursRef.current = pendingTotals.listening;
-        shadowingHoursRef.current = pendingTotals.shadowing;
-        gamingHoursRef.current = pendingTotals.gaming;
-        wordsReadRef.current = pendingTotals.reading;
-        wordsWrittenRef.current = pendingTotals.writing;
-
-        setListeningHours(pendingTotals.listening);
-        setShadowingHours(pendingTotals.shadowing);
-        setGamingHours(pendingTotals.gaming);
-        setWordsRead(pendingTotals.reading);
-        setWordsWritten(pendingTotals.writing);
-        setTrackingHydrated(true);
+        trackingReadStrategyRef.current = "local-pending";
+        applyTrackingTotalsSnapshot(pendingTotals, {
+          reason: "initial-load-no-auth",
+          source: "local-pending",
+          pendingTotals,
+        });
         return;
       }
 
       setTrackingHydrated(false);
-      const totals = await fetchTrackingTotals(authUserId);
-      const pendingTotals = getPendingTrackingTotals(authUserId);
+      await reconcileTrackingStateFromServer("initial-load-authenticated");
       if (cancelled) {
         return;
       }
-
-      const mergedTotals = mergeTrackingTotals(
-        totals || createEmptyTrackingTotals(),
-        pendingTotals,
-      );
-
-      listeningHoursRef.current = mergedTotals.listening;
-      shadowingHoursRef.current = mergedTotals.shadowing;
-      gamingHoursRef.current = mergedTotals.gaming;
-      wordsReadRef.current = mergedTotals.reading;
-      wordsWrittenRef.current = mergedTotals.writing;
-
-      setListeningHours(mergedTotals.listening);
-      setShadowingHours(mergedTotals.shadowing);
-      setGamingHours(mergedTotals.gaming);
-      setWordsRead(mergedTotals.reading);
-      setWordsWritten(mergedTotals.writing);
-      setTrackingHydrated(true);
     };
 
     void hydrateTrackingState();
@@ -404,7 +796,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, authUserId]);
+  }, [applyTrackingTotalsSnapshot, authLoading, authUserId, reconcileTrackingStateFromServer]);
 
   useEffect(() => {
     if (authLoading) {
@@ -417,6 +809,10 @@ export default function Home() {
       const result = await flushPendingTrackingEvents(authUserId);
       if (!result?.ok || cancelled || !trackingHydrated) {
         return;
+      }
+
+      if (authUserId && result.flushedCount > 0) {
+        await reconcileTrackingStateFromServer("pending-flush");
       }
     };
 
@@ -446,57 +842,42 @@ export default function Home() {
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [authLoading, authUserId, trackingHydrated]);
+  }, [authLoading, authUserId, reconcileTrackingStateFromServer, trackingHydrated]);
 
   useEffect(() => {
-    if (authLoading || !trackingHydrated || !authUserId || !hasGamingSourceData) {
+    if (authLoading || !trackingHydrated) {
       return;
     }
 
-    const nextGamingHours = gamingTotalMinutes / 60;
-    const currentGamingHours = gamingHoursRef.current;
-
-    if (Math.abs(nextGamingHours - currentGamingHours) < 0.001) {
-      return;
-    }
-
-    updateGamingHours(nextGamingHours, {
-      kind: "adjustment",
-      source: "gaming-library-sync",
-      note: "Synced gaming total from connected gaming library sources.",
-    });
+    const gamingResolution = resolveGamingMetricSource();
+    applyResolvedMetricValue("gaming", gamingResolution.value, gamingResolution);
   }, [
+    applyResolvedMetricValue,
     authLoading,
     authUserId,
     gamingTotalMinutes,
-    hasGamingSourceData,
+    resolveGamingMetricSource,
     trackingHydrated,
-    updateGamingHours,
   ]);
 
   useEffect(() => {
-    if (authLoading || !trackingHydrated || !lingqStats.hasStats) {
+    if (authLoading || !trackingHydrated) {
       return;
     }
 
-    const nextWordsRead = lingqStats.totalWordsRead;
-    const currentWordsRead = wordsReadRef.current;
-
-    if (Math.abs(nextWordsRead - currentWordsRead) < 1) {
-      return;
-    }
-
-    updateWordsRead(nextWordsRead, {
-      kind: "adjustment",
-      source: "lingq-sync",
-      note: "Synced reading total from LingQ words read.",
-    });
+    const readingResolution = resolveReadingMetricSource();
+    applyResolvedMetricValue("reading", readingResolution.value, readingResolution);
   }, [
+    applyResolvedMetricValue,
     authLoading,
+    lingqStats.configured,
+    lingqStats.error,
+    lingqStats.fetchedAt,
     lingqStats.hasStats,
+    lingqStats.loading,
     lingqStats.totalWordsRead,
+    resolveReadingMetricSource,
     trackingHydrated,
-    updateWordsRead,
   ]);
 
   return (
