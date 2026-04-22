@@ -264,53 +264,136 @@ export default function ListeningWorkspace({
     <div
       style={{
         ...styles.playerControlRow,
-        flexWrap: isMobile ? "wrap" : "nowrap",
+        flexWrap: "nowrap",
+        alignItems: "center",
+        gap: isMobile ? "10px" : styles.playerControlRow.gap,
+        minWidth: 0,
       }}
     >
       <button
+        type="button"
         style={{
           ...styles.miniActionButton("blue"),
-          minWidth: isMobile ? "40px" : "auto",
+          minWidth: isMobile ? "56px" : "auto",
+          minHeight: isMobile ? "52px" : undefined,
           justifyContent: "center",
-          padding: isMobile ? "8px" : styles.miniActionButton("blue").padding,
+          padding: isMobile ? "0 16px" : styles.miniActionButton("blue").padding,
+          borderRadius: isMobile ? "14px" : styles.miniActionButton("blue").borderRadius,
+          flex: isMobile ? "1 1 0" : "0 0 auto",
         }}
         onClick={onTogglePlayback}
         aria-label={isPlayerPlaying ? "Pause video" : "Play video"}
         title={isPlayerPlaying ? "Pause video" : "Play video"}
       >
-        {isPlayerPlaying ? <PauseCircle size={12} /> : <PlayCircle size={12} />}
+        {isPlayerPlaying ? <PauseCircle size={isMobile ? 18 : 12} /> : <PlayCircle size={isMobile ? 18 : 12} />}
         {!isMobile ? (isPlayerPlaying ? "Pause" : "Play") : null}
       </button>
       <button
+        type="button"
         style={{
           ...styles.miniActionButton("orange"),
-          minWidth: isMobile ? "40px" : "auto",
+          minWidth: isMobile ? "56px" : "auto",
+          minHeight: isMobile ? "52px" : undefined,
           justifyContent: "center",
-          padding: isMobile ? "8px" : styles.miniActionButton("orange").padding,
+          padding: isMobile ? "0 16px" : styles.miniActionButton("orange").padding,
+          borderRadius: isMobile ? "14px" : styles.miniActionButton("orange").borderRadius,
+          flex: isMobile ? "1 1 0" : "0 0 auto",
         }}
         onClick={skipCurrentVideo}
         aria-label="Skip current video"
         title="Skip current video"
       >
-        <SkipForward size={12} />
+        <SkipForward size={isMobile ? 18 : 12} />
         {!isMobile ? "Skip" : null}
       </button>
       <button
+        type="button"
         style={{
           ...styles.miniActionButton("grey"),
-          minWidth: isMobile ? "40px" : "auto",
+          minWidth: isMobile ? "56px" : "auto",
+          minHeight: isMobile ? "52px" : undefined,
           justifyContent: "center",
-          padding: isMobile ? "8px" : styles.miniActionButton("grey").padding,
+          padding: isMobile ? "0 16px" : styles.miniActionButton("grey").padding,
+          borderRadius: isMobile ? "14px" : styles.miniActionButton("grey").borderRadius,
+          flex: isMobile ? "1 1 0" : "0 0 auto",
         }}
         onClick={() => setFocusMode(!focusMode)}
         aria-label={focusMode ? "Exit focus mode" : "Enable focus mode"}
         title={focusMode ? "Exit focus mode" : "Enable focus mode"}
       >
-        <LampDesk size={12} />
+        <LampDesk size={isMobile ? 18 : 12} />
         {!isMobile ? (focusMode ? "Exit Focus" : "Deep Focus") : null}
       </button>
     </div>
   );
+
+  const mobileFocusAvailableHeight = "calc(100svh - 132px)";
+  const focusContentStyle = isMobile
+    ? {
+        ...styles.focusContent,
+        padding: "10px",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }
+    : styles.focusContent;
+  const focusShellStyle = isMobile
+    ? {
+        ...styles.playerShellFocus,
+        width: "100%",
+        maxWidth: "100%",
+        maxHeight: "calc(100svh - 20px)",
+        padding: "10px",
+        gap: "10px",
+        overflow: "hidden",
+        alignContent: "start",
+      }
+    : styles.playerShellFocus;
+  const focusFrameWrapStyle = isMobile
+    ? {
+        ...styles.playerFrameWrapFocus,
+        width: "min(100%, calc(100svh * 1.3))",
+        height: `min(${mobileFocusAvailableHeight}, 56.25vw)`,
+        maxHeight: mobileFocusAvailableHeight,
+        paddingTop: 0,
+        aspectRatio: "16 / 9",
+        margin: "0 auto",
+        borderRadius: "16px",
+        border: "1px solid rgba(15,23,42,0.12)",
+        flexShrink: 0,
+      }
+    : styles.playerFrameWrapFocus;
+  const focusControlRowStyle = isMobile
+    ? {
+        ...styles.playerControlRowFocus,
+        display: "grid",
+        gap: "10px",
+        padding: "2px 0 0 0",
+      }
+    : styles.playerControlRowFocus;
+  const focusMetaRowStyle = isMobile
+    ? {
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        minWidth: 0,
+      }
+    : {
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        minWidth: 0,
+      };
+  const focusModeButtonStyle = isMobile
+    ? {
+        ...styles.focusModeBtn,
+        width: "42px",
+        height: "42px",
+        top: "10px",
+        right: "10px",
+        borderRadius: "12px",
+      }
+    : styles.focusModeBtn;
 
   return (
     <>
@@ -365,8 +448,12 @@ export default function ListeningWorkspace({
               <div style={styles.playerShell}>
                 <div style={styles.playerFrameWrap}>
                   <div ref={playerHostRef} style={styles.playerFrame} />
-                  <button style={styles.focusModeBtn} onClick={() => setFocusMode(true)}>
-                    <Maximize2 size={14} />
+                  <button
+                    type="button"
+                    style={focusModeButtonStyle}
+                    onClick={() => setFocusMode(true)}
+                  >
+                    <Maximize2 size={isMobile ? 18 : 14} />
                   </button>
                 </div>
 
@@ -723,24 +810,21 @@ export default function ListeningWorkspace({
           <div style={styles.focusOverlay}>
             <div style={styles.focusBackdrop} onClick={() => setFocusMode(false)} />
 
-            <div style={styles.focusContent}>
-              <div style={styles.playerShellFocus}>
-                <div style={styles.playerFrameWrapFocus}>
+            <div style={focusContentStyle}>
+              <div style={focusShellStyle}>
+                <div style={focusFrameWrapStyle}>
                   <div ref={focusPlayerHostRef} style={styles.playerFrame} />
-                  <button style={styles.focusModeBtn} onClick={() => setFocusMode(false)}>
-                    <Minimize2 size={14} />
+                  <button
+                    type="button"
+                    style={focusModeButtonStyle}
+                    onClick={() => setFocusMode(false)}
+                  >
+                    <Minimize2 size={isMobile ? 18 : 14} />
                   </button>
                 </div>
 
-                <div style={styles.playerControlRowFocus}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      minWidth: 0,
-                    }}
-                  >
+                <div style={focusControlRowStyle}>
+                  <div style={focusMetaRowStyle}>
                     {renderPlayerAvatar(36)}
                     <div style={{ ...styles.playerMeta, minWidth: 0 }}>
                       <h3 style={styles.playerTitleFocus}>

@@ -41,7 +41,61 @@ export default function ListeningVisualization({
   setSettingsOpen,
   totalBlocks,
   listeningProgress,
+  variant = "default",
 }) {
+  const isMobileCondensed = variant === "mobileCondensed";
+
+  if (isMobileCondensed) {
+    return (
+      <div
+        style={{
+          ...styles.sideCard,
+          padding: "12px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "20px",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--app-text)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          {formatHours(listeningHours)}
+        </div>
+
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              ...styles.progressBarWrap,
+              height: "10px",
+              borderRadius: "999px",
+            }}
+          >
+            <div
+              style={{
+                ...styles.progressBarFill(listeningProgress),
+                background: "#eab308",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{

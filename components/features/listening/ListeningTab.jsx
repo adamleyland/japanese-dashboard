@@ -114,6 +114,7 @@ export default function ListeningTab({
   const playerHostRef = useRef(null);
   const focusPlayerHostRef = useRef(null);
   const activePlayerHostRef = useRef(null);
+  const wakeLockRef = useRef(null);
   const playerVideoIdRef = useRef("");
   const initRef = useRef(false);
   const playerReadyRef = useRef(false);
@@ -248,6 +249,53 @@ export default function ListeningTab({
     },
     [adjustListeningHours, listeningHours],
   );
+
+  const releaseWakeLock = useCallback(async () => {
+    const sentinel = wakeLockRef.current;
+    if (!sentinel) {
+      return;
+    }
+
+    wakeLockRef.current = null;
+
+    try {
+      await sentinel.release();
+    } catch (error) {
+      console.info("[Wake Lock] Failed to release screen wake lock", {
+        errorMessage: error?.message || String(error || ""),
+      });
+    }
+  }, []);
+
+  const requestWakeLock = useCallback(async () => {
+    if (
+      typeof navigator === "undefined" ||
+      typeof document === "undefined" ||
+      !isMobile ||
+      document.visibilityState !== "visible" ||
+      !navigator.wakeLock?.request
+    ) {
+      return;
+    }
+
+    if (wakeLockRef.current) {
+      return;
+    }
+
+    try {
+      const sentinel = await navigator.wakeLock.request("screen");
+      wakeLockRef.current = sentinel;
+      sentinel.addEventListener("release", () => {
+        if (wakeLockRef.current === sentinel) {
+          wakeLockRef.current = null;
+        }
+      });
+    } catch (error) {
+      console.info("[Wake Lock] Screen wake lock unavailable", {
+        errorMessage: error?.message || String(error || ""),
+      });
+    }
+  }, [isMobile]);
 
   const getPlayerCurrentTime = useCallback(() => {
     const player = playerRef.current;
@@ -602,6 +650,48 @@ export default function ListeningTab({
       document.body.style.overflow = originalOverflow;
     };
   }, [focusMode]);
+
+  useEffect(() => {
+    const shouldKeepScreenAwake = isMobile && isYoutubeMode && isPlayerPlaying;
+
+    if (!shouldKeepScreenAwake) {
+      void releaseWakeLock();
+      return undefined;
+    }
+
+    void requestWakeLock();
+
+    return () => {
+      void releaseWakeLock();
+    };
+  }, [isMobile, isPlayerPlaying, isYoutubeMode, releaseWakeLock, requestWakeLock]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !isMobile) {
+      return undefined;
+    }
+
+    const handleWakeLockVisibility = () => {
+      if (document.visibilityState === "visible") {
+        if (isYoutubeMode && isPlayerPlaying) {
+          void requestWakeLock();
+        }
+        return;
+      }
+
+      void releaseWakeLock();
+    };
+
+    document.addEventListener("visibilitychange", handleWakeLockVisibility);
+    return () => document.removeEventListener("visibilitychange", handleWakeLockVisibility);
+  }, [isMobile, isPlayerPlaying, isYoutubeMode, releaseWakeLock, requestWakeLock]);
+
+  useEffect(
+    () => () => {
+      void releaseWakeLock();
+    },
+    [releaseWakeLock],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1200,6 +1290,7 @@ export default function ListeningTab({
       style={{
         ...styles.listeningMainGrid,
         gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
+        minWidth: 0,
       }}
     >
       <ListeningWorkspace
@@ -1248,48 +1339,90 @@ export default function ListeningTab({
         audiobooksError={audiobooksError}
       />
 
-      <div style={styles.sideColumn}>
-        <TimerStopwatch
-          styles={styles}
-          clockMode={clockMode}
-          stopwatchSeconds={stopwatchSeconds}
-          stopwatchRunning={stopwatchRunning}
-          timerSeconds={timerSeconds}
-          timerDurationSeconds={timerDurationSeconds}
-          timerRunning={timerRunning}
-          toggleTimerStart={toggleTimerStart}
-          bankStopwatch={bankStopwatch}
-          setClockMode={setClockMode}
-          setStopwatchRunning={setStopwatchRunning}
-          setStopwatchSeconds={setStopwatchSeconds}
-          setTimerRunning={setTimerRunning}
-          setTimerSeconds={setTimerSeconds}
-          setTimerDurationSeconds={setTimerDurationSeconds}
-          liveSessionDisplay={formatClock(
-            Math.floor(clockMode === "timer" ? timerSeconds : stopwatchSeconds),
-          )
-            .split(":")
-            .slice(1)
-            .join(":")}
-        />
+      {isMobile ? (
+        <div style={{ ...styles.sideColumn, minWidth: 0 }}>
+          <TimerStopwatch
+            styles={styles}
+            clockMode={clockMode}
+            stopwatchSeconds={stopwatchSeconds}
+            stopwatchRunning={stopwatchRunning}
+            timerSeconds={timerSeconds}
+            timerDurationSeconds={timerDurationSeconds}
+            timerRunning={timerRunning}
+            toggleTimerStart={toggleTimerStart}
+            bankStopwatch={bankStopwatch}
+            setClockMode={setClockMode}
+            setStopwatchRunning={setStopwatchRunning}
+            setStopwatchSeconds={setStopwatchSeconds}
+            setTimerRunning={setTimerRunning}
+            setTimerSeconds={setTimerSeconds}
+            setTimerDurationSeconds={setTimerDurationSeconds}
+            liveSessionDisplay={formatClock(Math.floor(stopwatchSeconds))}
+            variant="mobileCondensed"
+          />
 
-        <ListeningVisualization
-          styles={styles}
-          isMobile={isMobile}
-          isCompact={isCompact}
-          listeningHours={listeningHours}
-          setListeningHours={handleListeningHoursUpdate}
-          listeningGoal={listeningGoal}
-          setListeningGoal={setListeningGoal}
-          showVisualization={showVisualization}
-          vizMode={vizMode}
-          setVizMode={setVizMode}
-          settingsOpen={settingsOpen}
-          setSettingsOpen={setSettingsOpen}
-          totalBlocks={totalBlocks}
-          listeningProgress={listeningProgress}
-        />
-      </div>
+          <ListeningVisualization
+            styles={styles}
+            isMobile={isMobile}
+            isCompact={isCompact}
+            listeningHours={listeningHours}
+            setListeningHours={handleListeningHoursUpdate}
+            listeningGoal={listeningGoal}
+            setListeningGoal={setListeningGoal}
+            showVisualization={showVisualization}
+            vizMode={vizMode}
+            setVizMode={setVizMode}
+            settingsOpen={settingsOpen}
+            setSettingsOpen={setSettingsOpen}
+            totalBlocks={totalBlocks}
+            listeningProgress={listeningProgress}
+            variant="mobileCondensed"
+          />
+        </div>
+      ) : (
+        <div style={styles.sideColumn}>
+          <TimerStopwatch
+            styles={styles}
+            clockMode={clockMode}
+            stopwatchSeconds={stopwatchSeconds}
+            stopwatchRunning={stopwatchRunning}
+            timerSeconds={timerSeconds}
+            timerDurationSeconds={timerDurationSeconds}
+            timerRunning={timerRunning}
+            toggleTimerStart={toggleTimerStart}
+            bankStopwatch={bankStopwatch}
+            setClockMode={setClockMode}
+            setStopwatchRunning={setStopwatchRunning}
+            setStopwatchSeconds={setStopwatchSeconds}
+            setTimerRunning={setTimerRunning}
+            setTimerSeconds={setTimerSeconds}
+            setTimerDurationSeconds={setTimerDurationSeconds}
+            liveSessionDisplay={formatClock(
+              Math.floor(clockMode === "timer" ? timerSeconds : stopwatchSeconds),
+            )
+              .split(":")
+              .slice(1)
+              .join(":")}
+          />
+
+          <ListeningVisualization
+            styles={styles}
+            isMobile={isMobile}
+            isCompact={isCompact}
+            listeningHours={listeningHours}
+            setListeningHours={handleListeningHoursUpdate}
+            listeningGoal={listeningGoal}
+            setListeningGoal={setListeningGoal}
+            showVisualization={showVisualization}
+            vizMode={vizMode}
+            setVizMode={setVizMode}
+            settingsOpen={settingsOpen}
+            setSettingsOpen={setSettingsOpen}
+            totalBlocks={totalBlocks}
+            listeningProgress={listeningProgress}
+          />
+        </div>
+      )}
     </div>
   );
 }

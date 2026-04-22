@@ -35,6 +35,7 @@ export default function TimerStopwatch({
   setTimerSeconds,
   setTimerDurationSeconds,
   liveSessionDisplay,
+  variant = "default",
 }) {
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -79,6 +80,7 @@ export default function TimerStopwatch({
   const ringRadius = isDesktop ? 96 : 78;
   const ringStroke = isDesktop ? 8 : 6;
   const timerMinutes = Math.max(1, Math.round(timerDurationSeconds / 60));
+  const isMobileCondensed = variant === "mobileCondensed";
 
   const updateTimerDuration = (nextDurationSeconds) => {
     const safeDuration = Math.min(59 * 60, Math.max(60, nextDurationSeconds));
@@ -130,6 +132,104 @@ export default function TimerStopwatch({
     width: isDesktop ? "50px" : "44px",
     height: isDesktop ? "50px" : "44px",
   });
+
+  if (isMobileCondensed) {
+    return (
+      <div
+        style={{
+          ...styles.sideCard,
+          padding: "12px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width: "42px",
+            height: "42px",
+            flexShrink: 0,
+          }}
+        >
+          <ProgressRing
+            radius={21}
+            stroke={4}
+            progress={progressPercent}
+            color={ringColor}
+            trackColor={trackColor}
+            style={{
+              transition: progressPercent < 1 ? "none" : "stroke-dashoffset 0.1s linear",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            minWidth: 0,
+            flex: "1 1 auto",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "24px",
+              fontWeight: 800,
+              lineHeight: 1,
+              letterSpacing: "-0.04em",
+              color: "var(--app-text)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {liveSessionDisplay}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            aria-label={stopwatchRunning ? "Pause stopwatch" : "Start stopwatch"}
+            title={stopwatchRunning ? "Pause stopwatch" : "Start stopwatch"}
+            onClick={() => setStopwatchRunning((running) => !running)}
+            style={mobileStyles.compactActionButton(stopwatchRunning)}
+          >
+            {stopwatchRunning ? <Pause size={18} /> : <Play size={18} />}
+          </button>
+
+          <button
+            type="button"
+            aria-label="Restart stopwatch"
+            title="Restart stopwatch"
+            onClick={() => {
+              setStopwatchRunning(false);
+              setStopwatchSeconds(0);
+            }}
+            style={mobileStyles.compactActionButton(false)}
+          >
+            <RotateCcw size={18} />
+          </button>
+
+          <button
+            type="button"
+            aria-label="Bank stopwatch session"
+            title="Bank stopwatch session"
+            onClick={bankStopwatch}
+            style={mobileStyles.compactActionButton(false)}
+          >
+            <Check size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -306,3 +406,20 @@ export default function TimerStopwatch({
     </div>
   );
 }
+
+const mobileStyles = {
+  compactActionButton: (active) => ({
+    border: "1px solid var(--app-border-soft)",
+    background: active ? "rgba(99, 102, 241, 0.16)" : "var(--app-surface-elevated)",
+    color: active ? "#4f46e5" : "var(--app-text-soft)",
+    borderRadius: "14px",
+    width: "44px",
+    height: "44px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    padding: 0,
+  }),
+};
