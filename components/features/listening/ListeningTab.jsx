@@ -1276,6 +1276,7 @@ export default function ListeningTab({
         <ListeningVisualization
           styles={styles}
           isMobile={isMobile}
+          isCompact={isCompact}
           listeningHours={listeningHours}
           setListeningHours={handleListeningHoursUpdate}
           listeningGoal={listeningGoal}

@@ -983,6 +983,7 @@ export default function Home() {
               styles={styles}
               shadowingHours={shadowingHours}
               setShadowingHours={updateShadowingHours}
+              isCompact={isCompact}
             />
           )}
           {tab === "writing" && (
@@ -990,6 +991,7 @@ export default function Home() {
               styles={styles}
               wordsWritten={wordsWritten}
               setWordsWritten={updateWordsWritten}
+              isCompact={isCompact}
             />
           )}
           {tab === "gaming" && (

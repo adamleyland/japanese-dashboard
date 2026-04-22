@@ -2,7 +2,12 @@
 
 import NumberField from "@/components/ui/NumberField";
 
-export default function WritingWorkspace({ styles, wordsWritten, setWordsWritten }) {
+export default function WritingWorkspace({
+  styles,
+  wordsWritten,
+  setWordsWritten,
+  isCompact = false,
+}) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Writing</h2>
@@ -13,6 +18,7 @@ export default function WritingWorkspace({ styles, wordsWritten, setWordsWritten
           value={wordsWritten}
           onChange={setWordsWritten}
           step={100}
+          mobileOptimized={isCompact}
         />
       </div>
     </div>

@@ -195,6 +195,7 @@ export default function ReadingTab({
         <CurrentlyReadingCard styles={styles} item={currentBook} loading={readingLibrary.loading} />
         <ReadingProgressCard
           styles={styles}
+          isCompact={isCompact}
           totalWordsRead={effectiveWordsRead}
           goalWords={goalWords}
           setGoalWords={setGoalWords}

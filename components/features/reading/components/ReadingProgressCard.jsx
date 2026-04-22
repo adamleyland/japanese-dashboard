@@ -7,6 +7,7 @@ import { formatReadingWords } from "@/lib/reading/normalizers";
 
 export default function ReadingProgressCard({
   styles,
+  isCompact = false,
   totalWordsRead,
   goalWords,
   setGoalWords,
@@ -119,6 +120,7 @@ export default function ReadingProgressCard({
             value={safeGoalWords}
             onChange={setGoalWords}
             step={50000}
+            mobileOptimized={isCompact}
           />
 
           <div

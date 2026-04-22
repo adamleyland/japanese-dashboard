@@ -11,6 +11,7 @@ export default function MetricAdjustmentModal({
   accent,
   currentTotal,
   unitType,
+  mobileOptimized = false,
   onApply,
   onClose,
 }) {
@@ -118,9 +119,11 @@ export default function MetricAdjustmentModal({
                 <input
                   type="number"
                   step={1}
+                  inputMode={mobileOptimized ? "numeric" : undefined}
+                  enterKeyHint={mobileOptimized ? "done" : undefined}
                   value={hours}
                   onChange={(event) => setHours(event.target.value)}
-                  style={styles.input}
+                  style={styles.input(mobileOptimized)}
                 />
               </label>
 
@@ -129,9 +132,11 @@ export default function MetricAdjustmentModal({
                 <input
                   type="number"
                   step={1}
+                  inputMode={mobileOptimized ? "numeric" : undefined}
+                  enterKeyHint={mobileOptimized ? "done" : undefined}
                   value={minutes}
                   onChange={(event) => setMinutes(event.target.value)}
-                  style={styles.input}
+                  style={styles.input(mobileOptimized)}
                 />
               </label>
             </div>
@@ -151,9 +156,11 @@ export default function MetricAdjustmentModal({
               <input
                 type="number"
                 step={1}
+                inputMode={mobileOptimized ? "numeric" : undefined}
+                enterKeyHint={mobileOptimized ? "done" : undefined}
                 value={words}
                 onChange={(event) => setWords(event.target.value)}
-                style={styles.input}
+                style={styles.input(mobileOptimized)}
               />
             </label>
 
@@ -280,17 +287,17 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.08em",
   },
-  input: {
+  input: (mobileOptimized) => ({
     width: "100%",
     padding: "10px 12px",
     borderRadius: "12px",
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
     color: "var(--app-text)",
-    fontSize: "14px",
+    fontSize: mobileOptimized ? "16px" : "14px",
     outline: "none",
     boxSizing: "border-box",
-  },
+  }),
   inputHint: {
     fontSize: "12px",
     color: "var(--app-text-soft)",

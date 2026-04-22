@@ -2,7 +2,12 @@
 
 import NumberField from "@/components/ui/NumberField";
 
-export default function ShadowingWorkspace({ styles, shadowingHours, setShadowingHours }) {
+export default function ShadowingWorkspace({
+  styles,
+  shadowingHours,
+  setShadowingHours,
+  isCompact = false,
+}) {
   return (
     <div style={styles.largeCard}>
       <h2 style={styles.sectionTitle}>Shadowing</h2>
@@ -13,6 +18,7 @@ export default function ShadowingWorkspace({ styles, shadowingHours, setShadowin
           value={shadowingHours}
           onChange={setShadowingHours}
           step={0.5}
+          mobileOptimized={isCompact}
         />
       </div>
     </div>

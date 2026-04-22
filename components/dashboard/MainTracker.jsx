@@ -185,6 +185,10 @@ export default function MainTracker({
   );
 
   const selectedMetricConfig = selectedMetric ? metricConfig[selectedMetric] : null;
+  const mobileMetrics = useMemo(
+    () => [...primaryMetrics, ...secondaryMetrics],
+    [primaryMetrics, secondaryMetrics],
+  );
 
   return (
     <>
@@ -242,63 +246,85 @@ export default function MainTracker({
                 value={overallMetric.value}
                 icon={overallMetric.icon}
                 featured
+                compact={isCompact}
               />
             </div>
 
-            <div
-              style={{
-                ...styles.metricsGridThree,
-                gridTemplateColumns: isCompact ? "1fr" : "repeat(3, 1fr)",
-              }}
-            >
-              {primaryMetrics.map((metric) => (
-                <MetricCard
-                  key={metric.key}
-                  label={metric.label}
-                  value={metric.value}
-                  icon={metric.icon}
-                  onAdjust={metric.onAdjust}
-                />
-              ))}
-            </div>
-
-            <details
-              style={styles.expandableWrap}
-              open={isAdditionalOpen}
-              onToggle={(event) => setIsAdditionalOpen(event.currentTarget.open)}
-            >
-              <summary style={styles.expandableSummary}>
-                <span>Additional metrics</span>
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 0,
-                    height: 0,
-                    borderLeft: "6px solid transparent",
-                    borderRight: "6px solid transparent",
-                    borderBottom: isAdditionalOpen ? "8px solid var(--app-text-faint)" : "none",
-                    borderTop: isAdditionalOpen ? "none" : "8px solid var(--app-text-faint)",
-                  }}
-                />
-              </summary>
-
+            {isCompact ? (
               <div
-                style={{
-                  ...styles.subMetricsGrid,
-                  gridTemplateColumns: isCompact ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                }}
+                className="tracker-mobile-carousel"
+                style={mobileStyles.metricsScroller}
               >
-                {secondaryMetrics.map((metric) => (
-                  <SubMetricCard
-                    key={metric.key}
-                    label={metric.label}
-                    value={metric.value}
-                    icon={metric.icon}
-                    onAdjust={metric.onAdjust}
-                  />
+                {mobileMetrics.map((metric) => (
+                  <div key={metric.key} style={mobileStyles.metricSlide}>
+                    <MetricCard
+                      label={metric.label}
+                      value={metric.value}
+                      icon={metric.icon}
+                      onAdjust={metric.onAdjust}
+                      compact
+                    />
+                  </div>
                 ))}
               </div>
-            </details>
+            ) : (
+              <>
+                <div
+                  style={{
+                    ...styles.metricsGridThree,
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                  }}
+                >
+                  {primaryMetrics.map((metric) => (
+                    <MetricCard
+                      key={metric.key}
+                      label={metric.label}
+                      value={metric.value}
+                      icon={metric.icon}
+                      onAdjust={metric.onAdjust}
+                    />
+                  ))}
+                </div>
+
+                <details
+                  style={styles.expandableWrap}
+                  open={isAdditionalOpen}
+                  onToggle={(event) => setIsAdditionalOpen(event.currentTarget.open)}
+                >
+                  <summary style={styles.expandableSummary}>
+                    <span>Additional metrics</span>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 0,
+                        height: 0,
+                        borderLeft: "6px solid transparent",
+                        borderRight: "6px solid transparent",
+                        borderBottom: isAdditionalOpen ? "8px solid var(--app-text-faint)" : "none",
+                        borderTop: isAdditionalOpen ? "none" : "8px solid var(--app-text-faint)",
+                      }}
+                    />
+                  </summary>
+
+                  <div
+                    style={{
+                      ...styles.subMetricsGrid,
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    }}
+                  >
+                    {secondaryMetrics.map((metric) => (
+                      <SubMetricCard
+                        key={metric.key}
+                        label={metric.label}
+                        value={metric.value}
+                        icon={metric.icon}
+                        onAdjust={metric.onAdjust}
+                      />
+                    ))}
+                  </div>
+                </details>
+              </>
+            )}
           </>
         )}
       </div>
@@ -312,6 +338,7 @@ export default function MainTracker({
           accent={selectedMetricConfig.accent}
           currentTotal={selectedMetricConfig.currentTotal}
           unitType={selectedMetricConfig.unitType}
+          mobileOptimized={isCompact}
           onApply={(amount) => selectedMetric && onAdjustMetric(selectedMetric, amount)}
           onClose={() => setSelectedMetric(null)}
         />
@@ -319,3 +346,25 @@ export default function MainTracker({
     </>
   );
 }
+
+const mobileStyles = {
+  metricsScroller: {
+    display: "flex",
+    gap: "12px",
+    overflowX: "auto",
+    overflowY: "hidden",
+    padding: "2px 4px 8px 4px",
+    margin: "12px -4px 0 -4px",
+    WebkitOverflowScrolling: "touch",
+    overscrollBehaviorX: "contain",
+    touchAction: "pan-x",
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
+    scrollSnapType: "x proximity",
+  },
+  metricSlide: {
+    flex: "0 0 min(84vw, 236px)",
+    minWidth: "min(84vw, 236px)",
+    scrollSnapAlign: "start",
+  },
+};
