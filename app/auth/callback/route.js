@@ -150,7 +150,11 @@ export async function GET(request) {
   }
 
   if (session?.user?.id) {
-    await ensureUserProfile(session.user, supabase);
+    const ensuredProfile = await ensureUserProfile(session.user, supabase);
+    logAuthInfo("Callback", "Profile bootstrap completed for Google auth callback", {
+      userId: session.user.id,
+      hasProfile: Boolean(ensuredProfile),
+    });
     try {
       await upsertGoogleOAuthTokens({
         userId: session.user.id,
