@@ -7,6 +7,7 @@ import {
   getValidGoogleAccessToken,
   refreshGoogleAccessToken,
   revokeGoogleOAuthToken,
+  upsertGoogleOAuthTokens,
 } from "@/lib/googleOAuthTokens";
 import { fetchYouTubeAccountBundle } from "@/lib/youtubeServer";
 import { logYoutubeApiCall } from "@/lib/youtubeDiagnostics";
@@ -65,7 +66,15 @@ function shouldBypassCache(reason) {
 async function getAuthenticatedUser() {
   const cookieStore = await cookies();
   const { client } = createSupabaseServerClient(cookieStore);
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
   const { data, error } = await client.auth.getUser();
+
+  if (sessionError) {
+    console.error("[YouTube API] Failed to resolve Supabase session from cookies", {
+      errorCode: sessionError.code || "",
+      errorMessage: sessionError.message || "",
+    });
+  }
 
   if (error) {
     console.error("[YouTube API] Failed to resolve Supabase user from cookies", {
@@ -78,14 +87,74 @@ async function getAuthenticatedUser() {
     };
   }
 
+  console.info("[YouTube API] Resolved Supabase user from cookies", {
+    hasUser: Boolean(data.user?.id),
+    userId: data.user?.id || "",
+    hasProviderToken: Boolean(sessionData?.session?.provider_token),
+    hasProviderRefreshToken: Boolean(sessionData?.session?.provider_refresh_token),
+  });
+
   return {
     user: data.user ?? null,
+    session: sessionData?.session ?? null,
     error: null,
   };
 }
 
-async function buildAccountResponse(userId, requestReason) {
-  const tokenResult = await getValidGoogleAccessToken(userId);
+async function recoverGoogleTokensFromSession(userId, session) {
+  const providerToken = session?.provider_token || "";
+  const providerRefreshToken = session?.provider_refresh_token || "";
+
+  if (!userId || !providerToken) {
+    return false;
+  }
+
+  try {
+    await upsertGoogleOAuthTokens({
+      userId,
+      email: session?.user?.email ?? null,
+      providerToken,
+      providerRefreshToken,
+      tokenType: "Bearer",
+      scope: session?.granted_scopes || "",
+      expiresAt: new Date(Date.now() + 55 * 60 * 1000).toISOString(),
+    });
+
+    console.info("[YouTube API] Recovered Google OAuth tokens from live Supabase session", {
+      userId,
+      hasProviderRefreshToken: Boolean(providerRefreshToken),
+      grantedScopes: session?.granted_scopes || "",
+    });
+
+    return true;
+  } catch (error) {
+    console.error("[YouTube API] Failed to recover Google OAuth tokens from session", {
+      userId,
+      errorMessage: error?.message || String(error || ""),
+    });
+    return false;
+  }
+}
+
+async function buildAccountResponse(userId, requestReason, session) {
+  let tokenResult = await getValidGoogleAccessToken(userId);
+
+  if (!tokenResult.ok && tokenResult.code === "google_refresh_token_missing") {
+    const recovered = await recoverGoogleTokensFromSession(userId, session);
+    if (recovered) {
+      tokenResult = await getValidGoogleAccessToken(userId);
+    }
+  }
+
+  console.info("[YouTube API] Resolved Google token for account bundle request", {
+    userId,
+    requestReason,
+    ok: Boolean(tokenResult?.ok),
+    code: tokenResult?.code || "",
+    refreshed: Boolean(tokenResult?.refreshed),
+    staleFallback: Boolean(tokenResult?.staleFallback),
+    expiresAt: tokenResult?.expiresAt || null,
+  });
 
   if (!tokenResult.ok) {
     return tokenResult;
@@ -114,11 +183,27 @@ async function buildAccountResponse(userId, requestReason) {
     const status = Number(error?.status || 0);
     const canRetryWithFreshToken = status === 401 || status === 403;
 
+    console.error("[YouTube API] Initial account bundle fetch failed", {
+      userId,
+      requestReason,
+      status,
+      canRetryWithFreshToken,
+      errorMessage: error?.message || String(error || ""),
+      body: error?.errorInfo?.parsedBody || error?.errorInfo?.bodyText || null,
+    });
+
     if (!canRetryWithFreshToken) {
       throw error;
     }
 
     const refreshedToken = await refreshGoogleAccessToken(userId);
+    console.info("[YouTube API] Retrying account bundle after token refresh", {
+      userId,
+      requestReason,
+      ok: Boolean(refreshedToken?.ok),
+      code: refreshedToken?.code || "",
+      expiresAt: refreshedToken?.expiresAt || null,
+    });
     if (!refreshedToken.ok) {
       return refreshedToken;
     }
@@ -145,7 +230,7 @@ async function buildAccountResponse(userId, requestReason) {
 }
 
 export async function GET(request) {
-  const { user, error } = await getAuthenticatedUser();
+  const { user, session, error } = await getAuthenticatedUser();
 
   if (error || !user?.id) {
     return jsonError(
@@ -226,7 +311,7 @@ export async function GET(request) {
   }
 
   const responsePromise = (async () => {
-    const response = await buildAccountResponse(user.id, requestReason);
+    const response = await buildAccountResponse(user.id, requestReason, session);
 
     if (!response.ok) {
       if (response.code === "google_refresh_not_configured") {
@@ -284,6 +369,17 @@ export async function GET(request) {
       );
     }
 
+    console.info("[YouTube API] Account route returning connected payload", {
+      userId: user.id,
+      requestReason,
+      servedFromCache: Boolean(payload.servedFromCache),
+      hasAccountProfile: Boolean(payload.accountProfile),
+      subscribedChannelCount: Array.isArray(payload.subscribedChannels)
+        ? payload.subscribedChannels.length
+        : 0,
+      accountVideoCount: Array.isArray(payload.accountVideos) ? payload.accountVideos.length : 0,
+      firstVideoId: payload.accountVideos?.[0]?.id || "",
+    });
     logYoutubeApiCall({
       phase: "success",
       endpoint,

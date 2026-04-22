@@ -31,6 +31,22 @@ function deriveGoogleProviderExpiry() {
   return new Date(Date.now() + 55 * 60 * 1000).toISOString();
 }
 
+function mergeSupabaseSession(primarySession, fallbackSession) {
+  if (!primarySession && !fallbackSession) {
+    return null;
+  }
+
+  return {
+    ...(fallbackSession || {}),
+    ...(primarySession || {}),
+    user: primarySession?.user || fallbackSession?.user || null,
+    provider_token: primarySession?.provider_token || fallbackSession?.provider_token || "",
+    provider_refresh_token:
+      primarySession?.provider_refresh_token || fallbackSession?.provider_refresh_token || "",
+    granted_scopes: primarySession?.granted_scopes || fallbackSession?.granted_scopes || "",
+  };
+}
+
 export async function GET(request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -86,7 +102,7 @@ export async function GET(request) {
       },
     },
   );
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data: exchangeData, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
     logAuthError("Callback", "Failed to exchange Supabase auth code for session", error);
@@ -107,12 +123,31 @@ export async function GET(request) {
     );
   }
 
-  const session = sessionData?.session ?? null;
+  const exchangedSession = exchangeData?.session ?? null;
+  const session = mergeSupabaseSession(exchangedSession, sessionData?.session ?? null);
   const providerToken = session?.provider_token || "";
   const providerRefreshToken = session?.provider_refresh_token || "";
   logAuthInfo("Callback", "Google auth callback session restored", {
     session: summarizeSupabaseSession(session),
+    exchangeSession: summarizeSupabaseSession(exchangedSession),
+    fallbackSession: summarizeSupabaseSession(sessionData?.session ?? null),
+    grantedScopes: session?.granted_scopes || "",
+    hasProviderToken: Boolean(providerToken),
+    hasProviderRefreshToken: Boolean(providerRefreshToken),
   });
+
+  if (!providerToken) {
+    logAuthError(
+      "Callback",
+      "Google auth callback completed without a provider access token",
+      null,
+      {
+        grantedScopes: session?.granted_scopes || "",
+        hasSession: Boolean(session),
+        hasUser: Boolean(session?.user?.id),
+      },
+    );
+  }
 
   if (session?.user?.id) {
     await ensureUserProfile(session.user, supabase);
@@ -125,6 +160,12 @@ export async function GET(request) {
         tokenType: "Bearer",
         scope: session?.granted_scopes || "",
         expiresAt: providerToken ? deriveGoogleProviderExpiry() : null,
+      });
+      logAuthInfo("Callback", "Persisted Google OAuth tokens for YouTube", {
+        userId: session.user.id,
+        hasProviderToken: Boolean(providerToken),
+        hasProviderRefreshToken: Boolean(providerRefreshToken),
+        grantedScopes: session?.granted_scopes || "",
       });
     } catch (tokenPersistError) {
       logAuthError(

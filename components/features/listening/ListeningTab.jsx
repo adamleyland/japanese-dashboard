@@ -28,6 +28,7 @@ export default function ListeningTab({
   const {
     activeFeed,
     connectYoutube,
+    connectionStatus,
     disconnectYoutube,
     discoverFilter,
     discoverLoading,
@@ -87,9 +88,10 @@ export default function ListeningTab({
   });
   const [isMounted, setIsMounted] = useState(false);
   const isYoutubeMode = workspaceSource === "youtube";
+  const playerCanMount = !isYoutubeMode || (connectionStatus !== "connecting" && connectionStatus !== "restoring" && playbackList.length > 0 && Boolean(selectedVideo?.id));
 
-  const safeVideoId = selectedVideoId || DEFAULT_VIDEO_ID;
-  const playbackResumeVideoId = playbackState?.selectedVideoId || DEFAULT_VIDEO_ID;
+  const safeVideoId = selectedVideo?.id || selectedVideoId || DEFAULT_VIDEO_ID;
+  const playbackResumeVideoId = playbackState?.selectedVideoId || safeVideoId;
   const playbackResumeTime = playbackState?.currentTime || 0;
   const sessionRef = useRef(0);
   const sessionCheckpointRef = useRef(0);
@@ -112,6 +114,7 @@ export default function ListeningTab({
   const pendingRestoreRef = useRef(null);
   const pendingSelectionPlaybackRef = useRef(null);
   const playbackIntentRef = useRef(false);
+  const failedVideoIdsRef = useRef(new Set());
   const playbackListRef = useRef(playbackList);
   const selectedVideoIdRef = useRef(safeVideoId);
   const selectedChannelIdRef = useRef(selectedVideo?.channelId || null);
@@ -137,8 +140,44 @@ export default function ListeningTab({
   }, [playbackList]);
 
   useEffect(() => {
+    failedVideoIdsRef.current.clear();
+  }, [playbackList]);
+
+  useEffect(() => {
+    console.info("[YouTube Player] Queue restore result", {
+      connectionStatus,
+      youtubeConnected,
+      playerCanMount,
+      playbackListCount: playbackList.length,
+      firstVideoId: playbackList[0]?.id || "",
+      selectedVideoId: selectedVideoId || "",
+      resolvedVideoId: safeVideoId || "",
+    });
+  }, [connectionStatus, playbackList, playerCanMount, safeVideoId, selectedVideoId, youtubeConnected]);
+
+  useEffect(() => {
     selectedVideoIdRef.current = safeVideoId;
   }, [safeVideoId]);
+
+  const resolvedVideoSource = useMemo(() => {
+    if (selectedVideo?.id && selectedVideo?.id === selectedVideoId) {
+      return "selected-video-state";
+    }
+
+    if (selectedVideo?.id && selectedVideoId && selectedVideo.id !== selectedVideoId) {
+      return "active-feed-fallback";
+    }
+
+    if (selectedVideo?.id) {
+      return "selected-video-fallback";
+    }
+
+    if (selectedVideoId) {
+      return "raw-selected-video-id";
+    }
+
+    return "default-video-id";
+  }, [selectedVideo?.id, selectedVideoId]);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedVideo?.channelId || null;
@@ -150,6 +189,30 @@ export default function ListeningTab({
       currentTime: playbackResumeTime,
     };
   }, [playbackResumeTime, playbackResumeVideoId]);
+
+  useEffect(() => {
+    console.info("[YouTube Player] Current video selection", {
+      connectionStatus,
+      playerCanMount,
+      youtubeConnected,
+      selectedVideoId: selectedVideoId || "",
+      resolvedVideoId: safeVideoId || "",
+      selectedVideoSource: resolvedVideoSource,
+      selectedVideoTitle: selectedVideo?.title || "",
+      playbackVideoId: playbackState?.selectedVideoId || "",
+      playbackListCount: playbackList.length,
+    });
+  }, [
+    connectionStatus,
+    playerCanMount,
+    playbackList.length,
+    playbackState?.selectedVideoId,
+    resolvedVideoSource,
+    safeVideoId,
+    selectedVideo?.title,
+    selectedVideoId,
+    youtubeConnected,
+  ]);
 
   const handleListeningHoursUpdate = useCallback(
     (nextValueOrUpdater, metadata = {}) => {
@@ -212,6 +275,13 @@ export default function ListeningTab({
         startSeconds: Math.max(0, snapshot.currentTime || 0),
       };
 
+      console.info("[YouTube Player] Applying playback snapshot", {
+        videoId: payload.videoId,
+        startSeconds: payload.startSeconds,
+        shouldPlay: Boolean(snapshot.shouldPlay),
+        selectedVideoSource: resolvedVideoSource,
+      });
+
       setPlaybackState({
         videoId: snapshot.videoId,
         currentTime: payload.startSeconds,
@@ -264,7 +334,7 @@ export default function ListeningTab({
         });
       }
     },
-    [getPlayerCurrentTime, setPlaybackState],
+    [getPlayerCurrentTime, resolvedVideoSource, setPlaybackState],
   );
 
   const bankSession = useCallback(() => {
@@ -556,6 +626,29 @@ export default function ListeningTab({
       return undefined;
     }
 
+    if (!playerCanMount) {
+      console.info("[YouTube Player] Skipping mount until a playable video is ready", {
+        connectionStatus,
+        youtubeConnected,
+        playbackListCount: playbackList.length,
+        selectedVideoId: selectedVideoId || "",
+        resolvedVideoId: safeVideoId || "",
+      });
+
+      if (playerRef.current) {
+        playerRef.current.pauseVideo?.();
+        playerRef.current.destroy?.();
+        playerRef.current = null;
+        playerVideoIdRef.current = "";
+        playerReadyRef.current = false;
+        initRef.current = false;
+        activePlayerHostRef.current = null;
+      }
+      pendingRestoreRef.current = null;
+
+      return undefined;
+    }
+
     const activeHost = focusMode ? focusPlayerHostRef.current : playerHostRef.current;
 
     if (playerRef.current && activeHost !== activePlayerHostRef.current) {
@@ -592,13 +685,23 @@ export default function ListeningTab({
       const currentSelectedVideoId = selectedVideoIdRef.current;
       if (!currentPlaybackList.length) return;
 
-      const index = currentPlaybackList.findIndex((video) => video.id === currentSelectedVideoId);
-      const next = currentPlaybackList[(index + 1) % currentPlaybackList.length];
+      const next = currentPlaybackList.find(
+        (video) =>
+          video.id !== currentSelectedVideoId && !failedVideoIdsRef.current.has(video.id),
+      );
 
-      if (next?.id) {
-        pendingSelectionPlaybackRef.current = { shouldPlay: true };
-        setSelectedVideoId(next.id);
+      if (!next?.id) {
+        playbackIntentRef.current = false;
+        console.warn("[YouTube Player] No playable fallback video remains in the queue", {
+          failedVideoCount: failedVideoIdsRef.current.size,
+          playbackListCount: currentPlaybackList.length,
+          lastFailedVideoId: currentSelectedVideoId || "",
+        });
+        return;
       }
+
+      pendingSelectionPlaybackRef.current = { shouldPlay: true };
+      setSelectedVideoId(next.id);
     };
 
     const onPlayerState = (event) => {
@@ -607,7 +710,14 @@ export default function ListeningTab({
 
       if (!YTRef) return;
 
+      console.info("[YouTube Player] State change", {
+        playerState: currentPlayerState,
+        videoId: selectedVideoIdRef.current || "",
+        playbackIntent: playbackIntentRef.current,
+      });
+
       if (currentPlayerState === YTRef.PLAYING) {
+        failedVideoIdsRef.current.delete(selectedVideoIdRef.current || "");
         playbackIntentRef.current = false;
         syncPlaybackSession({
           isPlaying: true,
@@ -657,6 +767,27 @@ export default function ListeningTab({
       }
     };
 
+    const onPlayerError = (event) => {
+      const errorCode = Number(event?.data || 0);
+      const failedVideoId = selectedVideoIdRef.current || "";
+      failedVideoIdsRef.current.add(failedVideoId);
+
+      playbackIntentRef.current = false;
+      console.warn("[YouTube Player] Player error", {
+        errorCode,
+        videoId: failedVideoId,
+        selectedVideoSource: resolvedVideoSource,
+        playbackListCount: playbackListRef.current.length,
+        fromRestoredPlaybackState:
+          Boolean(playbackState?.selectedVideoId) &&
+          playbackState.selectedVideoId === failedVideoId,
+      });
+
+      if ([2, 5, 100, 101, 150].includes(errorCode) && playbackListRef.current.length > 1) {
+        goNextVideo();
+      }
+    };
+
     const onPlayerReady = () => {
       playerReadyRef.current = true;
 
@@ -670,6 +801,12 @@ export default function ListeningTab({
         shouldPlay: false,
       };
 
+      console.info("[YouTube Player] Ready", {
+        videoId: selectedVideoIdRef.current || "",
+        resumeVideoId: resumeState.videoId || "",
+        pendingRestoreVideoId: pendingRestoreRef.current?.videoId || "",
+        selectedVideoSource: resolvedVideoSource,
+      });
       pendingRestoreRef.current = null;
       applyPlaybackSnapshot(nextSnapshot);
     };
@@ -697,8 +834,15 @@ export default function ListeningTab({
         },
         events: {
           onReady: onPlayerReady,
+          onError: onPlayerError,
           onStateChange: onPlayerState,
         },
+      });
+
+      console.info("[YouTube Player] Mounting iframe player", {
+        videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
+        connectionStatus,
+        selectedVideoSource: resolvedVideoSource,
       });
 
       initRef.current = true;
@@ -740,14 +884,23 @@ export default function ListeningTab({
   }, [
     applyPlaybackSnapshot,
     buildCurrentYoutubeSessionMeta,
+    connectionStatus,
     focusMode,
     getPlayerCurrentTime,
     isPlayerCurrentlyPlaying,
     isYoutubeMode,
+    playerCanMount,
+    playbackList.length,
     persistCurrentPlayerState,
+    playbackState?.selectedVideoId,
+    resolvedVideoSource,
+    safeVideoId,
+    selectedVideo?.id,
+    selectedVideoId,
     setPlaybackState,
     setSelectedVideoId,
     syncPlaybackSession,
+    youtubeConnected,
   ]);
 
   useEffect(() => {

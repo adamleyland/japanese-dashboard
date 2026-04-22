@@ -16,6 +16,7 @@ import {
   normalizeSeededChannels,
 } from "@/lib/youtubeDefaults";
 import {
+  YOUTUBE_CONNECT_INTENT_STORAGE_KEY,
   getSafeAuthUser,
   linkGoogleIdentity,
   signInWithGoogle,
@@ -34,7 +35,6 @@ const LEGACY_WATCH_STATE_STORAGE_KEY = "jp_dashboard_youtube_session";
 const DAILY_QUEUE_STORAGE_KEY = "jp_daily_video_queue";
 const DISCOVER_CACHE_STORAGE_KEY = "jp_youtube_discover_cache_v1";
 const DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY = "jp_youtube_discover_quota_cooldown_v1";
-const YOUTUBE_CONNECT_INTENT_STORAGE_KEY = "jp_youtube_connect_intent_v1";
 const ACCOUNT_DATA_TTL_MS = 30 * 60 * 1000;
 const AUTO_BOOTSTRAP_DEDUPE_WINDOW_MS = 10 * 1000;
 const AUTO_BOOTSTRAP_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
@@ -329,6 +329,47 @@ function hasFreshAccountData(currentState) {
   );
 }
 
+function hasRestorableAccountSnapshot(snapshot) {
+  if (!snapshot) {
+    return false;
+  }
+
+  return Boolean(snapshot.accountProfile || normalizeVideoList(snapshot.accountVideos).length);
+}
+
+function resolveVideoSelection(videos, currentState) {
+  const normalizedVideos = normalizeVideoList(videos);
+  const candidateEntries = [
+    {
+      videoId: currentState?.selectedVideoId || "",
+      source: "selected-video-state",
+    },
+    {
+      videoId: currentState?.playbackState?.selectedVideoId || "",
+      source: "restored-playback-state",
+    },
+  ];
+
+  for (const candidateEntry of candidateEntries) {
+    if (!candidateEntry.videoId) {
+      continue;
+    }
+
+    const matchedVideo = normalizedVideos.find((video) => video.id === candidateEntry.videoId);
+    if (matchedVideo?.id) {
+      return {
+        videoId: matchedVideo.id,
+        source: candidateEntry.source,
+      };
+    }
+  }
+
+  return {
+    videoId: normalizedVideos[0]?.id || DEFAULT_VIDEO_ID,
+    source: normalizedVideos[0]?.id ? "fresh-server-fallback" : "default-fallback",
+  };
+}
+
 export function YoutubeSessionProvider({ children }) {
   const [authUserId, setAuthUserId] = useState("");
   const [authResolved, setAuthResolved] = useState(false);
@@ -449,10 +490,16 @@ export function YoutubeSessionProvider({ children }) {
   }, []);
 
   const markSessionDisconnected = useCallback(
-    ({ clearPersistentConnection = false, nextError, cause = "" } = {}) => {
+    ({
+      clearPersistentConnection = false,
+      preserveConnectIntent = false,
+      nextError,
+      cause = "",
+    } = {}) => {
       if (cause) {
         console.info("[YouTube] Session marked disconnected", {
           clearPersistentConnection,
+          preserveConnectIntent,
           nextError,
           cause,
         });
@@ -460,7 +507,9 @@ export function YoutubeSessionProvider({ children }) {
 
       if (clearPersistentConnection) {
         clearPersistedYoutubeSession();
-        clearYoutubeConnectIntent();
+        if (!preserveConnectIntent) {
+          clearYoutubeConnectIntent();
+        }
         autoBootstrapKeyRef.current = "";
         resetBootstrapRuntime();
       }
@@ -483,23 +532,6 @@ export function YoutubeSessionProvider({ children }) {
     },
     [],
   );
-
-  const choosePreferredVideoId = useCallback((videos) => {
-    const currentState = stateRef.current;
-    const candidateIds = [
-      currentState.selectedVideoId,
-      currentState.playbackState.selectedVideoId,
-    ].filter(Boolean);
-
-    for (const candidateId of candidateIds) {
-      const restoredVideo = videos.find((video) => video.id === candidateId);
-      if (restoredVideo?.id) {
-        return restoredVideo.id;
-      }
-    }
-
-    return videos[0]?.id || DEFAULT_VIDEO_ID;
-  }, []);
 
   const fetchYoutubeAccountSnapshot = useCallback(async ({ reason = "refresh", caller = "unknown" } = {}) => {
     const requestUrl = new URL("/api/youtube/account", window.location.origin);
@@ -538,6 +570,8 @@ export function YoutubeSessionProvider({ children }) {
         status: response.status,
         details: {
           code: error.code,
+          message: error.message,
+          source: error.source,
         },
       });
       throw error;
@@ -592,6 +626,7 @@ export function YoutubeSessionProvider({ children }) {
         const queueVideos = normalizeVideoList(snapshot?.accountVideos);
 
         setState((currentState) => {
+          const resolvedSelection = resolveVideoSelection(queueVideos, currentState);
           const currentExcludedChannelIds = normalizeExcludedChannelIds(
             currentState.excludedChannelIds,
             "youtube-account-refresh-current-state",
@@ -607,10 +642,17 @@ export function YoutubeSessionProvider({ children }) {
               (channel) => channel.channelId || channel.id,
             ),
           });
-          const nextSelectedVideoId =
-            options.preserveSelectedVideo && currentState.selectedVideoId
-              ? currentState.selectedVideoId
-              : choosePreferredVideoId(queueVideos);
+          const nextSelectedVideoId = resolvedSelection.videoId;
+          console.info("[YouTube] Account bootstrap result applied", {
+            reason: options.reason || "refresh",
+            connectionStatus: "connected",
+            fetchedChannelCount: fetchedChannels.length,
+            accountVideoCount: queueVideos.length,
+            selectedVideoId: nextSelectedVideoId,
+            selectedVideoSource: resolvedSelection.source,
+            previousSelectedVideoId: currentState.selectedVideoId || "",
+            previousPlaybackVideoId: currentState.playbackState.selectedVideoId || "",
+          });
 
           return {
             ...currentState,
@@ -635,6 +677,9 @@ export function YoutubeSessionProvider({ children }) {
             lastError: "",
           };
         });
+        if (hasYoutubeConnectIntent()) {
+          console.info("[YouTube] Clearing connect intent after successful account bootstrap");
+        }
         clearYoutubeConnectIntent();
 
         return {
@@ -646,6 +691,8 @@ export function YoutubeSessionProvider({ children }) {
         console.error("Failed to refresh YouTube account data", {
           message: error?.message || "youtube-refresh-failed",
           status: error?.status || 0,
+          code: error?.code || "",
+          source: error?.source || "",
         });
         const status = Number(error?.status || 0);
         const code = error?.code || "";
@@ -686,7 +733,7 @@ export function YoutubeSessionProvider({ children }) {
         };
       }
     },
-    [choosePreferredVideoId, fetchYoutubeAccountSnapshot, markSessionDisconnected],
+    [fetchYoutubeAccountSnapshot, markSessionDisconnected],
   );
 
   const runYoutubeBootstrap = useCallback(
@@ -739,6 +786,16 @@ export function YoutubeSessionProvider({ children }) {
             lastSyncedAt: currentState.lastSyncedAt,
           },
         });
+        setState((currentState) =>
+          currentState.connectionStatus === "connected"
+            ? currentState
+            : {
+                ...currentState,
+                connectionStatus: "connected",
+                wasConnected: true,
+                lastError: "",
+              },
+        );
         return {
           ok: true,
           skipped: true,
@@ -881,8 +938,13 @@ export function YoutubeSessionProvider({ children }) {
 
       if (shouldStartOAuth) {
         rememberYoutubeConnectIntent();
+        console.info("[YouTube] Starting Google OAuth after manual connect failure", {
+          errorCode,
+          hasConnectIntent: hasYoutubeConnectIntent(),
+        });
         markSessionDisconnected({
           clearPersistentConnection: true,
+          preserveConnectIntent: true,
           nextError: "reconnect-required",
           cause: `${errorCode || "unknown"}-manual-connect`,
         });
@@ -904,6 +966,11 @@ export function YoutubeSessionProvider({ children }) {
         }
       }
 
+      console.error("[YouTube] Manual connect ended without a connected account", {
+        errorCode,
+        errorMessage: result?.error?.message || "",
+        errorStatus: result?.error?.status || 0,
+      });
       setState((currentState) => ({
         ...currentState,
         connectionStatus: "disconnected",
@@ -1070,6 +1137,19 @@ export function YoutubeSessionProvider({ children }) {
 
   useEffect(() => {
     const persistedSnapshot = readPersistedSessionSnapshot();
+    const hasRestorableSnapshot = hasRestorableAccountSnapshot(persistedSnapshot);
+    console.info("[YouTube] Hydrating persisted YouTube session snapshot", {
+      hasSnapshot: Boolean(persistedSnapshot),
+      wasConnected: Boolean(persistedSnapshot?.wasConnected),
+      hasRestorableSnapshot,
+      hasAccountProfile: Boolean(persistedSnapshot?.accountProfile),
+      accountVideoCount: Array.isArray(persistedSnapshot?.accountVideos)
+        ? persistedSnapshot.accountVideos.length
+        : 0,
+      selectedVideoId: persistedSnapshot?.selectedVideoId || "",
+      playbackVideoId: persistedSnapshot?.playbackState?.selectedVideoId || "",
+      hasConnectIntent: hasYoutubeConnectIntent(),
+    });
 
     setState((currentState) => {
       const playbackState = normalizePlaybackState(
@@ -1094,7 +1174,8 @@ export function YoutubeSessionProvider({ children }) {
       return {
         ...currentState,
         hydrated: true,
-        connectionStatus: persistedSnapshot?.wasConnected ? "restoring" : "disconnected",
+        connectionStatus:
+          persistedSnapshot?.wasConnected && hasRestorableSnapshot ? "connected" : "disconnected",
         wasConnected: Boolean(persistedSnapshot?.wasConnected),
         tokenMeta: persistedSnapshot?.tokenMeta || null,
         accountProfile: persistedSnapshot?.accountProfile || null,
@@ -1122,11 +1203,34 @@ export function YoutubeSessionProvider({ children }) {
 
   useEffect(() => {
     if (!state.hydrated || !authResolved || !authUserId) {
+      logYoutubeBootstrap({
+        phase: "skip",
+        caller: "YoutubeSessionProvider.autoBootstrap",
+        reason: "bootstrap-pending",
+        userId: authUserId,
+        details: {
+          skipReason: "auth-or-hydration-pending",
+          hydrated: state.hydrated,
+          authResolved,
+          hasAuthUserId: Boolean(authUserId),
+        },
+      });
       return;
     }
 
     const hasConnectIntent = hasYoutubeConnectIntent();
     if (!state.wasConnected && !hasConnectIntent) {
+      logYoutubeBootstrap({
+        phase: "skip",
+        caller: "YoutubeSessionProvider.autoBootstrap",
+        reason: "bootstrap-not-requested",
+        userId: authUserId,
+        details: {
+          skipReason: "no-restorable-session",
+          wasConnected: state.wasConnected,
+          hasConnectIntent,
+        },
+      });
       return;
     }
 
@@ -1144,6 +1248,24 @@ export function YoutubeSessionProvider({ children }) {
       reason: hasConnectIntent ? "google-auth-return" : "session-restore",
     });
   }, [authResolved, authUserId, runYoutubeBootstrap, state.hydrated, state.wasConnected]);
+
+  useEffect(() => {
+    console.info("[YouTube] Connection state transition", {
+      connectionStatus: state.connectionStatus,
+      wasConnected: state.wasConnected,
+      lastError: state.lastError || "",
+      hasAccountProfile: Boolean(state.accountProfile),
+      accountVideoCount: state.accountVideos.length,
+      selectedVideoId: state.selectedVideoId || "",
+    });
+  }, [
+    state.accountProfile,
+    state.accountVideos.length,
+    state.connectionStatus,
+    state.lastError,
+    state.selectedVideoId,
+    state.wasConnected,
+  ]);
 
   useEffect(() => {
     if (!state.hydrated || !authResolved || !authUserId) {
@@ -1277,7 +1399,7 @@ export function YoutubeSessionProvider({ children }) {
     return state.accountVideos.filter((video) => enabledChannelIds.has(video.channelId));
   }, [enabledChannelIds, state.accountVideos, state.subscribedChannels.length]);
   const activeFeed = useMemo(() => {
-    if (youtubeConnected && filteredAccountVideos.length) {
+    if (youtubeConnected) {
       return filteredAccountVideos;
     }
 
@@ -1331,6 +1453,14 @@ export function YoutubeSessionProvider({ children }) {
       (video) => video.id === state.playbackState.selectedVideoId,
     );
     const nextSelectedVideoId = restoredVideo?.id || activeFeed[0]?.id || DEFAULT_VIDEO_ID;
+
+    console.info("[YouTube] Normalizing selected video against active feed", {
+      previousSelectedVideoId: state.selectedVideoId || "",
+      playbackVideoId: state.playbackState.selectedVideoId || "",
+      nextSelectedVideoId,
+      activeFeedCount: activeFeed.length,
+      selectedVideoSource: restoredVideo?.id ? "restored-playback-state" : "active-feed-fallback",
+    });
 
     if (nextSelectedVideoId && nextSelectedVideoId !== state.selectedVideoId) {
       setSelectedVideoId(nextSelectedVideoId);
