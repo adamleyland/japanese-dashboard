@@ -7,18 +7,23 @@ import ReadingCoverArtwork from "@/components/features/reading/components/Readin
 export default function ReadingLibraryArtworkView({
   styles,
   items,
+  isMobile = false,
   isCompact,
   onStatusChange,
   statusUpdatingIds,
 }) {
   const [selectedBookId, setSelectedBookId] = useState(null);
   const columns = useMemo(() => {
+    if (isMobile) {
+      return "repeat(3, minmax(0, 1fr))";
+    }
+
     if (isCompact) {
       return "repeat(2, minmax(0, 1fr))";
     }
 
     return "repeat(4, minmax(0, 1fr))";
-  }, [isCompact]);
+  }, [isCompact, isMobile]);
   const selectedBook = items.find((item) => item.id === selectedBookId) || null;
 
   return (

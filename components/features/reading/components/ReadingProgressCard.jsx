@@ -3,10 +3,11 @@
 import { BookOpenText, RefreshCcw, SlidersHorizontal } from "lucide-react";
 import NumberField from "@/components/ui/NumberField";
 import ReadingEmptyState from "@/components/features/reading/components/ReadingEmptyState";
-import { formatReadingWords } from "@/lib/reading/normalizers";
+import { formatReadingWords, formatReadingWordsCompact } from "@/lib/reading/normalizers";
 
 export default function ReadingProgressCard({
   styles,
+  isMobile = false,
   isCompact = false,
   totalWordsRead,
   goalWords,
@@ -23,6 +24,80 @@ export default function ReadingProgressCard({
   const safeGoalWords = Math.max(1, Math.round(Number(goalWords) || 1));
   const progress = Math.min(100, (safeWordsRead / safeGoalWords) * 100);
   const remainingWords = Math.max(0, safeGoalWords - safeWordsRead);
+  const mobileProgressSummary = formatReadingWordsCompact(safeWordsRead);
+
+  if (!configured && !loading) {
+    return (
+      <div style={styles.sideCard}>
+        <ReadingEmptyState
+          label="LingQ sync is ready for wiring. Add LINGQ_API_KEY to enable automatic words-read totals."
+          align="left"
+        />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={styles.sideCard}>
+        <ReadingEmptyState label={error} tone="error" align="left" />
+      </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          ...styles.sideCard,
+          padding: "12px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            fontSize: isCompact ? "16px" : "18px",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--app-text)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+          title={formatReadingWords(safeWordsRead)}
+          aria-label={`LingQ total words read ${formatReadingWords(safeWordsRead)}`}
+        >
+          {mobileProgressSummary}
+        </div>
+
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              ...styles.progressBarWrap,
+              height: "10px",
+              borderRadius: "999px",
+            }}
+            aria-hidden="true"
+          >
+            <div
+              style={{
+                ...styles.progressBarFill(progress),
+                background: "#3b82f6",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.sideCard}>
@@ -142,51 +217,42 @@ export default function ReadingProgressCard({
             ))}
           </div>
         </div>
-      ) : null}
+        ) : null}
 
       {loading && !safeWordsRead ? (
         <div style={{ ...styles.playerSub, padding: "8px 0" }}>Loading LingQ reading stats...</div>
       ) : null}
 
-      {!configured && !loading ? (
-        <ReadingEmptyState
-          label="LingQ sync is ready for wiring. Add LINGQ_API_KEY to enable automatic words-read totals."
-          align="left"
-        />
-      ) : error ? (
-        <ReadingEmptyState label={error} tone="error" align="left" />
-      ) : (
+      <div
+        style={{
+          borderRadius: "18px",
+          border: "1px solid var(--app-border-soft)",
+          background: "var(--app-surface-elevated)",
+          padding: "14px",
+          display: "grid",
+          gap: "6px",
+        }}
+      >
         <div
           style={{
-            borderRadius: "18px",
-            border: "1px solid var(--app-border-soft)",
-            background: "var(--app-surface-elevated)",
-            padding: "14px",
-            display: "grid",
-            gap: "6px",
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--app-text-muted)",
           }}
         >
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--app-text-muted)",
-            }}
-          >
-            Focus
-          </div>
-          <div style={{ fontSize: "16px", fontWeight: 800, letterSpacing: "-0.02em" }}>
-            {currentBook ? currentBook.title : "Build your next reading streak"}
-          </div>
-          <div style={{ ...styles.playerSub, margin: 0 }}>
-            {currentBook
-              ? currentBook.subtitle || currentBook.author || currentBook.progressLabel || "Latest LingQ lesson"
-              : "Your LingQ total is ready. Mark a book as currently reading to tie this progress to a title."}
-          </div>
+          Focus
         </div>
-      )}
+        <div style={{ fontSize: "16px", fontWeight: 800, letterSpacing: "-0.02em" }}>
+          {currentBook ? currentBook.title : "Build your next reading streak"}
+        </div>
+        <div style={{ ...styles.playerSub, margin: 0 }}>
+          {currentBook
+            ? currentBook.subtitle || currentBook.author || currentBook.progressLabel || "Latest LingQ lesson"
+            : "Your LingQ total is ready. Mark a book as currently reading to tie this progress to a title."}
+        </div>
+      </div>
     </div>
   );
 }

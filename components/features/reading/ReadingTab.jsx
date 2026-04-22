@@ -200,6 +200,7 @@ export default function ReadingTab({
         onRefresh={readingLibrary.refresh}
         onStatusChange={readingLibrary.updateStatus}
         statusUpdatingIds={readingLibrary.statusUpdatingIds}
+        isMobile={isMobile}
         isCompact={isCompact}
         targetHeight={isMobile ? null : libraryHeight}
       />
@@ -215,6 +216,7 @@ export default function ReadingTab({
         ) : null}
         <ReadingProgressCard
           styles={styles}
+          isMobile={isMobile}
           isCompact={isCompact}
           totalWordsRead={effectiveWordsRead}
           goalWords={goalWords}
