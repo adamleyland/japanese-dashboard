@@ -66,8 +66,15 @@ export default function ListeningWorkspace({
     getMountedSnapshot,
     getServerMountedSnapshot,
   );
+  const isLandscapeOrientation = useSyncExternalStore(
+    subscribeToLandscapeOrientation,
+    getLandscapeOrientationSnapshot,
+    getServerLandscapeOrientationSnapshot,
+  );
   const isAudiobookMode = workspaceSource === "audiobooks";
   const useInlineMobileFocusPlayer = isMobile && !isAudiobookMode;
+  const showMobileLandscapeFocusOverlay =
+    useInlineMobileFocusPlayer && focusMode && isLandscapeOrientation;
 
   const panelItems = [
     { key: "account", label: "Account", icon: UserCircle2 },
@@ -334,6 +341,10 @@ export default function ListeningWorkspace({
   );
 
   const mobileFocusAvailableHeight = "calc(100svh - 132px)";
+  const mobileLandscapeFocusAvailableHeight =
+    "calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px)";
+  const mobileLandscapeFocusFrameMaxWidth =
+    "calc((100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px) * 1.7777778)";
   const focusContentStyle = isMobile
     ? {
         ...styles.focusContent,
@@ -344,38 +355,69 @@ export default function ListeningWorkspace({
       }
     : styles.focusContent;
   const focusShellStyle = isMobile
-    ? {
-        ...styles.playerShellFocus,
-        width: "100%",
-        maxWidth: "100%",
-        maxHeight: "calc(100svh - 20px)",
-        padding: "10px",
-        gap: "10px",
-        overflow: "hidden",
-        alignContent: "start",
-      }
+    ? showMobileLandscapeFocusOverlay
+      ? {
+          ...styles.playerShellFocus,
+          width: "100%",
+          maxWidth: "100%",
+          height: "100%",
+          maxHeight: "100%",
+          padding: "10px",
+          gap: 0,
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }
+      : {
+          ...styles.playerShellFocus,
+          width: "100%",
+          maxWidth: "100%",
+          maxHeight: "calc(100svh - 20px)",
+          padding: "10px",
+          gap: "10px",
+          overflow: "hidden",
+          alignContent: "start",
+        }
     : styles.playerShellFocus;
   const focusFrameWrapStyle = isMobile
-    ? {
-        ...styles.playerFrameWrapFocus,
-        width: "min(100%, calc(100svh * 1.3))",
-        height: `min(${mobileFocusAvailableHeight}, 56.25vw)`,
-        maxHeight: mobileFocusAvailableHeight,
-        paddingTop: 0,
-        aspectRatio: "16 / 9",
-        margin: "0 auto",
-        borderRadius: "16px",
-        border: "1px solid rgba(15,23,42,0.12)",
-        flexShrink: 0,
-      }
+    ? showMobileLandscapeFocusOverlay
+      ? {
+          ...styles.playerFrameWrapFocus,
+          width: "100%",
+          height: "auto",
+          maxWidth: mobileLandscapeFocusFrameMaxWidth,
+          maxHeight: mobileLandscapeFocusAvailableHeight,
+          paddingTop: 0,
+          aspectRatio: "16 / 9",
+          margin: "0 auto",
+          borderRadius: "18px",
+          border: "1px solid rgba(148,163,184,0.22)",
+          boxShadow: "0 24px 60px rgba(2, 6, 23, 0.42)",
+          flexShrink: 0,
+        }
+      : {
+          ...styles.playerFrameWrapFocus,
+          width: "min(100%, calc(100svh * 1.3))",
+          height: `min(${mobileFocusAvailableHeight}, 56.25vw)`,
+          maxHeight: mobileFocusAvailableHeight,
+          paddingTop: 0,
+          aspectRatio: "16 / 9",
+          margin: "0 auto",
+          borderRadius: "16px",
+          border: "1px solid rgba(15,23,42,0.12)",
+          flexShrink: 0,
+        }
     : styles.playerFrameWrapFocus;
-  const focusControlRowStyle = isMobile
-    ? {
-        ...styles.playerControlRowFocus,
-        display: "grid",
-        gap: "10px",
-        padding: "2px 0 0 0",
-      }
+  const focusControlRowStyle = showMobileLandscapeFocusOverlay
+    ? { display: "none" }
+    : isMobile
+      ? {
+          ...styles.playerControlRowFocus,
+          display: "grid",
+          gap: "10px",
+          padding: "2px 0 0 0",
+        }
     : styles.playerControlRowFocus;
   const focusMetaRowStyle = isMobile
     ? {
@@ -400,17 +442,7 @@ export default function ListeningWorkspace({
         borderRadius: "12px",
       }
     : styles.focusModeBtn;
-  const inlinePlayerShellStyle =
-    useInlineMobileFocusPlayer && focusMode
-      ? {
-          ...focusShellStyle,
-          position: "fixed",
-          inset: "10px",
-          zIndex: 10000,
-          width: "auto",
-          margin: 0,
-        }
-      : styles.playerShell;
+  const inlinePlayerShellStyle = styles.playerShell;
   const inlinePlayerFrameWrapStyle =
     useInlineMobileFocusPlayer && focusMode ? focusFrameWrapStyle : styles.playerFrameWrap;
   const inlinePlayerMetaTitleStyle =
@@ -430,29 +462,155 @@ export default function ListeningWorkspace({
       : styles.playerControlColumn;
   const InlinePlayerCloseIcon = useInlineMobileFocusPlayer && focusMode ? Minimize2 : Maximize2;
   const inlinePlayerCloseAction = () => setFocusMode((currentValue) => !currentValue);
+  const overlayButtonBaseStyle = {
+    width: "52px",
+    height: "52px",
+    borderRadius: "16px",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    boxShadow: "0 12px 28px rgba(2, 6, 23, 0.22)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "auto",
+    touchAction: "manipulation",
+  };
+  const mobileFocusOverlayButtonStyle = (tone) => ({
+    ...styles.miniActionButton(tone),
+    ...overlayButtonBaseStyle,
+    background:
+      tone === "blue"
+        ? "rgba(59,130,246,0.32)"
+        : tone === "orange"
+        ? "rgba(249,115,22,0.34)"
+        : "rgba(15, 23, 42, 0.34)",
+    color: "var(--app-selected-text)",
+    border:
+      tone === "grey"
+        ? "1px solid rgba(226, 232, 240, 0.18)"
+        : "1px solid rgba(255,255,255,0.16)",
+  });
+  const mobileFocusOverlayExitButtonStyle = {
+    ...mobileFocusOverlayButtonStyle("grey"),
+    borderRadius: "16px",
+  };
+  const renderMobileLandscapeFocusControls = () => (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 12,
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: "calc(env(safe-area-inset-top) + 14px)",
+          left: "calc(env(safe-area-inset-left) + 14px)",
+          right: "calc(env(safe-area-inset-right) + 92px)",
+          pointerEvents: "none",
+        }}
+        aria-hidden="true"
+      >
+        <div
+          style={{
+            ...styles.playerProgressTrack,
+            height: "5px",
+            background: "rgba(15, 23, 42, 0.45)",
+            boxShadow: "0 8px 24px rgba(2, 6, 23, 0.16)",
+          }}
+        >
+          <div style={styles.playerProgressFill(clampedYoutubeVideoProgress)} />
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          right: "calc(env(safe-area-inset-right) + 12px)",
+          transform: "translateY(-50%)",
+          display: "grid",
+          gap: "10px",
+          pointerEvents: "none",
+        }}
+      >
+        <button
+          type="button"
+          style={mobileFocusOverlayExitButtonStyle}
+          onClick={() => setFocusMode(false)}
+          aria-label="Exit deep focus"
+          title="Exit deep focus"
+        >
+          <Minimize2 size={20} />
+        </button>
+
+        <button
+          type="button"
+          style={mobileFocusOverlayButtonStyle("blue")}
+          onClick={onTogglePlayback}
+          aria-label={isPlayerPlaying ? "Pause video" : "Play video"}
+          title={isPlayerPlaying ? "Pause video" : "Play video"}
+        >
+          {isPlayerPlaying ? <PauseCircle size={20} /> : <PlayCircle size={20} />}
+        </button>
+
+        <button
+          type="button"
+          style={mobileFocusOverlayButtonStyle("orange")}
+          onClick={skipCurrentVideo}
+          aria-label="Skip current video"
+          title="Skip current video"
+        >
+          <SkipForward size={20} />
+        </button>
+      </div>
+    </div>
+  );
+  const renderPlayerShell = (shellStyle) => (
+    <div style={shellStyle}>
+      <div style={inlinePlayerFrameWrapStyle}>
+        <div ref={playerHostRef} style={styles.playerFrame} />
+        {showMobileLandscapeFocusOverlay ? (
+          renderMobileLandscapeFocusControls()
+        ) : (
+          <button
+            type="button"
+            style={focusModeButtonStyle}
+            onClick={inlinePlayerCloseAction}
+          >
+            <InlinePlayerCloseIcon size={isMobile ? 18 : 14} />
+          </button>
+        )}
+      </div>
+
+      {!showMobileLandscapeFocusOverlay ? (
+        <div style={styles.playerProgressTrack} aria-hidden="true">
+          <div style={styles.playerProgressFill(clampedYoutubeVideoProgress)} />
+        </div>
+      ) : null}
+
+      <div style={inlinePlayerControlsWrapStyle}>
+        <div style={inlinePlayerMetaWrapStyle}>
+          {renderPlayerAvatar(40)}
+          <div style={{ ...styles.playerMeta, minWidth: 0 }}>
+            <h3 style={inlinePlayerMetaTitleStyle}>
+              {selectedVideo?.title || "Listening Queue"}
+            </h3>
+            <p style={styles.playerSub}>
+              {selectedVideo?.channel || "YouTube"} | Queue {visibleQueueIndex}/{queueTotal || 0}
+            </p>
+          </div>
+        </div>
+
+        {renderPlayerControls()}
+      </div>
+    </div>
+  );
 
   return (
     <>
-      {useInlineMobileFocusPlayer && focusMode ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "rgba(2, 6, 23, 0.72)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-            }}
-            onClick={() => setFocusMode(false)}
-          />
-        </div>
-      ) : null}
       <div
         style={{
           ...styles.largeCard,
@@ -525,40 +683,7 @@ export default function ListeningWorkspace({
           />
         ) : (
           <>
-            {(!focusMode || useInlineMobileFocusPlayer) && (
-              <div style={inlinePlayerShellStyle}>
-                <div style={inlinePlayerFrameWrapStyle}>
-                  <div ref={playerHostRef} style={styles.playerFrame} />
-                  <button
-                    type="button"
-                    style={focusModeButtonStyle}
-                    onClick={inlinePlayerCloseAction}
-                  >
-                    <InlinePlayerCloseIcon size={isMobile ? 18 : 14} />
-                  </button>
-                </div>
-
-                <div style={styles.playerProgressTrack} aria-hidden="true">
-                  <div style={styles.playerProgressFill(clampedYoutubeVideoProgress)} />
-                </div>
-
-                <div style={inlinePlayerControlsWrapStyle}>
-                  <div style={inlinePlayerMetaWrapStyle}>
-                    {renderPlayerAvatar(40)}
-                    <div style={{ ...styles.playerMeta, minWidth: 0 }}>
-                      <h3 style={inlinePlayerMetaTitleStyle}>
-                        {selectedVideo?.title || "Listening Queue"}
-                      </h3>
-                      <p style={styles.playerSub}>
-                        {selectedVideo?.channel || "YouTube"} | Queue {visibleQueueIndex}/{queueTotal || 0}
-                      </p>
-                    </div>
-                  </div>
-
-                  {renderPlayerControls()}
-                </div>
-              </div>
-            )}
+            {!focusMode && renderPlayerShell(inlinePlayerShellStyle)}
 
             {!focusMode && (
               <div style={styles.innerTabsWrap}>
@@ -901,6 +1026,18 @@ export default function ListeningWorkspace({
       </div>
 
       {hasMounted &&
+        useInlineMobileFocusPlayer &&
+        focusMode &&
+        createPortal(
+          <div style={styles.focusOverlay}>
+            <div style={styles.focusBackdrop} onClick={() => setFocusMode(false)} />
+
+            <div style={focusContentStyle}>{renderPlayerShell(focusShellStyle)}</div>
+          </div>,
+          document.body,
+        )}
+
+      {hasMounted &&
         !isAudiobookMode &&
         focusMode &&
         !isMobile &&
@@ -958,5 +1095,50 @@ function getMountedSnapshot() {
 }
 
 function getServerMountedSnapshot() {
+  return false;
+}
+
+function subscribeToLandscapeOrientation(callback) {
+  if (typeof window === "undefined") return () => {};
+
+  const mediaQuery = window.matchMedia?.("(orientation: landscape)");
+  const notify = () => callback();
+
+  if (mediaQuery) {
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", notify);
+    } else if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(notify);
+    }
+  }
+
+  window.addEventListener("resize", notify);
+  window.addEventListener("orientationchange", notify);
+
+  return () => {
+    if (mediaQuery) {
+      if (typeof mediaQuery.removeEventListener === "function") {
+        mediaQuery.removeEventListener("change", notify);
+      } else if (typeof mediaQuery.removeListener === "function") {
+        mediaQuery.removeListener(notify);
+      }
+    }
+
+    window.removeEventListener("resize", notify);
+    window.removeEventListener("orientationchange", notify);
+  };
+}
+
+function getLandscapeOrientationSnapshot() {
+  if (typeof window === "undefined") return false;
+
+  if (window.matchMedia?.("(orientation: landscape)")?.matches) {
+    return true;
+  }
+
+  return window.innerWidth > window.innerHeight;
+}
+
+function getServerLandscapeOrientationSnapshot() {
   return false;
 }
