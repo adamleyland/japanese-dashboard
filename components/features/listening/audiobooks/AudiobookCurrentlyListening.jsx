@@ -20,13 +20,87 @@ const FALLBACK_COVER_URL =
     </svg>
   `);
 
-export default function AudiobookCurrentlyListening({ book, onOpenPlayer, onPlayNow }) {
+export default function AudiobookCurrentlyListening({
+  book,
+  isMobile = false,
+  onOpenPlayer,
+  onPlayNow,
+}) {
   if (!book) {
     return null;
   }
 
   const plainDescription = clampWords(stripHtml(book.description), 50);
   const coverUrl = book.cover_url || FALLBACK_COVER_URL;
+  const cardStyle = isMobile
+    ? {
+        ...styles.card,
+        gridTemplateColumns: "1fr",
+        gap: "14px",
+        padding: "14px",
+      }
+    : styles.card;
+  const coverStyle = isMobile
+    ? {
+        ...styles.cover(book.coverGradient),
+        width: "min(100%, 220px)",
+        minHeight: 0,
+        aspectRatio: "4 / 5",
+        justifySelf: "center",
+      }
+    : styles.cover(book.coverGradient);
+  const coverImageStyle = isMobile
+    ? {
+        ...styles.coverImage,
+        minHeight: 0,
+      }
+    : styles.coverImage;
+  const metaStyle = isMobile
+    ? {
+        ...styles.meta,
+        gap: "8px",
+        alignContent: "start",
+      }
+    : styles.meta;
+  const metaTopRowStyle = isMobile
+    ? {
+        ...styles.metaTopRow,
+        alignItems: "flex-start",
+      }
+    : styles.metaTopRow;
+  const titleStyle = isMobile
+    ? {
+        ...styles.title,
+        fontSize: "18px",
+        lineHeight: 1.18,
+        display: "-webkit-box",
+        WebkitLineClamp: 3,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
+      }
+    : styles.title;
+  const authorStyle = isMobile
+    ? {
+        ...styles.author,
+        fontSize: "13px",
+      }
+    : styles.author;
+  const descriptionStyle = isMobile
+    ? {
+        ...styles.description,
+        fontSize: "12px",
+        lineHeight: 1.55,
+        WebkitLineClamp: 3,
+      }
+    : styles.description;
+  const iconButtonStyle = isMobile
+    ? {
+        ...styles.iconButton,
+        width: "42px",
+        height: "42px",
+        borderRadius: "12px",
+      }
+    : styles.iconButton;
 
   return (
     <section style={styles.section}>
@@ -47,22 +121,22 @@ export default function AudiobookCurrentlyListening({ book, onOpenPlayer, onPlay
         style={styles.cardButton}
         aria-label={`Open player for ${book.title}`}
       >
-        <div style={styles.card}>
-          <div style={styles.cover(book.coverGradient)} aria-hidden="true">
+        <div style={cardStyle}>
+          <div style={coverStyle} aria-hidden="true">
             <img
               key={`${book.id}-${coverUrl}`}
               src={coverUrl}
               alt=""
-              style={styles.coverImage}
+              style={coverImageStyle}
               onError={(event) => {
                 event.currentTarget.src = FALLBACK_COVER_URL;
               }}
             />
           </div>
 
-          <div style={styles.meta}>
-            <div style={styles.metaTopRow}>
-              <div style={styles.title}>{book.title}</div>
+          <div style={metaStyle}>
+            <div style={metaTopRowStyle}>
+              <div style={titleStyle}>{book.title}</div>
               <button
                 type="button"
                 onClick={(event) => {
@@ -70,14 +144,14 @@ export default function AudiobookCurrentlyListening({ book, onOpenPlayer, onPlay
                   event.stopPropagation();
                   onPlayNow?.();
                 }}
-                style={styles.iconButton}
+                style={iconButtonStyle}
                 aria-label={`Play ${book.title}`}
               >
                 <Play size={18} />
               </button>
             </div>
-            <div style={styles.author}>{book.author}</div>
-            <div style={styles.description}>{plainDescription}</div>
+            <div style={authorStyle}>{book.author}</div>
+            <div style={descriptionStyle}>{plainDescription}</div>
 
             <div style={styles.progressMeta}>
               <span style={styles.progressLabel}>{book.progressPercent.toFixed(0)}% complete</span>

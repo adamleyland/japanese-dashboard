@@ -3,11 +3,29 @@
 import { Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
 import { clampWords, stripHtml } from "@/lib/stripHtml";
 
+const FALLBACK_COVER_URL =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 400">
+      <defs>
+        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0f172a"/>
+          <stop offset="100%" stop-color="#334155"/>
+        </linearGradient>
+      </defs>
+      <rect width="320" height="400" fill="url(#g)"/>
+      <circle cx="160" cy="144" r="54" fill="rgba(255,255,255,0.14)"/>
+      <rect x="88" y="232" width="144" height="14" rx="7" fill="rgba(255,255,255,0.2)"/>
+      <rect x="110" y="260" width="100" height="12" rx="6" fill="rgba(255,255,255,0.14)"/>
+    </svg>
+  `);
+
 export default function AudiobookPlayer({
   book,
   currentProgressSeconds,
   durationSeconds,
   hasPlayableAudio,
+  isMobile = false,
   isPlaying,
   playbackState,
   progressPercent,
@@ -25,29 +43,156 @@ export default function AudiobookPlayer({
   const chapterCount = (book.chapters || []).length;
   const remainingSeconds = Math.max(0, durationSeconds - currentProgressSeconds);
   const plainDescription = clampWords(stripHtml(book.description), 50);
+  const coverUrl = book.coverImage || book.cover_url || FALLBACK_COVER_URL;
+  const shellStyle = isMobile
+    ? {
+        ...styles.shell,
+        gap: "14px",
+        padding: "14px",
+        borderRadius: "24px",
+        maxWidth: "min(100%, 560px)",
+        minHeight: "100%",
+        boxSizing: "border-box",
+      }
+    : styles.shell;
+  const playerHeaderStyle = isMobile
+    ? {
+        ...styles.playerHeader,
+        alignItems: "flex-start",
+        gap: "10px",
+      }
+    : styles.playerHeader;
+  const headerCopyStyle = isMobile
+    ? {
+        ...styles.headerCopy,
+        gap: "6px",
+        flex: "1 1 auto",
+      }
+    : styles.headerCopy;
+  const titleStyle = isMobile
+    ? {
+        ...styles.title,
+        fontSize: "20px",
+        lineHeight: 1.15,
+      }
+    : styles.title;
+  const metaStyle = isMobile
+    ? {
+        ...styles.meta,
+        fontSize: "12px",
+        lineHeight: 1.5,
+      }
+    : styles.meta;
+  const descriptionStyle = isMobile
+    ? {
+        ...styles.description,
+        fontSize: "13px",
+        lineHeight: 1.6,
+        WebkitLineClamp: 4,
+        maxWidth: "100%",
+      }
+    : styles.description;
+  const iconButtonStyle = isMobile
+    ? {
+        ...styles.iconButton(false),
+        width: "42px",
+        height: "42px",
+        borderRadius: "12px",
+      }
+    : styles.iconButton(false);
+  const playerGridStyle = isMobile
+    ? {
+        ...styles.playerGrid,
+        gridTemplateColumns: "1fr",
+        gap: "14px",
+      }
+    : styles.playerGrid;
+  const coverWrapStyle = isMobile
+    ? {
+        ...styles.coverWrap,
+        width: "min(100%, 260px)",
+        justifySelf: "center",
+      }
+    : styles.coverWrap;
+  const controlsColumnStyle = isMobile
+    ? {
+        ...styles.controlsColumn,
+        gap: "14px",
+      }
+    : styles.controlsColumn;
+  const timelineWrapStyle = isMobile
+    ? {
+        ...styles.timelineWrap,
+        padding: "12px",
+      }
+    : styles.timelineWrap;
+  const actionRowStyle = isMobile
+    ? {
+        ...styles.actionRow,
+        gap: "8px",
+      }
+    : styles.actionRow;
+  const primaryButtonStyle = isMobile
+    ? {
+        ...styles.primaryButton(!hasPlayableAudio),
+        flex: "1 1 100%",
+        justifyContent: "center",
+      }
+    : styles.primaryButton(!hasPlayableAudio);
+  const iconControlButtonStyle = isMobile
+    ? {
+        ...styles.iconControlButton(!hasPlayableAudio),
+        flex: "1 1 calc(33.333% - 6px)",
+        width: "auto",
+      }
+    : styles.iconControlButton(!hasPlayableAudio);
+  const chapterBlockStyle = isMobile
+    ? {
+        ...styles.chapterBlock,
+        padding: "12px",
+      }
+    : styles.chapterBlock;
+  const chapterListStyle = isMobile
+    ? {
+        ...styles.chapterList,
+        maxHeight: "min(220px, 32svh)",
+      }
+    : styles.chapterList;
 
   return (
-    <section style={styles.shell}>
-      <div style={styles.playerHeader}>
-        <div style={styles.headerCopy}>
+    <section style={shellStyle}>
+      <div style={playerHeaderStyle}>
+        <div style={headerCopyStyle}>
           <div style={styles.eyebrow}>Audiobook Player</div>
-          <h3 style={styles.title}>{book.title}</h3>
-          <p style={styles.meta}>{buildMetadataLine(book, durationSeconds)}</p>
-          <p style={styles.description}>{plainDescription}</p>
+          <h3 style={titleStyle}>{book.title}</h3>
+          <p style={metaStyle}>{buildMetadataLine(book, durationSeconds)}</p>
+          <p style={descriptionStyle}>{plainDescription}</p>
         </div>
 
         <div style={styles.headerActions}>
-          <button type="button" onClick={onClosePlayer} style={styles.iconButton(false)} aria-label="Close player">
+          <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
             <X size={18} />
           </button>
         </div>
       </div>
 
-      <div style={styles.playerGrid}>
-        <div style={styles.cover(book.coverImage, book.coverGradient)} aria-hidden="true" />
+      <div style={playerGridStyle}>
+        <div style={coverWrapStyle}>
+          <div style={styles.cover(book.coverGradient)}>
+            <img
+              key={`${book.id}-${coverUrl}`}
+              src={coverUrl}
+              alt={`Cover artwork for ${book.title}`}
+              style={styles.coverImage}
+              onError={(event) => {
+                event.currentTarget.src = FALLBACK_COVER_URL;
+              }}
+            />
+          </div>
+        </div>
 
-        <div style={styles.controlsColumn}>
-          <div style={styles.timelineWrap}>
+        <div style={controlsColumnStyle}>
+          <div style={timelineWrapStyle}>
             <div style={styles.progressSummary}>
               <span style={styles.progressBadge}>{progressPercent.toFixed(0)}% complete</span>
               <span style={styles.progressRemaining}>{formatRemaining(remainingSeconds)} left</span>
@@ -74,12 +219,12 @@ export default function AudiobookPlayer({
             )}
           </div>
 
-          <div style={styles.actionRow}>
+          <div style={actionRowStyle}>
             <button
               type="button"
               onClick={onTogglePlayback}
               disabled={!hasPlayableAudio}
-              style={styles.primaryButton(!hasPlayableAudio)}
+              style={primaryButtonStyle}
             >
               {playing ? <Pause size={18} /> : <Play size={18} />}
               {playing ? "Pause" : "Play"}
@@ -89,7 +234,7 @@ export default function AudiobookPlayer({
               type="button"
               onClick={onPlayFromStart}
               disabled={!hasPlayableAudio}
-              style={styles.iconControlButton(!hasPlayableAudio)}
+              style={iconControlButtonStyle}
               aria-label="Play from start"
               title="Play from start"
             >
@@ -100,7 +245,7 @@ export default function AudiobookPlayer({
               type="button"
               onClick={() => onSkipBy(-10)}
               disabled={!hasPlayableAudio}
-              style={styles.iconControlButton(!hasPlayableAudio)}
+              style={iconControlButtonStyle}
               aria-label="Skip back 10 seconds"
               title="Skip back 10 seconds"
             >
@@ -111,7 +256,7 @@ export default function AudiobookPlayer({
               type="button"
               onClick={() => onSkipBy(10)}
               disabled={!hasPlayableAudio}
-              style={styles.iconControlButton(!hasPlayableAudio)}
+              style={iconControlButtonStyle}
               aria-label="Skip forward 10 seconds"
               title="Skip forward 10 seconds"
             >
@@ -119,7 +264,7 @@ export default function AudiobookPlayer({
             </button>
           </div>
 
-          <div style={styles.chapterBlock}>
+          <div style={chapterBlockStyle}>
             <div style={styles.chapterHeader}>
               <div style={styles.chapterEyebrow}>Chapters</div>
               <div style={styles.chapterCount}>
@@ -127,7 +272,7 @@ export default function AudiobookPlayer({
               </div>
             </div>
 
-            <div style={styles.chapterList}>
+            <div style={chapterListStyle}>
               {(book.chapters || []).map((chapter) => (
                 <button
                   key={chapter.id}
@@ -268,16 +413,24 @@ const styles = {
     gridTemplateColumns: "220px minmax(0, 1fr)",
     gap: "18px",
   },
-  cover: (coverImage, coverGradient) => ({
+  coverWrap: {
+    width: "220px",
+  },
+  cover: (coverGradient) => ({
     position: "relative",
     borderRadius: "20px",
     background: coverGradient,
-    backgroundImage: coverImage ? `url("${coverImage}")` : undefined,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
+    overflow: "hidden",
+    aspectRatio: "4 / 5",
     minHeight: "280px",
     boxShadow: "0 12px 28px rgba(15,23,42,0.12)",
   }),
+  coverImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
   controlsColumn: {
     display: "grid",
     gap: "16px",

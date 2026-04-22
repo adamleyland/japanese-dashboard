@@ -680,6 +680,7 @@ export default function ListeningWorkspace({
             audiobooksData={audiobooksData}
             audiobooksLoading={audiobooksLoading}
             audiobooksError={audiobooksError}
+            isMobile={isMobile}
           />
         ) : (
           <>
