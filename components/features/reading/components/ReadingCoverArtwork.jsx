@@ -3,6 +3,9 @@
 
 import { useState } from "react";
 import { BookOpenText } from "lucide-react";
+import rakutenImageUtils from "@/lib/rakutenImage";
+
+const { getHighResRakutenImage } = rakutenImageUtils;
 
 export default function ReadingCoverArtwork({
   item,
@@ -17,7 +20,10 @@ export default function ReadingCoverArtwork({
     item?.coverUrl,
     item?.imageUrl,
     item?.raw?.image_url,
-  ].filter(Boolean).filter((candidate, index, values) => values.indexOf(candidate) === index);
+  ]
+    .map((candidate) => getHighResRakutenImage(candidate))
+    .filter(Boolean)
+    .filter((candidate, index, values) => values.indexOf(candidate) === index);
   const activeSource = candidates[candidateIndex] || null;
   const resolvedWidth = typeof width === "number" ? `${width}px` : width;
 

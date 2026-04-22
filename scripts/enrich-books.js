@@ -17,6 +17,7 @@ require("dotenv/config");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createClient } = require("@supabase/supabase-js");
+const { getHighResRakutenImage } = require("../lib/rakutenImage");
 
 const RAKUTEN_BOOKS_ENDPOINT =
   "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
@@ -48,6 +49,19 @@ const TRAILING_VOLUME_MARKER_PATTERNS = [
   /\s*(?:vol(?:ume)?\.?\s*\d+)\s*$/iu,
   /\s*[\u4E0A\u4E0B\u4E2D]\s*$/u,
 ];
+
+function normalizeRakutenItemImages(item) {
+  if (!item || typeof item !== "object") {
+    return item;
+  }
+
+  return {
+    ...item,
+    largeImageUrl: getHighResRakutenImage(item.largeImageUrl),
+    mediumImageUrl: getHighResRakutenImage(item.mediumImageUrl),
+    smallImageUrl: getHighResRakutenImage(item.smallImageUrl),
+  };
+}
 
 function loadLocalEnv() {
   const envPath = path.resolve(process.cwd(), ".env.local");
@@ -283,11 +297,11 @@ async function searchRakutenBooks({
 
   const payload = await response.json();
   if (Array.isArray(payload?.items)) {
-    return payload.items;
+    return payload.items.map(normalizeRakutenItemImages);
   }
 
   if (Array.isArray(payload?.Items)) {
-    return payload.Items;
+    return payload.Items.map(normalizeRakutenItemImages);
   }
 
   return [];
@@ -384,7 +398,7 @@ function buildMatchPayload(match) {
   const item = match.item;
 
   return {
-    image_url: cleanValue(item.largeImageUrl) || null,
+    image_url: cleanValue(getHighResRakutenImage(item.largeImageUrl)) || null,
     caption: stripHtml(item.itemCaption) || null,
     author: cleanValue(item.author) || null,
     isbn: cleanValue(item.isbn) || null,

@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import rakutenImageUtils from "@/lib/rakutenImage";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -74,12 +75,26 @@ const INLINE_VOLUME_TOKEN_PATTERNS = [
   /(?:^|\s)([\u524D\u5F8C]\u7DE8)(?=$|\s)/u,
   /(?:^|\s)([\u4E0A\u4E0B\u4E2D])(?=$|\s)/u,
 ];
+const { getHighResRakutenImage } = rakutenImageUtils;
 
 class RakutenRateLimitError extends Error {
   constructor(message = "Rakuten rate limited the request.") {
     super(message);
     this.name = "RakutenRateLimitError";
   }
+}
+
+function normalizeRakutenItemImages(item) {
+  if (!item || typeof item !== "object") {
+    return item;
+  }
+
+  return {
+    ...item,
+    largeImageUrl: getHighResRakutenImage(item.largeImageUrl),
+    mediumImageUrl: getHighResRakutenImage(item.mediumImageUrl),
+    smallImageUrl: getHighResRakutenImage(item.smallImageUrl),
+  };
 }
 
 function getRequiredEnv() {
@@ -442,11 +457,11 @@ async function searchRakutenItems({
 
     const payload = await response.json();
     if (Array.isArray(payload?.items)) {
-      return payload.items;
+      return payload.items.map(normalizeRakutenItemImages);
     }
 
     if (Array.isArray(payload?.Items)) {
-      return payload.Items;
+      return payload.Items.map(normalizeRakutenItemImages);
     }
 
     return [];
@@ -690,7 +705,7 @@ function buildMatchPayload(match) {
   const item = match.item;
 
   return {
-    image_url: cleanValue(item.largeImageUrl) || null,
+    image_url: cleanValue(getHighResRakutenImage(item.largeImageUrl)) || null,
     caption: stripHtml(item.itemCaption) || null,
     author: cleanValue(item.author) || null,
     isbn: cleanValue(item.isbn) || null,
@@ -704,7 +719,7 @@ function buildMatchPayload(match) {
 
 function buildManualMatchPayload(item) {
   return {
-    image_url: cleanValue(item.largeImageUrl) || null,
+    image_url: cleanValue(getHighResRakutenImage(item.largeImageUrl)) || null,
     caption: stripHtml(item.itemCaption) || null,
     author: cleanValue(item.author) || null,
     isbn: cleanValue(item.isbn) || null,

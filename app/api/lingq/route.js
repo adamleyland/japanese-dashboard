@@ -1,5 +1,9 @@
+import rakutenImageUtils from "@/lib/rakutenImage";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const { getHighResRakutenImage } = rakutenImageUtils;
 
 export async function GET() {
   const token = process.env.LINGQ_API_KEY;
@@ -82,7 +86,7 @@ export async function GET() {
       estimatedReadingHours: Math.floor(wordsRead / (125 * 60)),
       bookTitle: collection?.title ?? null,
       chapterTitle: lesson?.title ?? null,
-      bookImage: collection?.imageUrl ?? null,
+      bookImage: getHighResRakutenImage(collection?.imageUrl ?? null),
       bookProgress:
         typeof collection?.completedRatio === "number"
           ? collection.completedRatio

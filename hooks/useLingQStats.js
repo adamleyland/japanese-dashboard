@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import rakutenImageUtils from "@/lib/rakutenImage";
+
+const { getHighResRakutenImage } = rakutenImageUtils;
 
 export default function useLingQStats(options = {}) {
   const { enabled = true } = options;
@@ -65,7 +68,9 @@ export default function useLingQStats(options = {}) {
           chapterTitle:
             typeof payload?.chapterTitle === "string" ? payload.chapterTitle : null,
           bookImage:
-            typeof payload?.bookImage === "string" ? payload.bookImage : null,
+            typeof payload?.bookImage === "string"
+              ? getHighResRakutenImage(payload.bookImage)
+              : null,
           bookProgress:
             typeof payload?.bookProgress === "number" ? payload.bookProgress : null,
           loading: false,
