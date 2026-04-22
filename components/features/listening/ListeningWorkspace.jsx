@@ -65,6 +65,7 @@ export default function ListeningWorkspace({
     getServerMountedSnapshot,
   );
   const isAudiobookMode = workspaceSource === "audiobooks";
+  const useInlineMobileFocusPlayer = isMobile && !isAudiobookMode;
 
   const panelItems = [
     { key: "account", label: "Account", icon: UserCircle2 },
@@ -395,9 +396,59 @@ export default function ListeningWorkspace({
         borderRadius: "12px",
       }
     : styles.focusModeBtn;
+  const inlinePlayerShellStyle =
+    useInlineMobileFocusPlayer && focusMode
+      ? {
+          ...focusShellStyle,
+          position: "fixed",
+          inset: "10px",
+          zIndex: 10000,
+          width: "auto",
+          margin: 0,
+        }
+      : styles.playerShell;
+  const inlinePlayerFrameWrapStyle =
+    useInlineMobileFocusPlayer && focusMode ? focusFrameWrapStyle : styles.playerFrameWrap;
+  const inlinePlayerMetaTitleStyle =
+    useInlineMobileFocusPlayer && focusMode ? styles.playerTitleFocus : styles.playerTitle;
+  const inlinePlayerMetaWrapStyle =
+    useInlineMobileFocusPlayer && focusMode
+      ? focusMetaRowStyle
+      : {
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: 0,
+        };
+  const inlinePlayerControlsWrapStyle =
+    useInlineMobileFocusPlayer && focusMode
+      ? focusControlRowStyle
+      : styles.playerControlColumn;
+  const InlinePlayerCloseIcon = useInlineMobileFocusPlayer && focusMode ? Minimize2 : Maximize2;
+  const inlinePlayerCloseAction = () => setFocusMode((currentValue) => !currentValue);
 
   return (
     <>
+      {useInlineMobileFocusPlayer && focusMode ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(2, 6, 23, 0.72)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+            }}
+            onClick={() => setFocusMode(false)}
+          />
+        </div>
+      ) : null}
       <div
         style={{
           ...styles.largeCard,
@@ -470,31 +521,26 @@ export default function ListeningWorkspace({
           />
         ) : (
           <>
-            {!focusMode && (
-              <div style={styles.playerShell}>
-                <div style={styles.playerFrameWrap}>
+            {(!focusMode || useInlineMobileFocusPlayer) && (
+              <div style={inlinePlayerShellStyle}>
+                <div style={inlinePlayerFrameWrapStyle}>
                   <div ref={playerHostRef} style={styles.playerFrame} />
                   <button
                     type="button"
                     style={focusModeButtonStyle}
-                    onClick={() => setFocusMode(true)}
+                    onClick={inlinePlayerCloseAction}
                   >
-                    <Maximize2 size={isMobile ? 18 : 14} />
+                    <InlinePlayerCloseIcon size={isMobile ? 18 : 14} />
                   </button>
                 </div>
 
-                <div style={styles.playerControlColumn}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      minWidth: 0,
-                    }}
-                  >
+                <div style={inlinePlayerControlsWrapStyle}>
+                  <div style={inlinePlayerMetaWrapStyle}>
                     {renderPlayerAvatar(40)}
                     <div style={{ ...styles.playerMeta, minWidth: 0 }}>
-                      <h3 style={styles.playerTitle}>{selectedVideo?.title || "Listening Queue"}</h3>
+                      <h3 style={inlinePlayerMetaTitleStyle}>
+                        {selectedVideo?.title || "Listening Queue"}
+                      </h3>
                       <p style={styles.playerSub}>
                         {selectedVideo?.channel || "YouTube"} | Queue {visibleQueueIndex}/{queueTotal || 0}
                       </p>
@@ -548,11 +594,6 @@ export default function ListeningWorkspace({
                             <div style={{ ...styles.simpleTitle, fontSize: "14px" }}>
                               {youtubeConnected ? "YouTube connected" : "YouTube disconnected"}
                             </div>
-                            <p style={{ ...styles.playerSub, margin: 0 }}>
-                              {youtubeConnected
-                                ? "Click the green button to disconnect your account."
-                                : "Click the icon to connect your account with Google OAuth."}
-                            </p>
                           </div>
                         </div>
 
@@ -832,6 +873,7 @@ export default function ListeningWorkspace({
       {hasMounted &&
         !isAudiobookMode &&
         focusMode &&
+        !isMobile &&
         createPortal(
           <div style={styles.focusOverlay}>
             <div style={styles.focusBackdrop} onClick={() => setFocusMode(false)} />

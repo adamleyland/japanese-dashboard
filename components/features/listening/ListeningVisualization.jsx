@@ -44,6 +44,7 @@ export default function ListeningVisualization({
   variant = "default",
 }) {
   const isMobileCondensed = variant === "mobileCondensed";
+  const showDirectAdjustments = typeof setListeningHours === "function";
 
   if (isMobileCondensed) {
     return (
@@ -170,21 +171,23 @@ export default function ListeningVisualization({
         </p>
       </div>
 
-      <div style={styles.quickAdjustGrid}>
-        {[
-          { label: "+1h", delta: 1 },
-          { label: "+30m", delta: 0.5 },
-          { label: "+5m", delta: 5 / 60 },
-        ].map((item) => (
-          <button
-            key={item.label}
-            style={styles.adjustBtn}
-            onClick={() => setListeningHours((hours) => Math.max(0, hours + item.delta))}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {showDirectAdjustments ? (
+        <div style={styles.quickAdjustGrid}>
+          {[
+            { label: "+1h", delta: 1 },
+            { label: "+30m", delta: 0.5 },
+            { label: "+5m", delta: 5 / 60 },
+          ].map((item) => (
+            <button
+              key={item.label}
+              style={styles.adjustBtn}
+              onClick={() => setListeningHours((hours) => Math.max(0, hours + item.delta))}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {settingsOpen && (
         <div style={styles.goalGrid}>

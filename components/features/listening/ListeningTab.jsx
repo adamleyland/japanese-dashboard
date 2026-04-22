@@ -12,7 +12,6 @@ const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
-const LISTENING_PROGRESS_FLUSH_INTERVAL_MS = 30 * 1000;
 
 function readYoutubeWorkspaceResumeSnapshot() {
   if (typeof window === "undefined") {
@@ -99,10 +98,6 @@ export default function ListeningTab({
   const safeVideoId = selectedVideo?.id || selectedVideoId || DEFAULT_VIDEO_ID;
   const playbackResumeVideoId = playbackState?.selectedVideoId || safeVideoId;
   const playbackResumeTime = playbackState?.currentTime || 0;
-  const sessionRef = useRef(0);
-  const sessionCheckpointRef = useRef(0);
-  const sessionMetaRef = useRef(null);
-  const lastSessionMetaRef = useRef(null);
   const audiobookPlaybackSnapshotRef = useRef({
     bookId: null,
     isPlaying: false,
@@ -116,6 +111,7 @@ export default function ListeningTab({
   const activePlayerHostRef = useRef(null);
   const wakeLockRef = useRef(null);
   const playerVideoIdRef = useRef("");
+  const previousFocusModeRef = useRef(focusMode);
   const initRef = useRef(false);
   const playerReadyRef = useRef(false);
   const pendingRestoreRef = useRef(null);
@@ -233,22 +229,6 @@ export default function ListeningTab({
     selectedVideoId,
     youtubeConnected,
   ]);
-
-  const handleListeningHoursUpdate = useCallback(
-    (nextValueOrUpdater, metadata = {}) => {
-      const resolvedValue =
-        typeof nextValueOrUpdater === "function"
-          ? nextValueOrUpdater(listeningHours)
-          : nextValueOrUpdater;
-      const nextHours = Math.max(0, Number(resolvedValue) || 0);
-      const deltaHours = nextHours - listeningHours;
-
-      if (!deltaHours) return;
-
-      adjustListeningHours(deltaHours, metadata);
-    },
-    [adjustListeningHours, listeningHours],
-  );
 
   const releaseWakeLock = useCallback(async () => {
     const sentinel = wakeLockRef.current;
@@ -404,57 +384,8 @@ export default function ListeningTab({
     [getPlayerCurrentTime, resolvedVideoSource, setPlaybackState],
   );
 
-  const bankSession = useCallback(() => {
-    if (!sessionRef.current) return;
-
-    const sessionMeta = sessionMetaRef.current || lastSessionMetaRef.current || {};
-    const checkpointStartedAt = sessionCheckpointRef.current || sessionRef.current;
-    const gained = (Date.now() - checkpointStartedAt) / 3600000;
-    if (gained > 0) {
-      adjustListeningHours(gained, {
-        kind: "session",
-        ...sessionMeta,
-      });
-    }
-
-    sessionCheckpointRef.current = Date.now();
-  }, [adjustListeningHours]);
-
-  const flushSessionProgress = useCallback(
-    ({ finalize = false } = {}) => {
-      if (!sessionRef.current) {
-        return;
-      }
-
-      bankSession();
-
-      if (!finalize) {
-        return;
-      }
-
-      sessionRef.current = 0;
-      sessionCheckpointRef.current = 0;
-      sessionMetaRef.current = null;
-    },
-    [bankSession],
-  );
-
-  const buildCurrentYoutubeSessionMeta = useCallback(
-    () => ({
-      source: "youtube",
-      sessionKey: `youtube:${selectedVideoIdRef.current || DEFAULT_VIDEO_ID}`,
-      videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
-      channelId: selectedChannelIdRef.current,
-    }),
-    [],
-  );
-
   const syncPlaybackSession = useCallback(
-    ({ isPlaying, metadata = null, playerPlaying = null }) => {
-      if (metadata) {
-        lastSessionMetaRef.current = metadata;
-      }
-
+    ({ isPlaying, playerPlaying = null }) => {
       if (typeof playerPlaying === "boolean") {
         setIsPlayerPlaying((currentValue) =>
           currentValue === playerPlaying ? currentValue : playerPlaying,
@@ -462,38 +393,13 @@ export default function ListeningTab({
       }
 
       if (isPlaying) {
-        const nextSessionKey = metadata?.sessionKey || null;
-        const currentSessionKey = sessionMetaRef.current?.sessionKey || null;
-
-        if (
-          sessionRef.current &&
-          nextSessionKey &&
-          currentSessionKey &&
-          currentSessionKey !== nextSessionKey
-        ) {
-          flushSessionProgress({ finalize: true });
-        }
-
-        if (!sessionRef.current) {
-          const sessionStartedAt = Date.now();
-          sessionRef.current = sessionStartedAt;
-          sessionCheckpointRef.current = sessionStartedAt;
-        }
-
-        if (!sessionCheckpointRef.current) {
-          sessionCheckpointRef.current = Date.now();
-        }
-
-        sessionMetaRef.current = metadata || sessionMetaRef.current || lastSessionMetaRef.current;
         setStopwatchRunning((currentValue) => (currentValue ? currentValue : true));
         return;
       }
 
-      sessionMetaRef.current = metadata || sessionMetaRef.current;
       setStopwatchRunning((currentValue) => (currentValue ? false : currentValue));
-      flushSessionProgress({ finalize: true });
     },
-    [flushSessionProgress],
+    [],
   );
 
   const buildPlaybackPayload = useCallback(
@@ -725,23 +631,70 @@ export default function ListeningTab({
   }, [focusMode, togglePlayerPlayback]);
 
   useEffect(() => {
+    const wasFocusMode = previousFocusModeRef.current;
+    previousFocusModeRef.current = focusMode;
+
+    if (!isMobile || !isYoutubeMode || !wasFocusMode || focusMode) {
+      return;
+    }
+
+    const shouldResumePlayback = isPlayerPlaying || playbackIntentRef.current;
+    const resyncTimer = window.setTimeout(() => {
+      const player = playerRef.current;
+      if (!player || !playerReadyRef.current) {
+        syncPlaybackSession({
+          isPlaying: false,
+          playerPlaying: false,
+        });
+        return;
+      }
+
+      const actualPlaying = isPlayerCurrentlyPlaying();
+      if (shouldResumePlayback && !actualPlaying && typeof player.playVideo === "function") {
+        playbackIntentRef.current = true;
+        player.playVideo();
+
+        window.setTimeout(() => {
+          const resumed = isPlayerCurrentlyPlaying();
+          syncPlaybackSession({
+            isPlaying: resumed,
+            playerPlaying: resumed,
+          });
+        }, 180);
+        return;
+      }
+
+      syncPlaybackSession({
+        isPlaying: actualPlaying,
+        playerPlaying: actualPlaying,
+      });
+    }, 120);
+
+    return () => window.clearTimeout(resyncTimer);
+  }, [
+    focusMode,
+    isMobile,
+    isPlayerCurrentlyPlaying,
+    isPlayerPlaying,
+    isYoutubeMode,
+    syncPlaybackSession,
+  ]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return undefined;
 
     const handlePersist = () => {
-      flushSessionProgress({ finalize: true });
       persistCurrentPlayerState();
     };
 
     window.addEventListener("beforeunload", handlePersist);
 
     const handlePageHide = () => {
-      flushSessionProgress({ finalize: true });
       persistCurrentPlayerState();
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        flushSessionProgress({ finalize: true });
         persistCurrentPlayerState();
         return;
       }
@@ -750,7 +703,6 @@ export default function ListeningTab({
         syncPlaybackSession({
           isPlaying: true,
           playerPlaying: true,
-          metadata: buildCurrentYoutubeSessionMeta(),
         });
       }
     };
@@ -764,27 +716,11 @@ export default function ListeningTab({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [
-    buildCurrentYoutubeSessionMeta,
-    flushSessionProgress,
     isPlayerCurrentlyPlaying,
     isYoutubeMode,
     persistCurrentPlayerState,
     syncPlaybackSession,
   ]);
-
-  useEffect(() => {
-    if (!stopwatchRunning) {
-      return undefined;
-    }
-
-    const intervalId = window.setInterval(() => {
-      flushSessionProgress();
-    }, LISTENING_PROGRESS_FLUSH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [flushSessionProgress, stopwatchRunning]);
 
   useEffect(() => {
     if (!isYoutubeMode) {
@@ -825,7 +761,11 @@ export default function ListeningTab({
       return undefined;
     }
 
-    const activeHost = focusMode ? focusPlayerHostRef.current : playerHostRef.current;
+    const activeHost = isMobile
+      ? playerHostRef.current
+      : focusMode
+      ? focusPlayerHostRef.current
+      : playerHostRef.current;
 
     if (playerRef.current && activeHost !== activePlayerHostRef.current) {
       pendingRestoreRef.current = persistCurrentPlayerState();
@@ -898,7 +838,6 @@ export default function ListeningTab({
         syncPlaybackSession({
           isPlaying: true,
           playerPlaying: true,
-          metadata: buildCurrentYoutubeSessionMeta(),
         });
       }
 
@@ -988,7 +927,11 @@ export default function ListeningTab({
     };
 
     const mountPlayer = () => {
-      const host = focusMode ? focusPlayerHostRef.current : playerHostRef.current;
+      const host = isMobile
+        ? playerHostRef.current
+        : focusMode
+        ? focusPlayerHostRef.current
+        : playerHostRef.current;
       if (initRef.current || !window.YT?.Player || !host) return;
       const playerOrigin = window.location.origin;
 
@@ -1026,7 +969,11 @@ export default function ListeningTab({
     };
 
     const mountWhenReady = () => {
-      const host = focusMode ? focusPlayerHostRef.current : playerHostRef.current;
+      const host = isMobile
+        ? playerHostRef.current
+        : focusMode
+        ? focusPlayerHostRef.current
+        : playerHostRef.current;
       if (initRef.current) return;
       if (!window.YT?.Player || !host) {
         requestAnimationFrame(mountWhenReady);
@@ -1059,10 +1006,10 @@ export default function ListeningTab({
     };
   }, [
     applyPlaybackSnapshot,
-    buildCurrentYoutubeSessionMeta,
     connectionStatus,
     focusMode,
     getPlayerCurrentTime,
+    isMobile,
     isPlayerCurrentlyPlaying,
     isYoutubeMode,
     playerCanMount,
@@ -1152,52 +1099,33 @@ export default function ListeningTab({
   }, [focusMode, workspaceSource]);
 
   useEffect(() => {
-    const activeSource = sessionMetaRef.current?.source;
-    if (!activeSource || activeSource === workspaceSource) {
-      return;
-    }
-
-    syncPlaybackSession({
-      isPlaying: false,
-      playerPlaying: activeSource === "youtube" ? false : null,
-    });
-  }, [syncPlaybackSession, workspaceSource]);
-
-  useEffect(() => {
     if (clockMode !== "timer" || !timerRunning) return;
 
     const timer = setInterval(() => {
-      let shouldBankTimerSession = false;
-
       setTimerSeconds((seconds) => {
         if (seconds <= 0.1) {
-          shouldBankTimerSession = true;
           setTimerRunning(false);
           return 0;
         }
         return roundToTenth(seconds - 0.1);
       });
-
-      if (shouldBankTimerSession) {
-        adjustListeningHours(timerDurationSeconds / 3600, {
-          kind: "session",
-          source: "timer",
-        });
-      }
     }, 100);
 
     return () => clearInterval(timer);
-  }, [adjustListeningHours, clockMode, roundToTenth, timerDurationSeconds, timerRunning]);
+  }, [clockMode, roundToTenth, timerRunning]);
 
-  const bankStopwatch = () => {
+  const handleBankStopwatchTime = useCallback(() => {
     if (!stopwatchSeconds) return;
+
     const bankedHours = stopwatchSeconds / 3600;
+
+    // BANK is the only persistence path for listening totals in this screen.
     adjustListeningHours(bankedHours, {
       kind: "session",
-      source: "timer",
+      source: "stopwatch-bank",
     });
     setStopwatchSeconds(0);
-  };
+  }, [adjustListeningHours, stopwatchSeconds]);
 
   const toggleTimerStart = () => {
     if (clockMode === "stopwatch") {
@@ -1209,8 +1137,6 @@ export default function ListeningTab({
 
   const skipCurrentVideo = () => {
     if (!playbackList.length) return;
-
-    flushSessionProgress({ finalize: true });
 
     const index = playbackList.findIndex((video) => video.id === selectedVideoId);
     const next = playbackList[(index + 1) % playbackList.length];
@@ -1255,32 +1181,7 @@ export default function ListeningTab({
       }
 
       audiobookPlaybackSnapshotRef.current = nextSnapshot;
-      if (book) {
-        lastSessionMetaRef.current = {
-          source: "audiobook",
-          sessionKey: `audiobook:${book.id}`,
-          audiobookId: book.id,
-          title: book.title,
-          author: book.author,
-          durationSeconds,
-          playbackState: nextPlaybackState,
-        };
-      }
-
-      syncPlaybackSession({
-        isPlaying,
-        metadata: book
-          ? {
-              source: "audiobook",
-              sessionKey: `audiobook:${book.id}`,
-              audiobookId: book.id,
-              title: book.title,
-              author: book.author,
-              durationSeconds,
-              playbackState: nextPlaybackState,
-            }
-          : null,
-      });
+      syncPlaybackSession({ isPlaying });
     },
     [syncPlaybackSession],
   );
@@ -1350,7 +1251,7 @@ export default function ListeningTab({
             timerDurationSeconds={timerDurationSeconds}
             timerRunning={timerRunning}
             toggleTimerStart={toggleTimerStart}
-            bankStopwatch={bankStopwatch}
+            bankStopwatch={handleBankStopwatchTime}
             setClockMode={setClockMode}
             setStopwatchRunning={setStopwatchRunning}
             setStopwatchSeconds={setStopwatchSeconds}
@@ -1366,7 +1267,6 @@ export default function ListeningTab({
             isMobile={isMobile}
             isCompact={isCompact}
             listeningHours={listeningHours}
-            setListeningHours={handleListeningHoursUpdate}
             listeningGoal={listeningGoal}
             setListeningGoal={setListeningGoal}
             showVisualization={showVisualization}
@@ -1390,7 +1290,7 @@ export default function ListeningTab({
             timerDurationSeconds={timerDurationSeconds}
             timerRunning={timerRunning}
             toggleTimerStart={toggleTimerStart}
-            bankStopwatch={bankStopwatch}
+            bankStopwatch={handleBankStopwatchTime}
             setClockMode={setClockMode}
             setStopwatchRunning={setStopwatchRunning}
             setStopwatchSeconds={setStopwatchSeconds}
@@ -1410,7 +1310,6 @@ export default function ListeningTab({
             isMobile={isMobile}
             isCompact={isCompact}
             listeningHours={listeningHours}
-            setListeningHours={handleListeningHoursUpdate}
             listeningGoal={listeningGoal}
             setListeningGoal={setListeningGoal}
             showVisualization={showVisualization}
