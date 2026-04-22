@@ -499,7 +499,7 @@ export default function ListeningWorkspace({
                 margin: 0,
               }}
             >
-              リスニング • ワークスペース
+              リスニング
             </h2>
           </div>
 
