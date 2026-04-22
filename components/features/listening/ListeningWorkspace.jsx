@@ -16,6 +16,7 @@ import {
   ListVideo,
   ToggleLeft,
   ToggleRight,
+  Ear,
 } from "lucide-react";
 import ListeningSourceToggle from "@/components/features/listening/ListeningSourceToggle";
 import AudiobookWorkspace from "@/components/features/listening/audiobooks/AudiobookWorkspace";
@@ -413,13 +414,38 @@ export default function ListeningWorkspace({
             gap: "12px",
           }}
         >
-          <div style={{ minWidth: 0, flex: "1 1 auto" }}>
+          <div
+            style={{
+              minWidth: 0,
+              flex: "1 1 auto",
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? "10px" : 0,
+            }}
+          >
+            {isMobile ? (
+              <div style={styles.progressContainer}>
+                <div
+                  style={{
+                    ...styles.dictionaryIconFootprint,
+                    background: "rgba(234, 179, 8, 0.16)",
+                    border: "1px solid rgba(234, 179, 8, 0.18)",
+                    boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
+                  }}
+                >
+                  <Ear size={14} color="#facc15" strokeWidth={2.5} />
+                </div>
+              </div>
+            ) : null}
             <h2
               style={{
                 ...styles.sectionTitle,
+                fontSize: isMobile ? "14px" : styles.sectionTitle.fontSize,
+                letterSpacing: isMobile ? "-0.01em" : styles.sectionTitle.letterSpacing,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                margin: 0,
               }}
             >
               リスニング • ワークスペース
