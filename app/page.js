@@ -5,7 +5,14 @@ import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import { getSafeAuthUser } from "@/lib/auth";
 import { logAuthError, logAuthInfo, summarizeSupabaseSession } from "@/lib/authLogging";
 import { supabase } from "@/lib/supabase";
-import { addTrackingEvent, fetchTrackingTotals, reduceTrackingEvent } from "@/lib/trackingEvents";
+import {
+  addTrackingEvent,
+  createEmptyTrackingTotals,
+  fetchTrackingTotals,
+  flushPendingTrackingEvents,
+  getPendingTrackingTotals,
+  reduceTrackingEvent,
+} from "@/lib/trackingEvents";
 import { ensureUserProfile } from "@/lib/profiles";
 import TopNav from "@/components/layout/TopNav";
 import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
@@ -38,6 +45,16 @@ const TRACKING_SOURCE_DEFAULTS = {
   gaming: { positive: "gaming", negative: "adjustment" },
 };
 const TRACKER_FOCUS_MODE_STORAGE_KEY = "jp_tracker_focus_mode";
+
+function mergeTrackingTotals(baseTotals, pendingTotals) {
+  return {
+    listening: Number(baseTotals?.listening || 0) + Number(pendingTotals?.listening || 0),
+    reading: Number(baseTotals?.reading || 0) + Number(pendingTotals?.reading || 0),
+    shadowing: Number(baseTotals?.shadowing || 0) + Number(pendingTotals?.shadowing || 0),
+    writing: Number(baseTotals?.writing || 0) + Number(pendingTotals?.writing || 0),
+    gaming: Number(baseTotals?.gaming || 0) + Number(pendingTotals?.gaming || 0),
+  };
+}
 
 export default function Home() {
   const [tab, setTab] = useState("listening");
@@ -340,32 +357,45 @@ export default function Home() {
       }
 
       if (!authUserId) {
+        const pendingTotals = getPendingTrackingTotals("");
+        listeningHoursRef.current = pendingTotals.listening;
+        shadowingHoursRef.current = pendingTotals.shadowing;
+        gamingHoursRef.current = pendingTotals.gaming;
+        wordsReadRef.current = pendingTotals.reading;
+        wordsWrittenRef.current = pendingTotals.writing;
+
+        setListeningHours(pendingTotals.listening);
+        setShadowingHours(pendingTotals.shadowing);
+        setGamingHours(pendingTotals.gaming);
+        setWordsRead(pendingTotals.reading);
+        setWordsWritten(pendingTotals.writing);
         setTrackingHydrated(true);
         return;
       }
 
       setTrackingHydrated(false);
       const totals = await fetchTrackingTotals(authUserId);
+      const pendingTotals = getPendingTrackingTotals(authUserId);
       if (cancelled) {
         return;
       }
 
-      if (!totals) {
-        setTrackingHydrated(true);
-        return;
-      }
+      const mergedTotals = mergeTrackingTotals(
+        totals || createEmptyTrackingTotals(),
+        pendingTotals,
+      );
 
-      listeningHoursRef.current = totals.listening;
-      shadowingHoursRef.current = totals.shadowing;
-      gamingHoursRef.current = totals.gaming;
-      wordsReadRef.current = totals.reading;
-      wordsWrittenRef.current = totals.writing;
+      listeningHoursRef.current = mergedTotals.listening;
+      shadowingHoursRef.current = mergedTotals.shadowing;
+      gamingHoursRef.current = mergedTotals.gaming;
+      wordsReadRef.current = mergedTotals.reading;
+      wordsWrittenRef.current = mergedTotals.writing;
 
-      setListeningHours(totals.listening);
-      setShadowingHours(totals.shadowing);
-      setGamingHours(totals.gaming);
-      setWordsRead(totals.reading);
-      setWordsWritten(totals.writing);
+      setListeningHours(mergedTotals.listening);
+      setShadowingHours(mergedTotals.shadowing);
+      setGamingHours(mergedTotals.gaming);
+      setWordsRead(mergedTotals.reading);
+      setWordsWritten(mergedTotals.writing);
       setTrackingHydrated(true);
     };
 
@@ -375,6 +405,48 @@ export default function Home() {
       cancelled = true;
     };
   }, [authLoading, authUserId]);
+
+  useEffect(() => {
+    if (authLoading) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const flushQueuedTracking = async () => {
+      const result = await flushPendingTrackingEvents(authUserId);
+      if (!result?.ok || cancelled || !trackingHydrated) {
+        return;
+      }
+    };
+
+    void flushQueuedTracking();
+
+    const handleOnline = () => {
+      void flushQueuedTracking();
+    };
+
+    const handleWindowFocus = () => {
+      void flushQueuedTracking();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void flushQueuedTracking();
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [authLoading, authUserId, trackingHydrated]);
 
   useEffect(() => {
     if (authLoading || !trackingHydrated || !authUserId || !hasGamingSourceData) {

@@ -11,6 +11,7 @@ const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
+const LISTENING_PROGRESS_FLUSH_INTERVAL_MS = 30 * 1000;
 
 export default function ListeningTab({
   styles,
@@ -91,7 +92,9 @@ export default function ListeningTab({
   const playbackResumeVideoId = playbackState?.selectedVideoId || DEFAULT_VIDEO_ID;
   const playbackResumeTime = playbackState?.currentTime || 0;
   const sessionRef = useRef(0);
+  const sessionCheckpointRef = useRef(0);
   const sessionMetaRef = useRef(null);
+  const lastSessionMetaRef = useRef(null);
   const audiobookPlaybackSnapshotRef = useRef({
     bookId: null,
     isPlaying: false,
@@ -267,8 +270,9 @@ export default function ListeningTab({
   const bankSession = useCallback(() => {
     if (!sessionRef.current) return;
 
-    const sessionMeta = sessionMetaRef.current || {};
-    const gained = (Date.now() - sessionRef.current) / 3600000;
+    const sessionMeta = sessionMetaRef.current || lastSessionMetaRef.current || {};
+    const checkpointStartedAt = sessionCheckpointRef.current || sessionRef.current;
+    const gained = (Date.now() - checkpointStartedAt) / 3600000;
     if (gained > 0) {
       adjustListeningHours(gained, {
         kind: "session",
@@ -276,12 +280,44 @@ export default function ListeningTab({
       });
     }
 
-    sessionRef.current = 0;
-    sessionMetaRef.current = null;
+    sessionCheckpointRef.current = Date.now();
   }, [adjustListeningHours]);
+
+  const flushSessionProgress = useCallback(
+    ({ finalize = false } = {}) => {
+      if (!sessionRef.current) {
+        return;
+      }
+
+      bankSession();
+
+      if (!finalize) {
+        return;
+      }
+
+      sessionRef.current = 0;
+      sessionCheckpointRef.current = 0;
+      sessionMetaRef.current = null;
+    },
+    [bankSession],
+  );
+
+  const buildCurrentYoutubeSessionMeta = useCallback(
+    () => ({
+      source: "youtube",
+      sessionKey: `youtube:${selectedVideoIdRef.current || DEFAULT_VIDEO_ID}`,
+      videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
+      channelId: selectedChannelIdRef.current,
+    }),
+    [],
+  );
 
   const syncPlaybackSession = useCallback(
     ({ isPlaying, metadata = null, playerPlaying = null }) => {
+      if (metadata) {
+        lastSessionMetaRef.current = metadata;
+      }
+
       if (typeof playerPlaying === "boolean") {
         setIsPlayerPlaying((currentValue) =>
           currentValue === playerPlaying ? currentValue : playerPlaying,
@@ -298,23 +334,29 @@ export default function ListeningTab({
           currentSessionKey &&
           currentSessionKey !== nextSessionKey
         ) {
-          bankSession();
+          flushSessionProgress({ finalize: true });
         }
 
         if (!sessionRef.current) {
-          sessionRef.current = Date.now();
+          const sessionStartedAt = Date.now();
+          sessionRef.current = sessionStartedAt;
+          sessionCheckpointRef.current = sessionStartedAt;
         }
 
-        sessionMetaRef.current = metadata;
+        if (!sessionCheckpointRef.current) {
+          sessionCheckpointRef.current = Date.now();
+        }
+
+        sessionMetaRef.current = metadata || sessionMetaRef.current || lastSessionMetaRef.current;
         setStopwatchRunning((currentValue) => (currentValue ? currentValue : true));
         return;
       }
 
-      sessionMetaRef.current = metadata;
+      sessionMetaRef.current = metadata || sessionMetaRef.current;
       setStopwatchRunning((currentValue) => (currentValue ? false : currentValue));
-      bankSession();
+      flushSessionProgress({ finalize: true });
     },
-    [bankSession],
+    [flushSessionProgress],
   );
 
   const buildPlaybackPayload = useCallback(
@@ -440,15 +482,63 @@ export default function ListeningTab({
     if (typeof window === "undefined") return undefined;
 
     const handlePersist = () => {
+      flushSessionProgress({ finalize: true });
       persistCurrentPlayerState();
     };
 
     window.addEventListener("beforeunload", handlePersist);
 
+    const handlePageHide = () => {
+      flushSessionProgress({ finalize: true });
+      persistCurrentPlayerState();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushSessionProgress({ finalize: true });
+        persistCurrentPlayerState();
+        return;
+      }
+
+      if (isYoutubeMode && isPlayerCurrentlyPlaying()) {
+        syncPlaybackSession({
+          isPlaying: true,
+          playerPlaying: true,
+          metadata: buildCurrentYoutubeSessionMeta(),
+        });
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       window.removeEventListener("beforeunload", handlePersist);
+      window.removeEventListener("pagehide", handlePageHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [persistCurrentPlayerState]);
+  }, [
+    buildCurrentYoutubeSessionMeta,
+    flushSessionProgress,
+    isPlayerCurrentlyPlaying,
+    isYoutubeMode,
+    persistCurrentPlayerState,
+    syncPlaybackSession,
+  ]);
+
+  useEffect(() => {
+    if (!stopwatchRunning) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      flushSessionProgress();
+    }, LISTENING_PROGRESS_FLUSH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [flushSessionProgress, stopwatchRunning]);
 
   useEffect(() => {
     if (!isYoutubeMode) {
@@ -522,12 +612,7 @@ export default function ListeningTab({
         syncPlaybackSession({
           isPlaying: true,
           playerPlaying: true,
-          metadata: {
-            source: "youtube",
-            sessionKey: `youtube:${selectedVideoIdRef.current || DEFAULT_VIDEO_ID}`,
-            videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
-            channelId: selectedChannelIdRef.current,
-          },
+          metadata: buildCurrentYoutubeSessionMeta(),
         });
       }
 
@@ -654,7 +739,7 @@ export default function ListeningTab({
     };
   }, [
     applyPlaybackSnapshot,
-    bankSession,
+    buildCurrentYoutubeSessionMeta,
     focusMode,
     getPlayerCurrentTime,
     isPlayerCurrentlyPlaying,
@@ -796,7 +881,7 @@ export default function ListeningTab({
   const skipCurrentVideo = () => {
     if (!playbackList.length) return;
 
-    bankSession();
+    flushSessionProgress({ finalize: true });
 
     const index = playbackList.findIndex((video) => video.id === selectedVideoId);
     const next = playbackList[(index + 1) % playbackList.length];
@@ -841,6 +926,17 @@ export default function ListeningTab({
       }
 
       audiobookPlaybackSnapshotRef.current = nextSnapshot;
+      if (book) {
+        lastSessionMetaRef.current = {
+          source: "audiobook",
+          sessionKey: `audiobook:${book.id}`,
+          audiobookId: book.id,
+          title: book.title,
+          author: book.author,
+          durationSeconds,
+          playbackState: nextPlaybackState,
+        };
+      }
 
       syncPlaybackSession({
         isPlaying,

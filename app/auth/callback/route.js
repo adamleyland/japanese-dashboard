@@ -27,6 +27,10 @@ function redirectWithCookies(request, pendingCookies = [], params = {}) {
   return response;
 }
 
+function deriveGoogleProviderExpiry() {
+  return new Date(Date.now() + 55 * 60 * 1000).toISOString();
+}
+
 export async function GET(request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -120,6 +124,7 @@ export async function GET(request) {
         providerRefreshToken,
         tokenType: "Bearer",
         scope: session?.granted_scopes || "",
+        expiresAt: providerToken ? deriveGoogleProviderExpiry() : null,
       });
     } catch (tokenPersistError) {
       logAuthError(
