@@ -10,8 +10,35 @@ import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
+const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 const LISTENING_PROGRESS_FLUSH_INTERVAL_MS = 30 * 1000;
+
+function readYoutubeWorkspaceResumeSnapshot() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return JSON.parse(window.sessionStorage.getItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY) || "null");
+  } catch (error) {
+    console.warn("[YouTube Player] Failed to parse workspace resume snapshot", {
+      errorMessage: error?.message || String(error || ""),
+    });
+    return null;
+  }
+}
+
+function writeYoutubeWorkspaceResumeSnapshot(snapshot) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(
+    YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY,
+    JSON.stringify(snapshot),
+  );
+}
 
 export default function ListeningTab({
   styles,
@@ -115,6 +142,7 @@ export default function ListeningTab({
   const pendingSelectionPlaybackRef = useRef(null);
   const playbackIntentRef = useRef(false);
   const failedVideoIdsRef = useRef(new Set());
+  const previousWorkspaceSourceRef = useRef(workspaceSource);
   const playbackListRef = useRef(playbackList);
   const selectedVideoIdRef = useRef(safeVideoId);
   const selectedChannelIdRef = useRef(selectedVideo?.channelId || null);
@@ -463,6 +491,73 @@ export default function ListeningTab({
     setPlaybackState(buildPlaybackPayload(snapshot));
     return snapshot;
   }, [buildPlaybackPayload, capturePlaybackSnapshot, setPlaybackState]);
+
+  useEffect(() => {
+    const previousWorkspaceSource = previousWorkspaceSourceRef.current;
+    previousWorkspaceSourceRef.current = workspaceSource;
+
+    if (previousWorkspaceSource === workspaceSource) {
+      return;
+    }
+
+    if (previousWorkspaceSource === "youtube" && workspaceSource !== "youtube") {
+      const snapshot = {
+        videoId: selectedVideoIdRef.current || safeVideoId || DEFAULT_VIDEO_ID,
+        currentTime: getPlayerCurrentTime(),
+        shouldPlay: isPlayerCurrentlyPlaying(),
+        queueVideoIds: playbackListRef.current.map((video) => video.id),
+        capturedAt: Date.now(),
+      };
+
+      pendingRestoreRef.current = snapshot;
+      writeYoutubeWorkspaceResumeSnapshot(snapshot);
+      console.info("[YouTube Player] Saved workspace resume snapshot", snapshot);
+      return;
+    }
+
+    if (previousWorkspaceSource !== "youtube" && workspaceSource === "youtube") {
+      const resumeSnapshot = pendingRestoreRef.current || readYoutubeWorkspaceResumeSnapshot();
+      if (!resumeSnapshot?.videoId) {
+        return;
+      }
+
+      const hasMatchingVideo = playbackListRef.current.some(
+        (video) => video.id === resumeSnapshot.videoId,
+      );
+
+      console.info("[YouTube Player] Restoring workspace resume snapshot", {
+        videoId: resumeSnapshot.videoId,
+        currentTime: resumeSnapshot.currentTime || 0,
+        hasMatchingVideo,
+        queueLength: playbackListRef.current.length,
+      });
+
+      if (hasMatchingVideo) {
+        pendingRestoreRef.current = {
+          videoId: resumeSnapshot.videoId,
+          currentTime: Math.max(0, Number(resumeSnapshot.currentTime || 0)),
+          shouldPlay: false,
+        };
+        pendingSelectionPlaybackRef.current = { shouldPlay: false };
+        setSelectedVideoId(resumeSnapshot.videoId);
+        setPlaybackState({
+          videoId: resumeSnapshot.videoId,
+          currentTime: Math.max(0, Number(resumeSnapshot.currentTime || 0)),
+          duration: playbackState?.duration || 0,
+          isPlaying: false,
+          playbackStatus: "paused",
+        });
+      }
+    }
+  }, [
+    getPlayerCurrentTime,
+    isPlayerCurrentlyPlaying,
+    playbackState?.duration,
+    safeVideoId,
+    setPlaybackState,
+    setSelectedVideoId,
+    workspaceSource,
+  ]);
 
   const togglePlayerPlayback = useCallback(() => {
     const player = playerRef.current;
