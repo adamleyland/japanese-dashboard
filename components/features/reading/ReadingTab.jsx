@@ -146,6 +146,8 @@ export default function ReadingTab({
         progressPercent: bookProgress,
         progressLabel:
           bookProgress !== null ? `${Math.round(bookProgress)}% complete` : null,
+        lessonId: lingqStats.lessonId,
+        lessonUrl: lingqStats.lessonUrl,
       };
     }
 
@@ -156,6 +158,8 @@ export default function ReadingTab({
     lingqStats.chapterTitle,
     lingqStats.bookImage,
     lingqStats.bookProgress,
+    lingqStats.lessonId,
+    lingqStats.lessonUrl,
   ]);
   const visibleItems = useMemo(
     () => getVisibleReadingItems(readingItems, filterKey),
@@ -174,6 +178,15 @@ export default function ReadingTab({
         minHeight: 0,
       }}
     >
+      {isMobile ? (
+        <CurrentlyReadingCard
+          styles={styles}
+          item={currentBook}
+          loading={readingLibrary.loading}
+          isMobile={isMobile}
+        />
+      ) : null}
+
       <ReadingLibraryPanel
         styles={styles}
         items={visibleItems}
@@ -192,7 +205,14 @@ export default function ReadingTab({
       />
 
       <div ref={rightColumnRef} style={{ ...styles.sideColumn, minHeight: 0 }}>
-        <CurrentlyReadingCard styles={styles} item={currentBook} loading={readingLibrary.loading} />
+        {!isMobile ? (
+          <CurrentlyReadingCard
+            styles={styles}
+            item={currentBook}
+            loading={readingLibrary.loading}
+            isMobile={isMobile}
+          />
+        ) : null}
         <ReadingProgressCard
           styles={styles}
           isCompact={isCompact}

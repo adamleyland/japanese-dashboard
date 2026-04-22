@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { BookOpenText, BookmarkCheck } from "lucide-react";
 import ReadingCoverArtwork from "@/components/features/reading/components/ReadingCoverArtwork";
 import ReadingEmptyState from "@/components/features/reading/components/ReadingEmptyState";
 import { formatReadingPercent } from "@/lib/reading/normalizers";
 
-export default function CurrentlyReadingCard({ styles, item, loading }) {
+export default function CurrentlyReadingCard({ styles, item, loading, isMobile = false }) {
+  const [coverHovered, setCoverHovered] = useState(false);
+
   if (!item && !loading) {
     return (
       <div style={styles.sideCard}>
@@ -16,6 +19,15 @@ export default function CurrentlyReadingCard({ styles, item, loading }) {
       </div>
     );
   }
+
+  const lessonUrl =
+    typeof item?.lessonUrl === "string" && item.lessonUrl.trim() ? item.lessonUrl.trim() : null;
+  const coverLabel = item?.title
+    ? `Open ${item.title} in LingQ`
+    : "Open current LingQ lesson";
+  const coverContent = (
+    <ReadingCoverArtwork item={item} width={94} borderRadius={18} />
+  );
 
   return (
     <div style={styles.sideCard}>
@@ -39,7 +51,36 @@ export default function CurrentlyReadingCard({ styles, item, loading }) {
               alignItems: "center",
             }}
           >
-            <ReadingCoverArtwork item={item} width={94} borderRadius={18} />
+            {lessonUrl ? (
+              <a
+                href={lessonUrl}
+                target={isMobile ? undefined : "_blank"}
+                rel={isMobile ? undefined : "noopener noreferrer"}
+                aria-label={coverLabel}
+                title={coverLabel}
+                onMouseEnter={() => setCoverHovered(true)}
+                onMouseLeave={() => setCoverHovered(false)}
+                onFocus={() => setCoverHovered(true)}
+                onBlur={() => setCoverHovered(false)}
+                style={{
+                  display: "inline-flex",
+                  width: "fit-content",
+                  borderRadius: "18px",
+                  overflow: "hidden",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                  boxShadow: coverHovered
+                    ? "0 10px 24px rgba(59,130,246,0.24)"
+                    : "0 0 0 rgba(59,130,246,0)",
+                  transform: coverHovered ? "translateY(-1px)" : "translateY(0)",
+                  transition: "transform 160ms ease, box-shadow 160ms ease",
+                }}
+              >
+                {coverContent}
+              </a>
+            ) : (
+              coverContent
+            )}
 
             <div style={{ display: "grid", gap: "8px", minWidth: 0 }}>
               <div style={{ minWidth: 0 }}>

@@ -1,4 +1,5 @@
 import rakutenImageUtils from "@/lib/rakutenImage";
+import { buildLingQLessonUrl } from "@/lib/reading/lingq";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,6 +18,8 @@ export async function GET() {
       chapterTitle: null,
       bookImage: null,
       bookProgress: null,
+      lessonId: null,
+      lessonUrl: null,
       source: "lingq",
       fetchedAt: new Date().toISOString(),
     });
@@ -55,6 +58,7 @@ export async function GET() {
     const recent = await recentRes.json();
     const lesson = recent?.results?.[0];
     const collectionId = lesson?.collectionId;
+    const lessonId = Number(lesson?.contentId);
     let collection = null;
 
     if (collectionId) {
@@ -91,6 +95,13 @@ export async function GET() {
         typeof collection?.completedRatio === "number"
           ? collection.completedRatio
           : null,
+      lessonId: Number.isFinite(lessonId) && lessonId > 0 ? lessonId : null,
+      lessonUrl: buildLingQLessonUrl({
+        lessonId,
+        language: "ja",
+        displayLanguage: "en",
+        lessonUrl: lesson?.url ?? lesson?.lessonUrl ?? null,
+      }),
       source: "lingq",
       fetchedAt: new Date().toISOString(),
     });

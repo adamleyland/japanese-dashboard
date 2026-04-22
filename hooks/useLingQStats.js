@@ -15,6 +15,8 @@ export default function useLingQStats(options = {}) {
     chapterTitle: null,
     bookImage: null,
     bookProgress: null,
+    lessonId: null,
+    lessonUrl: null,
     loading: enabled,
     error: null,
     source: "lingq",
@@ -73,6 +75,10 @@ export default function useLingQStats(options = {}) {
               : null,
           bookProgress:
             typeof payload?.bookProgress === "number" ? payload.bookProgress : null,
+          lessonId:
+            typeof payload?.lessonId === "number" ? payload.lessonId : null,
+          lessonUrl:
+            typeof payload?.lessonUrl === "string" ? payload.lessonUrl : null,
           loading: false,
           error: null,
           source: payload?.source || "lingq",
