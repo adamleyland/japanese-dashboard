@@ -23,19 +23,47 @@ export function PillSliderToggle({
   width = 110,
   size = "md",
   iconOnly = false,
+  sliderBackground = "var(--app-pill-slider)",
+  activeColor = "var(--app-text)",
+  inactiveColor = "var(--app-text-muted)",
+  trackBackground = "var(--app-pill-track)",
+  borderColor = "var(--app-border)",
 }) {
-  const activeIndex = Math.max(0, options.findIndex((o) => o.value === value));
+  const activeIndexRaw = options.findIndex((o) => o.value === value);
+  const activeIndex = Math.max(0, activeIndexRaw);
+  const hasActiveOption = activeIndexRaw >= 0;
   const inset = 4;
   const toggleHeight = size === "sm" ? 38 : 44;
 
   return (
-    <div style={localStyles.pillToggleBase(width, toggleHeight, inset)}>
-      <div style={localStyles.pillToggleSlider(activeIndex, options.length, inset)} />
+    <div
+      style={localStyles.pillToggleBase(
+        width,
+        toggleHeight,
+        inset,
+        trackBackground,
+        borderColor,
+      )}
+    >
+      <div
+        style={localStyles.pillToggleSlider(
+          activeIndex,
+          options.length,
+          inset,
+          sliderBackground,
+          hasActiveOption,
+        )}
+      />
       {options.map((option) => (
         <button
           key={option.value}
           onClick={() => onChange(option.value)}
-          style={localStyles.pillToggleButton(option.value === value, toggleHeight)}
+          style={localStyles.pillToggleButton(
+            option.value === value,
+            toggleHeight,
+            activeColor,
+            inactiveColor,
+          )}
           aria-label={option.ariaLabel || option.label}
           title={option.ariaLabel || option.label}
         >
@@ -793,32 +821,33 @@ const localStyles = {
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
-  pillToggleBase: (w, h, i) => ({
+  pillToggleBase: (w, h, i, trackBackground, borderColor) => ({
     position: "relative",
     display: "flex",
     alignItems: "center",
-    width: `${w}px`,
+    width: typeof w === "number" ? `${w}px` : w,
     maxWidth: "100%",
     height: `${h}px`,
     padding: `${i}px`,
-    background: "var(--app-pill-track)",
-    border: "1px solid var(--app-border)",
+    background: trackBackground,
+    border: `1px solid ${borderColor}`,
     borderRadius: "999px",
     boxSizing: "border-box",
   }),
-  pillToggleSlider: (idx, cnt, i) => ({
+  pillToggleSlider: (idx, cnt, i, sliderBackground, hasActiveOption) => ({
     position: "absolute",
     top: `${i}px`,
     bottom: `${i}px`,
     left: `calc(${i}px + (${idx} * (100% - ${i * 2}px) / ${cnt}))`,
     width: `calc((100% - ${i * 2}px) / ${cnt})`,
     borderRadius: "999px",
-    background: "var(--app-pill-slider)",
+    background: sliderBackground,
     boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
     transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+    opacity: hasActiveOption ? 1 : 0,
     zIndex: 0,
   }),
-  pillToggleButton: (active, h) => ({
+  pillToggleButton: (active, h, activeColor, inactiveColor) => ({
     flex: 1,
     position: "relative",
     zIndex: 1,
@@ -831,7 +860,7 @@ const localStyles = {
     justifyContent: "center",
     fontSize: h < 40 ? "12px" : "13px",
     fontWeight: 600,
-    color: active ? "var(--app-text)" : "var(--app-text-muted)",
+    color: active ? activeColor : inactiveColor,
     transition: "color 0.2s ease",
   }),
   progressRing: { transform: "rotate(-90deg)" },

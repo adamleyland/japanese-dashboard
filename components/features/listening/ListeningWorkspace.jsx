@@ -18,6 +18,7 @@ import {
   ToggleRight,
   Ear,
 } from "lucide-react";
+import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
 import ListeningSourceToggle from "@/components/features/listening/ListeningSourceToggle";
 import AudiobookWorkspace from "@/components/features/listening/audiobooks/AudiobookWorkspace";
 
@@ -46,6 +47,7 @@ export default function ListeningWorkspace({
   skipCurrentVideo,
   workspaceTab,
   setWorkspaceTab,
+  youtubeVideoProgress = 0,
   onToggleYoutubeConnection,
   onTogglePlayback,
   isPlayerPlaying,
@@ -74,6 +76,10 @@ export default function ListeningWorkspace({
   ];
   const discoverFilters = ["ゲーム", "æ—…è¡Œ", "æ—¥æœ¬èªž"];
   const visibleQueueIndex = queueTotal ? queueIndex + 1 : 0;
+  const clampedYoutubeVideoProgress = Math.max(
+    0,
+    Math.min(1, Number(youtubeVideoProgress) || 0),
+  );
 
   const visibleChannels = useMemo(() => {
     const normalizedQuery = channelSearch.trim().toLowerCase();
@@ -104,7 +110,7 @@ export default function ListeningWorkspace({
     background: active ? "var(--app-selected-surface)" : "transparent",
     color: active ? "var(--app-selected-text)" : "var(--app-text-muted)",
     borderRadius: "999px",
-    padding: isMobile ? "10px" : "8px 14px",
+    padding: "8px 14px",
     fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
@@ -113,9 +119,7 @@ export default function ListeningWorkspace({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: isMobile ? 0 : "8px",
-    flex: isMobile ? "1 1 0" : "0 0 auto",
-    minWidth: 0,
+    gap: "8px",
   });
 
   const accountCardStyle = {
@@ -534,6 +538,10 @@ export default function ListeningWorkspace({
                   </button>
                 </div>
 
+                <div style={styles.playerProgressTrack} aria-hidden="true">
+                  <div style={styles.playerProgressFill(clampedYoutubeVideoProgress)} />
+                </div>
+
                 <div style={inlinePlayerControlsWrapStyle}>
                   <div style={inlinePlayerMetaWrapStyle}>
                     {renderPlayerAvatar(40)}
@@ -554,22 +562,44 @@ export default function ListeningWorkspace({
 
             {!focusMode && (
               <div style={styles.innerTabsWrap}>
-                <div style={segmentedTrackStyle}>
-                  {panelItems.map((item) => (
-                    <button
-                      key={item.key}
-                      style={segmentedButtonStyle(workspaceTab === item.key)}
-                      onClick={() =>
-                        setWorkspaceTab((currentTab) => (currentTab === item.key ? null : item.key))
-                      }
-                      aria-label={item.label}
-                      title={item.label}
-                    >
-                      <item.icon size={15} />
-                      {!isMobile ? item.label : null}
-                    </button>
-                  ))}
-                </div>
+                {isMobile ? (
+                  <PillSliderToggle
+                    value={workspaceTab}
+                    onChange={(nextTab) =>
+                      setWorkspaceTab((currentTab) => (currentTab === nextTab ? null : nextTab))
+                    }
+                    options={panelItems.map((item) => ({
+                      value: item.key,
+                      label: item.label,
+                      icon: item.icon,
+                      ariaLabel: item.label,
+                    }))}
+                    width="100%"
+                    size="sm"
+                    iconOnly
+                    sliderBackground="var(--app-selected-surface)"
+                    activeColor="var(--app-selected-text)"
+                    inactiveColor="var(--app-text-muted)"
+                    borderColor="var(--app-border-soft)"
+                  />
+                ) : (
+                  <div style={segmentedTrackStyle}>
+                    {panelItems.map((item) => (
+                      <button
+                        key={item.key}
+                        style={segmentedButtonStyle(workspaceTab === item.key)}
+                        onClick={() =>
+                          setWorkspaceTab((currentTab) => (currentTab === item.key ? null : item.key))
+                        }
+                        aria-label={item.label}
+                        title={item.label}
+                      >
+                        <item.icon size={15} />
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {workspaceTab && (
                   <div
@@ -889,6 +919,10 @@ export default function ListeningWorkspace({
                   >
                     <Minimize2 size={isMobile ? 18 : 14} />
                   </button>
+                </div>
+
+                <div style={styles.playerProgressTrack} aria-hidden="true">
+                  <div style={styles.playerProgressFill(clampedYoutubeVideoProgress)} />
                 </div>
 
                 <div style={focusControlRowStyle}>

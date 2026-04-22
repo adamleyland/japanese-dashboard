@@ -4,14 +4,62 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ListeningWorkspace from "@/components/features/listening/ListeningWorkspace";
 import TimerStopwatch from "@/components/features/listening/TimerStopwatch";
 import ListeningVisualization from "@/components/features/listening/ListeningVisualization";
+import {
+  fetchProfileListeningGoal,
+  persistProfileListeningGoal,
+} from "@/lib/profiles";
 import { useYoutubeSession } from "@/hooks/useYoutubeSession";
 import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 
+const DEFAULT_LISTENING_GOAL = 1200;
 const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
+
+function normalizeListeningGoalInput(value, fallback = DEFAULT_LISTENING_GOAL) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return fallback;
+  }
+
+  return numericValue;
+}
+
+function parseStoredListeningGoal(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return null;
+  }
+
+  return numericValue;
+}
+
+function getListeningGoalStorageKey(userId = "") {
+  return userId ? `${LISTENING_GOAL_STORAGE_KEY}:${userId}` : LISTENING_GOAL_STORAGE_KEY;
+}
+
+function readCachedListeningGoal(userId = "") {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return parseStoredListeningGoal(
+    window.localStorage.getItem(getListeningGoalStorageKey(userId)),
+  );
+}
+
+function writeCachedListeningGoal(value, userId = "") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storageKey = getListeningGoalStorageKey(userId);
+  const normalizedValue = normalizeListeningGoalInput(value, DEFAULT_LISTENING_GOAL);
+
+  window.localStorage.setItem(storageKey, String(normalizedValue));
+}
 
 function readYoutubeWorkspaceResumeSnapshot() {
   if (typeof window === "undefined") {
@@ -47,6 +95,7 @@ export default function ListeningTab({
   isCompact,
   formatClock,
   authUserId,
+  authResolved,
   audiobooksData,
   audiobooksLoading,
   audiobooksError,
@@ -86,7 +135,8 @@ export default function ListeningTab({
   const [timerDurationSeconds, setTimerDurationSeconds] = useState(300);
   const [timerSeconds, setTimerSeconds] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [listeningGoal, setListeningGoal] = useState(1200);
+  const [listeningGoal, setListeningGoalState] = useState(DEFAULT_LISTENING_GOAL);
+  const [youtubeVideoProgress, setYoutubeVideoProgress] = useState(0);
   const [workspaceSource, setWorkspaceSource] = useState("youtube");
   const [showVisualization] = useState(true);
   const [vizMode, setVizMode] = useState("bar");
@@ -122,6 +172,12 @@ export default function ListeningTab({
   const playbackListRef = useRef(playbackList);
   const selectedVideoIdRef = useRef(safeVideoId);
   const selectedChannelIdRef = useRef(selectedVideo?.channelId || null);
+  const authUserIdRef = useRef(authUserId);
+  const listeningGoalRef = useRef(listeningGoal);
+  const listeningGoalRequestRef = useRef(0);
+  const listeningGoalEditVersionRef = useRef(0);
+  const resolvedListeningGoalUserRef = useRef(null);
+  const youtubeVideoProgressRef = useRef(0);
   const playbackResumeRef = useRef({
     videoId: playbackResumeVideoId,
     currentTime: playbackResumeTime,
@@ -129,19 +185,56 @@ export default function ListeningTab({
 
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
 
+  const setYoutubeVideoProgressSafely = useCallback((nextValue) => {
+    const normalizedProgress = Math.max(0, Math.min(1, Number(nextValue) || 0));
+
+    if (Math.abs(youtubeVideoProgressRef.current - normalizedProgress) < 0.002) {
+      return;
+    }
+
+    youtubeVideoProgressRef.current = normalizedProgress;
+    setYoutubeVideoProgress(normalizedProgress);
+  }, []);
+
+  const setListeningGoal = useCallback(
+    (nextValueOrUpdater, { source = "user", userIdOverride } = {}) => {
+      const previousGoal = listeningGoalRef.current;
+      const rawNextGoal =
+        typeof nextValueOrUpdater === "function"
+          ? nextValueOrUpdater(previousGoal)
+          : nextValueOrUpdater;
+      const nextGoal = normalizeListeningGoalInput(rawNextGoal, previousGoal);
+
+      if (Math.abs(previousGoal - nextGoal) < 0.000001) {
+        return;
+      }
+
+      listeningGoalRef.current = nextGoal;
+      setListeningGoalState(nextGoal);
+
+      const targetUserId =
+        typeof userIdOverride === "string" ? userIdOverride : authUserIdRef.current || "";
+      writeCachedListeningGoal(nextGoal, targetUserId);
+
+      if (source !== "hydrate") {
+        listeningGoalEditVersionRef.current += 1;
+      }
+
+      if (source === "user" && authResolved && targetUserId) {
+        void persistProfileListeningGoal(targetUserId, nextGoal);
+      }
+    },
+    [authResolved],
+  );
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
-    const storedListeningGoal = Number(window.localStorage.getItem(LISTENING_GOAL_STORAGE_KEY));
     const storedWorkspaceSource = window.localStorage.getItem(LISTENING_SOURCE_STORAGE_KEY);
     const storedSettingsOpen =
       window.localStorage.getItem(LISTENING_GOAL_SETTINGS_STORAGE_KEY) === "true";
-
-    if (Number.isFinite(storedListeningGoal) && storedListeningGoal > 0) {
-      setListeningGoal(storedListeningGoal);
-    }
 
     if (storedWorkspaceSource === "audiobooks") {
       setWorkspaceSource("audiobooks");
@@ -150,6 +243,93 @@ export default function ListeningTab({
     setSettingsOpen(storedSettingsOpen);
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    authUserIdRef.current = authUserId;
+  }, [authUserId]);
+
+  useEffect(() => {
+    listeningGoalRef.current = listeningGoal;
+  }, [listeningGoal]);
+
+  useEffect(() => {
+    if (!authResolved) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const requestId = ++listeningGoalRequestRef.current;
+    const startingEditVersion = listeningGoalEditVersionRef.current;
+    const previousResolvedUserId = resolvedListeningGoalUserRef.current;
+
+    resolvedListeningGoalUserRef.current = authUserId || null;
+
+    if (!authUserId) {
+      const anonymousGoal = readCachedListeningGoal("") ?? DEFAULT_LISTENING_GOAL;
+      setListeningGoal(anonymousGoal, {
+        source: "hydrate",
+        userIdOverride: "",
+      });
+      return () => {
+        isActive = false;
+      };
+    }
+
+    const cachedListeningGoal = readCachedListeningGoal(authUserId);
+    const isUserSwitch =
+      Boolean(previousResolvedUserId) && previousResolvedUserId !== authUserId;
+
+    if (cachedListeningGoal !== null) {
+      setListeningGoal(cachedListeningGoal, {
+        source: "hydrate",
+        userIdOverride: authUserId,
+      });
+    } else if (isUserSwitch) {
+      setListeningGoal(DEFAULT_LISTENING_GOAL, {
+        source: "hydrate",
+        userIdOverride: authUserId,
+      });
+    }
+
+    const hydrateListeningGoal = async () => {
+      const profileListeningGoal = await fetchProfileListeningGoal(authUserId);
+
+      if (!isActive || listeningGoalRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (listeningGoalEditVersionRef.current !== startingEditVersion) {
+        console.info("[Listening Goal] Skipping stale profile hydration after a newer local edit", {
+          userId: authUserId,
+          requestId,
+          startingEditVersion,
+          latestEditVersion: listeningGoalEditVersionRef.current,
+        });
+        return;
+      }
+
+      if (profileListeningGoal !== null) {
+        setListeningGoal(profileListeningGoal, {
+          source: "hydrate",
+          userIdOverride: authUserId,
+        });
+        return;
+      }
+
+      if (cachedListeningGoal === null) {
+        console.info("[Listening Goal] No saved profile goal found; keeping current fallback", {
+          userId: authUserId,
+          fallbackGoal: listeningGoalRef.current,
+        });
+      }
+    };
+
+    void hydrateListeningGoal();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authResolved, authUserId, setListeningGoal]);
 
   useEffect(() => {
     playbackListRef.current = playbackList;
@@ -285,6 +465,55 @@ export default function ListeningTab({
 
     return player.getCurrentTime() || 0;
   }, []);
+
+  const syncYoutubeVideoProgress = useCallback(() => {
+    const player = playerRef.current;
+    if (
+      !player ||
+      !playerReadyRef.current ||
+      typeof player.getCurrentTime !== "function" ||
+      typeof player.getDuration !== "function"
+    ) {
+      setYoutubeVideoProgressSafely(0);
+      return 0;
+    }
+
+    const duration = Math.max(0, Number(player.getDuration() || 0));
+    if (!duration) {
+      setYoutubeVideoProgressSafely(0);
+      return 0;
+    }
+
+    const currentTime = Math.max(0, Number(player.getCurrentTime() || 0));
+    const progressRatio = Math.max(0, Math.min(1, currentTime / duration));
+    setYoutubeVideoProgressSafely(progressRatio);
+    return progressRatio;
+  }, [setYoutubeVideoProgressSafely]);
+
+  useEffect(() => {
+    if (!isYoutubeMode || !playerCanMount) {
+      setYoutubeVideoProgressSafely(0);
+      return undefined;
+    }
+
+    syncYoutubeVideoProgress();
+
+    const progressTimer = window.setInterval(
+      syncYoutubeVideoProgress,
+      isPlayerPlaying ? 200 : 500,
+    );
+
+    return () => {
+      window.clearInterval(progressTimer);
+    };
+  }, [
+    isPlayerPlaying,
+    isYoutubeMode,
+    playerCanMount,
+    safeVideoId,
+    setYoutubeVideoProgressSafely,
+    syncYoutubeVideoProgress,
+  ]);
 
   const isPlayerCurrentlyPlaying = useCallback(() => {
     const player = playerRef.current;
@@ -794,6 +1023,7 @@ export default function ListeningTab({
         isPlaying: isPlayerCurrentlyPlaying(),
         playbackStatus: typeof playerStateCode === "number" ? String(playerStateCode) : "unknown",
       });
+      syncYoutubeVideoProgress();
     };
 
     const goNextVideo = () => {
@@ -924,6 +1154,9 @@ export default function ListeningTab({
       });
       pendingRestoreRef.current = null;
       applyPlaybackSnapshot(nextSnapshot);
+      queueMicrotask(() => {
+        syncYoutubeVideoProgress();
+      });
     };
 
     const mountPlayer = () => {
@@ -1023,6 +1256,7 @@ export default function ListeningTab({
     setPlaybackState,
     setSelectedVideoId,
     syncPlaybackSession,
+    syncYoutubeVideoProgress,
     youtubeConnected,
   ]);
 
@@ -1076,11 +1310,6 @@ export default function ListeningTab({
 
     return () => clearInterval(timer);
   }, [roundToTenth, stopwatchRunning]);
-
-  useEffect(() => {
-    if (!isMounted) return;
-    window.localStorage.setItem(LISTENING_GOAL_STORAGE_KEY, String(listeningGoal));
-  }, [isMounted, listeningGoal]);
 
   useEffect(() => {
     if (!isMounted) return;
@@ -1220,6 +1449,7 @@ export default function ListeningTab({
         skipCurrentVideo={skipCurrentVideo}
         workspaceTab={workspaceTab}
         setWorkspaceTab={setWorkspaceTab}
+        youtubeVideoProgress={youtubeVideoProgress}
         playerHostRef={playerHostRef}
         focusPlayerHostRef={focusPlayerHostRef}
         onToggleYoutubeConnection={() => {

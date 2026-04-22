@@ -963,6 +963,7 @@ export default function Home() {
               isCompact={isCompact}
               formatClock={formatClock}
               authUserId={authUserId}
+              authResolved={!authLoading}
               audiobooksData={audiobooksData}
               audiobooksLoading={audiobooksLoading}
               audiobooksError={audiobooksError}
@@ -1776,6 +1777,21 @@ const styles = {
     height: "100%",
     border: "none",
   },
+  playerProgressTrack: {
+    position: "relative",
+    height: "4px",
+    borderRadius: "999px",
+    overflow: "hidden",
+    background: "var(--app-progress-track)",
+  },
+  playerProgressFill: (progress) => ({
+    position: "absolute",
+    inset: 0,
+    width: `${Math.max(0, Math.min(100, progress * 100))}%`,
+    borderRadius: "999px",
+    background: "rgba(234, 179, 8, 0.9)",
+    transition: "width 180ms linear",
+  }),
   playerControlColumn: {
     display: "grid",
     gap: "12px",
