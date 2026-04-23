@@ -13,6 +13,7 @@ const AUDIOBOOK_PLAYER_STORAGE_KEY = "jp_audiobook_player_state";
 const AUDIOBOOK_PLAYER_STORAGE_KEY_LEGACY = AUDIOBOOK_PLAYER_STORAGE_KEY;
 const AUDIOBOOK_PLAYER_GUEST_SCOPE = "guest";
 const audiobookPlayerSessionCache = {};
+const AUDIOBOOK_PLAYER_DEBUG = true;
 const AUDIOBOOK_GRADIENTS = [
   "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
   "linear-gradient(135deg, #0ea5e9 0%, #4f46e5 100%)",
@@ -410,6 +411,14 @@ function clampProgress(progressSeconds, durationSeconds) {
   return Math.max(0, Math.min(durationSeconds, progressSeconds || 0));
 }
 
+function logAudiobookDebug(event, payload = {}) {
+  if (!AUDIOBOOK_PLAYER_DEBUG || typeof console === "undefined") {
+    return;
+  }
+
+  console.info(`[AudiobookPlayer] ${event}`, payload);
+}
+
 function parseStoredTimestamp(value) {
   if (typeof value !== "string" || !value.trim()) {
     return null;
@@ -629,6 +638,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
   const audioRef = useRef(null);
   const loadedAudioBookIdRef = useRef(null);
   const pendingSeekRef = useRef(null);
+  const sourceSwitchRef = useRef(null);
   const defaultProgressMapRef = useRef(defaultProgressMap);
   const defaultDurationMapRef = useRef(defaultDurationMap);
   const progressMapRef = useRef(defaultProgressMap);
@@ -896,6 +906,12 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       const nextProgressMap = {};
       const nextDurationMap = {};
       const nextUpdatedAtMap = {};
+      logAudiobookDebug("hydrate-local-progress-start", {
+        storageKey,
+        currentBookId: storedState.currentBookId,
+        lastOpenedBookId: storedState.lastOpenedBookId,
+        progressEntryCount: Object.keys(nextProgressEntries).length,
+      });
 
       Object.entries(nextProgressEntries).forEach(([audiobookId, entry]) => {
         nextProgressMap[audiobookId] = Math.max(0, Number(entry?.currentTime || 0));
@@ -928,6 +944,12 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       if (storedState.currentBookId) {
         setPlaybackState((currentValue) => (currentValue === "idle" ? "paused" : currentValue));
       }
+      logAudiobookDebug("hydrate-local-progress-complete", {
+        storageKey,
+        currentBookId: storedState.currentBookId,
+        lastOpenedBookId: storedState.lastOpenedBookId,
+        nextProgressMap,
+      });
     } catch {
       // Ignore invalid local state and fall back to deterministic defaults.
     } finally {
@@ -1016,6 +1038,12 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
       progressMapRef.current = nextProgressMap;
       durationMapRef.current = nextDurationMap;
+      logAudiobookDebug("write-live-progress-snapshot", {
+        audiobookId,
+        progressSeconds: safeProgress,
+        durationSeconds: safeDuration,
+        updatedAt: normalizedTimestamp,
+      });
 
       writeStoredPlayerState(
         storageKey,
@@ -1057,6 +1085,13 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         Math.abs(lastSnapshot.durationSeconds - roundedDuration) < 5 &&
         (!markCurrent || markedCurrentBookIdRef.current === audiobookId)
       ) {
+        logAudiobookDebug("skip-persist-progress", {
+          audiobookId,
+          progressSeconds: roundedProgress,
+          durationSeconds: roundedDuration,
+          markCurrent,
+          force,
+        });
         return;
       }
 
@@ -1064,6 +1099,13 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       setSavingProgress(true);
 
       try {
+        logAudiobookDebug("persist-progress-start", {
+          audiobookId,
+          progressSeconds: roundedProgress,
+          durationSeconds: roundedDuration,
+          markCurrent,
+          force,
+        });
         if (markCurrent) {
           await clearOtherCurrentAudiobooks(userId, audiobookId);
           markedCurrentBookIdRef.current = audiobookId;
@@ -1084,6 +1126,11 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
           progressSeconds: roundedProgress,
           durationSeconds: roundedDuration,
         };
+        logAudiobookDebug("persist-progress-complete", {
+          audiobookId,
+          progressSeconds: roundedProgress,
+          durationSeconds: roundedDuration,
+        });
       } catch (error) {
         console.error("Failed to persist audiobook progress", {
           userId,
@@ -1116,6 +1163,10 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         if (cancelled) {
           return;
         }
+        logAudiobookDebug("hydrate-remote-progress-start", {
+          userId,
+          rowCount: rows.length,
+        });
 
         const nextProgressEntries = {};
         const nextDurationEntries = {};
@@ -1194,6 +1245,12 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         if (preferredCurrentId) {
           setPlaybackState((currentValue) => (currentValue === "idle" ? "paused" : currentValue));
         }
+        logAudiobookDebug("hydrate-remote-progress-complete", {
+          userId,
+          preferredCurrentId,
+          nextProgressEntries,
+          nextDurationEntries,
+        });
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to restore audiobook progress", error);
@@ -1223,9 +1280,27 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         return;
       }
 
+      if (
+        sourceSwitchRef.current?.bookId === activeBookId &&
+        Number.isFinite(pendingSeekRef.current)
+      ) {
+        logAudiobookDebug("skip-progress-sync-during-source-switch", {
+          audiobookId: activeBookId,
+          pendingSeek: pendingSeekRef.current,
+          currentTime: audio.currentTime,
+        });
+        return;
+      }
+
       const activeBook = currentBookRef.current;
 
       const nextProgress = clampProgress(audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : Infinity);
+      logAudiobookDebug("sync-progress", {
+        audiobookId: activeBookId,
+        currentTime: audio.currentTime,
+        nextProgress,
+        duration: audio.duration,
+      });
       markLocalProgressUpdated(activeBookId);
       setProgressMap((currentMap) => {
         const currentProgress = currentMap[activeBookId] ?? 0;
@@ -1246,6 +1321,11 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       if (!activeBookId || !Number.isFinite(audio.duration) || audio.duration <= 0) {
         return;
       }
+
+      logAudiobookDebug("sync-duration", {
+        audiobookId: activeBookId,
+        duration: audio.duration,
+      });
 
       setDurationMap((currentMap) => {
         if (currentMap[activeBookId] === audio.duration) {
@@ -1274,9 +1354,20 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     const handleLoadedMetadata = () => {
       const nextSeek = pendingSeekRef.current;
+      const activeBookId = currentBookIdRef.current;
+      logAudiobookDebug("loaded-metadata", {
+        audiobookId: activeBookId,
+        pendingSeek: nextSeek,
+        duration: audio.duration,
+      });
       syncDuration();
 
       if (Number.isFinite(nextSeek)) {
+        logAudiobookDebug("apply-initial-current-time", {
+          audiobookId: activeBookId,
+          requestedSeek: nextSeek,
+          duration: audio.duration,
+        });
         audio.currentTime = clampProgress(
           nextSeek,
           Number.isFinite(audio.duration) ? audio.duration : Number.POSITIVE_INFINITY,
@@ -1284,6 +1375,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         pendingSeekRef.current = null;
       }
 
+      sourceSwitchRef.current = null;
       syncProgress();
     };
 
@@ -1295,6 +1387,18 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     const handlePause = () => {
       if (audio.ended) {
+        return;
+      }
+
+      if (
+        sourceSwitchRef.current?.bookId === currentBookIdRef.current &&
+        Number.isFinite(pendingSeekRef.current)
+      ) {
+        logAudiobookDebug("skip-pause-sync-during-source-switch", {
+          audiobookId: currentBookIdRef.current,
+          pendingSeek: pendingSeekRef.current,
+          currentTime: audio.currentTime,
+        });
         return;
       }
 
@@ -1311,6 +1415,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     const handleEnded = () => {
       const activeBookId = currentBookIdRef.current;
+      sourceSwitchRef.current = null;
       if (activeBookId && Number.isFinite(audio.duration) && audio.duration > 0) {
         markLocalProgressUpdated(activeBookId);
         setProgressMap((currentMap) => ({
@@ -1336,6 +1441,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     audio.addEventListener("ended", handleEnded);
 
     return () => {
+      sourceSwitchRef.current = null;
       audio.pause();
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.removeEventListener("durationchange", syncDuration);
@@ -1368,21 +1474,47 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       progressMap[currentBook.id] ?? currentBook.progressSeconds,
       currentBook.durationSeconds,
     );
+    logAudiobookDebug("mount-active-book", {
+      audiobookId: currentBook.id,
+      targetProgress,
+      currentBookProgressSeconds: currentBook.progressSeconds,
+      progressMapValue: progressMap[currentBook.id],
+      durationSeconds: currentBook.durationSeconds,
+      loadedAudioBookId: loadedAudioBookIdRef.current,
+    });
 
     if (loadedAudioBookIdRef.current !== currentBook.id) {
-      audio.pause();
+      sourceSwitchRef.current = {
+        bookId: currentBook.id,
+        targetProgress,
+        previousBookId: loadedAudioBookIdRef.current,
+      };
       pendingSeekRef.current = targetProgress;
+      logAudiobookDebug("switch-audio-source", {
+        audiobookId: currentBook.id,
+        targetProgress,
+        previousBookId: loadedAudioBookIdRef.current,
+      });
+      audio.pause();
       audio.src = currentBook.audioUrl || "";
       loadedAudioBookIdRef.current = currentBook.id;
 
       if (currentBook.audioUrl) {
         audio.load();
+      } else {
+        sourceSwitchRef.current = null;
+        pendingSeekRef.current = null;
       }
 
       return;
     }
 
     if (Math.abs(audio.currentTime - targetProgress) > 0.75) {
+      logAudiobookDebug("sync-audio-current-time-to-target", {
+        audiobookId: currentBook.id,
+        audioCurrentTime: audio.currentTime,
+        targetProgress,
+      });
       audio.currentTime = targetProgress;
     }
   }, [currentBook, progressMap]);
@@ -1554,11 +1686,18 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     [persistProgress, userId, writeLiveProgressSnapshot],
   );
 
-  const loadBook = useCallback((book, nextPlaybackState = "loaded") => {
+  const loadBook = useCallback((book, nextPlaybackState = "loaded", source = "unknown") => {
     if (!book?.id) {
       return;
     }
 
+    logAudiobookDebug("select-book", {
+      source,
+      audiobookId: book.id,
+      progressSeconds: book.progressSeconds,
+      durationSeconds: book.durationSeconds,
+      progressPercent: book.progressPercent,
+    });
     setActiveBook(book);
     setCurrentBookId(book.id);
     setLastOpenedBookId(book.id);
@@ -1638,7 +1777,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       return;
     }
 
-    loadBook(activeBook, nextPlaybackState);
+    loadBook(activeBook, nextPlaybackState, "currently-listening");
   }, [activeBook, loadBook]);
 
   const playFromStart = useCallback(() => {

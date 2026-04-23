@@ -172,7 +172,7 @@ export default function AudiobookWorkspace({
           ) : (
             <AudiobookLibrary
               books={books}
-              onSelect={loadBook}
+              onSelect={(book) => loadBook(book, "loaded", "library")}
               hint={
                 usingFetchedBooks
                   ? "Browse your audiobook library"
@@ -248,7 +248,7 @@ export default function AudiobookWorkspace({
               <AudiobookLibrary
                 books={books}
                 onSelect={(book) => {
-                  loadBook(book);
+                  loadBook(book, "loaded", "library");
                   setIsLibraryOpen(false);
                 }}
                 hint={
