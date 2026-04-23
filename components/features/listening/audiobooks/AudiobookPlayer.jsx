@@ -168,21 +168,23 @@ export default function AudiobookPlayer({
   const actionRowStyle = isMobile
     ? {
         ...styles.actionRow,
-        gap: "8px",
+        gap: "14px",
         flexWrap: "nowrap",
+        justifyContent: "space-between",
       }
     : styles.actionRow;
   const primaryButtonStyle = isMobile
-    ? {
-        ...styles.primaryButton(!hasPlayableAudio),
+    ? styles.mobilePrimaryControlButton(!hasPlayableAudio)
+    : styles.primaryButton(!hasPlayableAudio);
+  const jumpControlButtonStyle = isMobile
+    ? styles.mobileInlineControlButton(!hasPlayableAudio)
+    : {
+        ...styles.secondaryIconControlButton(!hasPlayableAudio, false),
         flex: "1 1 0",
         width: "auto",
-        height: "44px",
-        justifyContent: "center",
         minWidth: 0,
-        padding: "0 18px",
-      }
-    : styles.primaryButton(!hasPlayableAudio);
+        padding: "0 16px",
+      };
   const chapterBlockStyle = isMobile
     ? {
         ...styles.chapterBlock,
@@ -341,17 +343,28 @@ export default function AudiobookPlayer({
             )}
           </div>
 
-          <div style={styles.controlsStack}>
+          {isMobile ? (
             <div style={actionRowStyle}>
+              <button
+                type="button"
+                onClick={handleSkipToPreviousChapter}
+                disabled={!hasPlayableAudio || !canSkipToPreviousChapter}
+                style={styles.mobileInlineControlButton(!hasPlayableAudio || !canSkipToPreviousChapter)}
+                aria-label="Go to previous chapter"
+                title="Go to previous chapter"
+              >
+                <SkipBack size={18} />
+              </button>
+
               <button
                 type="button"
                 onClick={() => onSkipBy(-10)}
                 disabled={!hasPlayableAudio}
-                style={styles.secondaryIconControlButton(!hasPlayableAudio, isMobile)}
+                style={jumpControlButtonStyle}
                 aria-label="Skip back 10 seconds"
                 title="Skip back 10 seconds"
               >
-                <RotateCcw size={isMobile ? 18 : 16} />
+                <RotateCcw size={18} />
               </button>
 
               <button
@@ -362,48 +375,98 @@ export default function AudiobookPlayer({
                 aria-label={playing ? "Pause audiobook" : "Play audiobook"}
                 title={playing ? "Pause audiobook" : "Play audiobook"}
               >
-                {playing ? <Pause size={18} /> : <Play size={18} />}
-                {!isMobile ? (playing ? "Pause" : "Play") : null}
+                {playing ? <FilledPauseIcon size={45} /> : <FilledPlayIcon size={45} />}
               </button>
 
               <button
                 type="button"
                 onClick={() => onSkipBy(10)}
                 disabled={!hasPlayableAudio}
-                style={styles.secondaryIconControlButton(!hasPlayableAudio, isMobile)}
+                style={jumpControlButtonStyle}
                 aria-label="Skip forward 10 seconds"
                 title="Skip forward 10 seconds"
               >
-                <RotateCw size={isMobile ? 18 : 16} />
-              </button>
-            </div>
-
-            <div style={styles.chapterActionRow(isMobile)}>
-              <button
-                type="button"
-                onClick={handleSkipToPreviousChapter}
-                disabled={!hasPlayableAudio || !canSkipToPreviousChapter}
-                style={styles.chapterNavButton(!hasPlayableAudio || !canSkipToPreviousChapter, isMobile)}
-                aria-label="Go to previous chapter"
-                title="Go to previous chapter"
-              >
-                <SkipBack size={16} />
-                Previous chapter
+                <RotateCw size={18} />
               </button>
 
               <button
                 type="button"
                 onClick={handleSkipToNextChapter}
                 disabled={!hasPlayableAudio || !canSkipToNextChapter}
-                style={styles.chapterNavButton(!hasPlayableAudio || !canSkipToNextChapter, isMobile)}
+                style={styles.mobileInlineControlButton(!hasPlayableAudio || !canSkipToNextChapter)}
                 aria-label="Go to next chapter"
                 title="Go to next chapter"
               >
-                Next chapter
-                <SkipForward size={16} />
+                <SkipForward size={18} />
               </button>
             </div>
-          </div>
+          ) : (
+            <div style={styles.controlsStack}>
+              <div style={actionRowStyle}>
+                <button
+                  type="button"
+                  onClick={() => onSkipBy(-10)}
+                  disabled={!hasPlayableAudio}
+                  style={jumpControlButtonStyle}
+                  aria-label="Skip back 10 seconds"
+                  title="Skip back 10 seconds"
+                >
+                  <RotateCcw size={16} />
+                  -10 sec
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onTogglePlayback}
+                  disabled={!hasPlayableAudio}
+                  style={primaryButtonStyle}
+                  aria-label={playing ? "Pause audiobook" : "Play audiobook"}
+                  title={playing ? "Pause audiobook" : "Play audiobook"}
+                >
+                  {playing ? <Pause size={18} /> : <Play size={18} />}
+                  {playing ? "Pause" : "Play"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onSkipBy(10)}
+                  disabled={!hasPlayableAudio}
+                  style={jumpControlButtonStyle}
+                  aria-label="Skip forward 10 seconds"
+                  title="Skip forward 10 seconds"
+                >
+                  <RotateCw size={16} />
+                  +10 sec
+                </button>
+              </div>
+
+              <div style={styles.chapterActionRow(false)}>
+                <button
+                  type="button"
+                  onClick={handleSkipToPreviousChapter}
+                  disabled={!hasPlayableAudio || !canSkipToPreviousChapter}
+                  style={styles.chapterNavButton(!hasPlayableAudio || !canSkipToPreviousChapter, false)}
+                  aria-label="Go to previous chapter"
+                  title="Go to previous chapter"
+                >
+                  <SkipBack size={16} />
+                  Previous chapter
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSkipToNextChapter}
+                  disabled={!hasPlayableAudio || !canSkipToNextChapter}
+                  style={styles.chapterNavButton(!hasPlayableAudio || !canSkipToNextChapter, false)}
+                  aria-label="Go to next chapter"
+                  title="Go to next chapter"
+                >
+                  Next chapter
+                  <SkipForward size={16} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {isMobile ? (
             <button
@@ -566,6 +629,23 @@ export default function AudiobookPlayer({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function FilledPlayIcon({ size = 45 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+    </svg>
+  );
+}
+
+function FilledPauseIcon({ size = 45 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <rect x="6" y="5" width="4.5" height="14" rx="1.2" />
+      <rect x="13.5" y="5" width="4.5" height="14" rx="1.2" />
+    </svg>
   );
 }
 
@@ -881,6 +961,34 @@ const styles = {
     fontSize: "13px",
     fontWeight: 700,
   }),
+  mobilePrimaryControlButton: (disabled) => ({
+    border: "none",
+    background: "transparent",
+    color: "var(--app-selected-text)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    width: "56px",
+    height: "56px",
+    padding: 0,
+    flexShrink: 0,
+  }),
+  mobileInlineControlButton: (disabled) => ({
+    border: "none",
+    background: "transparent",
+    color: "var(--app-text-soft)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    width: "32px",
+    height: "32px",
+    padding: 0,
+    flexShrink: 0,
+  }),
   secondaryIconControlButton: (disabled, mobile) => ({
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
@@ -889,12 +997,15 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    gap: "8px",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
     width: mobile ? "56px" : "48px",
     height: mobile ? "48px" : "48px",
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
     flexShrink: 0,
+    fontSize: "12px",
+    fontWeight: 700,
   }),
   chapterActionRow: (mobile) => ({
     display: "grid",

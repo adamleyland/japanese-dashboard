@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { List, X } from "lucide-react";
 import AudiobookCurrentlyListening from "@/components/features/listening/audiobooks/AudiobookCurrentlyListening";
 import AudiobookLibrary from "@/components/features/listening/audiobooks/AudiobookLibrary";
 import AudiobookPlayer from "@/components/features/listening/audiobooks/AudiobookPlayer";
@@ -37,6 +38,7 @@ export default function AudiobookWorkspace({
     togglePlayback,
   } = useAudiobookPlayer(audiobooksData, authUserId);
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const hasMounted = useSyncExternalStore(
     subscribeToMountState,
     getMountedSnapshot,
@@ -46,9 +48,10 @@ export default function AudiobookWorkspace({
 
   const usingFetchedBooks = Array.isArray(audiobooksData) && audiobooksData.length > 0;
   const showMobilePlayerOverlay = Boolean(isMobile && isPlayerOpen && currentBook && hasMounted);
+  const showMobileLibraryOverlay = Boolean(isMobile && isLibraryOpen && hasMounted);
 
   useEffect(() => {
-    if (!showMobilePlayerOverlay || typeof document === "undefined") {
+    if ((!showMobilePlayerOverlay && !showMobileLibraryOverlay) || typeof document === "undefined") {
       return undefined;
     }
 
@@ -58,7 +61,7 @@ export default function AudiobookWorkspace({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [showMobilePlayerOverlay]);
+  }, [showMobileLibraryOverlay, showMobilePlayerOverlay]);
 
   useEffect(() => {
     const nextSnapshot = {
@@ -151,19 +154,36 @@ export default function AudiobookWorkspace({
               setIsPlayerOpen(true);
             }}
           />
-          <AudiobookLibrary
-            books={books}
-            onSelect={loadBook}
-            hint={
-              usingFetchedBooks
-                ? "Browse your audiobook library"
-                : audiobooksLoading
-                  ? "Loading your audiobook shelf"
-                  : audiobooksError
-                    ? "Showing fallback audiobooks for now"
-                    : undefined
-            }
-          />
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={() => setIsLibraryOpen(true)}
+              style={styles.mobileLibraryLauncher}
+            >
+              <span style={styles.mobileLibraryLauncherLabel}>Library</span>
+
+              <div style={styles.mobileLibraryLauncherMeta}>
+                <span style={styles.mobileLibraryLauncherCount}>{books.length} books</span>
+                <span style={styles.mobileLibraryLauncherIconWrap}>
+                  <List size={18} />
+                </span>
+              </div>
+            </button>
+          ) : (
+            <AudiobookLibrary
+              books={books}
+              onSelect={loadBook}
+              hint={
+                usingFetchedBooks
+                  ? "Browse your audiobook library"
+                  : audiobooksLoading
+                    ? "Loading your audiobook shelf"
+                    : audiobooksError
+                      ? "Showing fallback audiobooks for now"
+                      : undefined
+              }
+            />
+          )}
         </>
       )}
 
@@ -203,6 +223,49 @@ export default function AudiobookWorkspace({
           </div>,
           document.body,
         )}
+
+      {showMobileLibraryOverlay &&
+        createPortal(
+          <div style={styles.mobileLibraryOverlay}>
+            <div style={styles.mobileLibraryBackdrop} onClick={() => setIsLibraryOpen(false)} />
+            <div style={styles.mobileLibrarySheet}>
+              <div style={styles.mobileLibrarySheetHeader}>
+                <div style={styles.mobileLibrarySheetHeaderCopy}>
+                  <div style={styles.mobileLibrarySheetEyebrow}>Library</div>
+                  <h3 style={styles.mobileLibrarySheetTitle}>Audiobooks</h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLibraryOpen(false)}
+                  style={styles.mobileLibraryCloseButton}
+                  aria-label="Close library"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <AudiobookLibrary
+                books={books}
+                onSelect={(book) => {
+                  loadBook(book);
+                  setIsLibraryOpen(false);
+                }}
+                hint={
+                  usingFetchedBooks
+                    ? "Browse your audiobook library"
+                    : audiobooksLoading
+                      ? "Loading your audiobook shelf"
+                      : audiobooksError
+                        ? "Showing fallback audiobooks for now"
+                        : undefined
+                }
+                isOverlay
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -230,6 +293,111 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     overflowY: "auto",
+  },
+  mobileLibraryLauncher: {
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-card)",
+    borderRadius: "18px",
+    padding: "12px 14px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    textAlign: "left",
+    boxShadow: "0 16px 36px rgba(15,23,42,0.08)",
+    cursor: "pointer",
+  },
+  mobileLibraryLauncherLabel: {
+    fontSize: "14px",
+    fontWeight: 700,
+    lineHeight: 1.2,
+    color: "var(--app-text)",
+    minWidth: 0,
+  },
+  mobileLibraryLauncherMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexShrink: 0,
+  },
+  mobileLibraryLauncherCount: {
+    fontSize: "12px",
+    color: "var(--app-text-muted)",
+  },
+  mobileLibraryLauncherIconWrap: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "12px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text-soft)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mobileLibraryOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 10001,
+  },
+  mobileLibraryBackdrop: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(2, 6, 23, 0.72)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+  },
+  mobileLibrarySheet: {
+    position: "absolute",
+    inset: "max(env(safe-area-inset-top), 10px) 10px max(env(safe-area-inset-bottom), 10px) 10px",
+    display: "grid",
+    gridTemplateRows: "auto minmax(0, 1fr)",
+    gap: "14px",
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-card)",
+    borderRadius: "24px",
+    padding: "16px",
+    boxShadow: "0 24px 60px rgba(2, 6, 23, 0.32)",
+  },
+  mobileLibrarySheetHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+  },
+  mobileLibrarySheetHeaderCopy: {
+    display: "grid",
+    gap: "6px",
+    minWidth: 0,
+  },
+  mobileLibrarySheetEyebrow: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "var(--app-text-muted)",
+  },
+  mobileLibrarySheetTitle: {
+    margin: 0,
+    fontSize: "24px",
+    fontWeight: 700,
+    lineHeight: 1.15,
+    letterSpacing: "-0.03em",
+    color: "var(--app-text)",
+  },
+  mobileLibraryCloseButton: {
+    width: "42px",
+    height: "42px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text-soft)",
+    borderRadius: "14px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    flexShrink: 0,
   },
 };
 

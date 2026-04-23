@@ -10,6 +10,7 @@ export default function AudiobookLibrary({
   books,
   onSelect,
   hint = DEFAULT_LIBRARY_HINT,
+  isOverlay = false,
 }) {
   const shelfRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,8 +46,8 @@ export default function AudiobookLibrary({
   const showHelperText = hint && hint !== DEFAULT_LIBRARY_HINT;
 
   return (
-    <section style={styles.section}>
-      <div style={styles.sectionHeader}>
+    <section style={isOverlay ? styles.overlaySection : styles.section}>
+      <div style={isOverlay ? styles.overlaySectionHeader : styles.sectionHeader}>
         <div style={styles.sectionEyebrow}>Library</div>
         <input
           type="search"
@@ -54,16 +55,26 @@ export default function AudiobookLibrary({
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder="Search Audiobooks"
           aria-label="Search audiobooks"
-          style={styles.searchInput}
+          style={isOverlay ? styles.overlaySearchInput : styles.searchInput}
         />
       </div>
 
       {showHelperText ? <div style={styles.sectionHint}>{hint}</div> : null}
 
       {filteredBooks.length ? (
-        <div ref={shelfRef} style={styles.shelf} onWheel={handleWheel}>
+        <div
+          ref={shelfRef}
+          style={isOverlay ? styles.overlayList : styles.shelf}
+          onWheel={isOverlay ? undefined : handleWheel}
+        >
           {filteredBooks.map((book) => (
-            <AudiobookCard key={book.id} book={book} onSelect={onSelect} />
+            <AudiobookCard
+              key={book.id}
+              book={book}
+              onSelect={onSelect}
+              compact={isOverlay}
+              fullWidth={isOverlay}
+            />
           ))}
         </div>
       ) : (
@@ -78,12 +89,22 @@ const styles = {
     display: "grid",
     gap: "12px",
   },
+  overlaySection: {
+    display: "grid",
+    gridTemplateRows: "auto auto minmax(0, 1fr)",
+    gap: "12px",
+    minHeight: 0,
+  },
   sectionHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: "10px",
     flexWrap: "wrap",
+  },
+  overlaySectionHeader: {
+    display: "grid",
+    gap: "10px",
   },
   sectionEyebrow: {
     fontSize: "12px",
@@ -116,6 +137,14 @@ const styles = {
     paddingBottom: "8px",
     scrollbarWidth: "thin",
   },
+  overlayList: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+    overflowY: "auto",
+    paddingRight: "4px",
+    minHeight: 0,
+  },
   emptyState: {
     border: "1px solid var(--app-border-soft)",
     background: "var(--app-surface-soft)",
@@ -123,5 +152,16 @@ const styles = {
     padding: "18px",
     fontSize: "13px",
     color: "var(--app-text-muted)",
+  },
+  overlaySearchInput: {
+    width: "100%",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text)",
+    borderRadius: "14px",
+    padding: "12px 14px",
+    fontSize: "13px",
+    lineHeight: 1.2,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
   },
 };

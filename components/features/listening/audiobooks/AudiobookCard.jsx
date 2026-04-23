@@ -1,16 +1,19 @@
 "use client";
 
-export default function AudiobookCard({ book, onSelect, compact = false }) {
+export default function AudiobookCard({ book, onSelect, compact = false, fullWidth = false }) {
   const progressPercent = Math.max(0, Math.min(100, book.progressPercent || 0));
+  const useBareArtwork = compact && fullWidth;
 
   return (
-    <button type="button" onClick={() => onSelect(book)} style={styles.card(compact)}>
-      <div style={styles.cover(book.coverImage, book.coverGradient)}>
-        <div style={styles.coverGlow(book.accentColor)} />
-        <div style={styles.coverTextWrap}>
-          <span style={styles.coverEyebrow}>Audiobook</span>
-          <span style={styles.coverTitle}>{book.title}</span>
-        </div>
+    <button type="button" onClick={() => onSelect(book)} style={styles.card(compact, fullWidth)}>
+      <div style={styles.cover(book.coverImage, book.coverGradient, useBareArtwork)}>
+        {!useBareArtwork ? <div style={styles.coverGlow(book.accentColor)} /> : null}
+        {!useBareArtwork ? (
+          <div style={styles.coverTextWrap}>
+            <span style={styles.coverEyebrow}>Audiobook</span>
+            <span style={styles.coverTitle}>{book.title}</span>
+          </div>
+        ) : null}
       </div>
 
       <div style={styles.meta}>
@@ -43,7 +46,7 @@ function formatDuration(totalSeconds) {
 }
 
 const styles = {
-  card: (compact) => ({
+  card: (compact, fullWidth) => ({
     border: "1px solid var(--app-border-soft)",
     background: "var(--app-card)",
     borderRadius: "18px",
@@ -52,23 +55,26 @@ const styles = {
     gap: "12px",
     cursor: "pointer",
     textAlign: "left",
-    minWidth: compact ? "190px" : "220px",
+    minWidth: fullWidth ? "100%" : compact ? "190px" : "220px",
+    width: fullWidth ? "100%" : "auto",
     boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
   }),
-  cover: (coverImage, coverGradient) => ({
+  cover: (coverImage, coverGradient, useBareArtwork) => ({
     position: "relative",
     aspectRatio: "1 / 1",
     borderRadius: "16px",
     overflow: "hidden",
     background: coverGradient,
     backgroundImage: coverImage
-      ? `linear-gradient(180deg, rgba(15,23,42,0.08) 0%, rgba(15,23,42,0.28) 52%, rgba(15,23,42,0.8) 100%), url("${coverImage}")`
+      ? useBareArtwork
+        ? `url("${coverImage}")`
+        : `linear-gradient(180deg, rgba(15,23,42,0.08) 0%, rgba(15,23,42,0.28) 52%, rgba(15,23,42,0.8) 100%), url("${coverImage}")`
       : undefined,
     backgroundSize: "cover",
     backgroundPosition: "center",
-    padding: "14px",
+    padding: useBareArtwork ? 0 : "14px",
     display: "flex",
-    alignItems: "flex-end",
+    alignItems: useBareArtwork ? "stretch" : "flex-end",
   }),
   coverGlow: () => ({
     position: "absolute",
