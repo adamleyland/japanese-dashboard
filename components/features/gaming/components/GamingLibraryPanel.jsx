@@ -27,6 +27,8 @@ export default function GamingLibraryPanel({
   sourceStatus,
   isCompact,
   targetHeight,
+  isOverlay = false,
+  showRefreshButton = true,
 }) {
   const renderBody = () => {
     if (loading) {
@@ -73,13 +75,16 @@ export default function GamingLibraryPanel({
     <div
       style={{
         ...styles.largeCard,
-        padding: isCompact ? "16px" : styles.largeCard.padding,
+        padding: isOverlay ? 0 : isCompact ? "16px" : styles.largeCard.padding,
         display: "grid",
         gridTemplateRows: "auto 1fr",
         minHeight: 0,
-        height: targetHeight ? `${targetHeight}px` : "auto",
-        maxHeight: targetHeight ? `${targetHeight}px` : "none",
+        height: isOverlay ? "100%" : targetHeight ? `${targetHeight}px` : "auto",
+        maxHeight: isOverlay ? "100%" : targetHeight ? `${targetHeight}px` : "none",
         overflow: "hidden",
+        border: isOverlay ? "none" : styles.largeCard.border,
+        background: isOverlay ? "transparent" : styles.largeCard.background,
+        boxShadow: isOverlay ? "none" : styles.largeCard.boxShadow,
       }}
     >
       <div
@@ -88,46 +93,50 @@ export default function GamingLibraryPanel({
           flexDirection: "column",
           alignItems: "stretch",
           gap: "14px",
-          marginBottom: "14px",
+          marginBottom: isOverlay ? "10px" : "14px",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "12px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <h2 style={styles.sectionTitle}>Gaming Library</h2>
-            <p style={styles.sectionText}>
-              Unified Steam and Xbox library data, playtime, and artwork in one dashboard.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onRefresh}
+        {!isOverlay ? (
+          <div
             style={{
-              border: "1px solid var(--app-border-soft)",
-              background: "var(--app-surface-elevated)",
-              color: "var(--app-text-soft)",
-              borderRadius: "12px",
-              padding: "8px 12px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "12px",
-              fontWeight: 700,
-              cursor: "pointer",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
             }}
           >
-            <RefreshCcw size={13} />
-            Refresh
-          </button>
-        </div>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={styles.sectionTitle}>Gaming Library</h2>
+              <p style={styles.sectionText}>
+                Unified Steam and Xbox library data, playtime, and artwork in one dashboard.
+              </p>
+            </div>
+
+            {showRefreshButton ? (
+              <button
+                type="button"
+                onClick={onRefresh}
+                style={{
+                  border: "1px solid var(--app-border-soft)",
+                  background: "var(--app-surface-elevated)",
+                  color: "var(--app-text-soft)",
+                  borderRadius: "12px",
+                  padding: "8px 12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                <RefreshCcw size={13} />
+                Refresh
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <div
           style={{

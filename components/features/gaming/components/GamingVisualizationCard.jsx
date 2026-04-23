@@ -13,7 +13,65 @@ export default function GamingVisualizationCard({
   includedCount,
   excludedCount,
   topGames,
+  isMobile = false,
 }) {
+  const totalGames = Math.max(0, includedCount + excludedCount);
+  const includedShare = totalGames ? Math.max(0, Math.min(100, (includedCount / totalGames) * 100)) : 0;
+
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          ...styles.sideCard,
+          padding: "12px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "18px",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--app-text)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+          title={formatPlaytimeCompact(totalMinutes)}
+          aria-label={`Tracked gaming total ${formatPlaytimeCompact(totalMinutes)}`}
+        >
+          {formatPlaytimeCompact(totalMinutes)}
+        </div>
+
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              ...styles.progressBarWrap,
+              height: "10px",
+              borderRadius: "999px",
+            }}
+            aria-hidden="true"
+          >
+            <div
+              style={{
+                ...styles.progressBarFill(includedShare),
+                background: "#8b5cf6",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.sideCard}>
       <div

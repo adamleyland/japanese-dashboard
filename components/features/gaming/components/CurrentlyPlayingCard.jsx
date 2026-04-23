@@ -7,7 +7,7 @@ import {
   formatPlaytimeCompact,
   formatPlaytimeDetailed,
   formatRelativeLastPlayed,
-  getPlatformLabel,
+  getDeviceLabel,
   getSourceLabel,
   supportsTrackedPlaytime,
 } from "@/lib/gaming/gaming-utils";
@@ -179,7 +179,7 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
               {currentGame.title}
             </h3>
             <p style={{ ...styles.playerSub, margin: 0 }}>
-              {getSourceLabel(currentGame.source)} | {getPlatformLabel(currentGame.platform)}
+              {getSourceLabel(currentGame.source)} | {getDeviceLabel(currentGame)}
             </p>
           </div>
 

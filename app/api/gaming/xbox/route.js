@@ -147,6 +147,44 @@ function getXboxDevices(title = {}) {
   return Array.isArray(devices) ? devices.filter(Boolean) : [];
 }
 
+function getXboxPlatform(title = {}) {
+  const devices = getXboxDevices(title);
+  const pcDevice = devices.find((device) => {
+    if (typeof device !== "string") {
+      return false;
+    }
+
+    const normalizedDevice = device.trim().toLowerCase();
+    return (
+      normalizedDevice === "pc" ||
+      normalizedDevice.includes("windows") ||
+      normalizedDevice.includes("desktop")
+    );
+  });
+
+  if (pcDevice) {
+    return "pc";
+  }
+
+  const xboxDevice = devices.find((device) => {
+    if (typeof device !== "string") {
+      return false;
+    }
+
+    return device.trim().toLowerCase().includes("xbox");
+  });
+
+  if (xboxDevice) {
+    return "xbox";
+  }
+
+  if (typeof title.platform === "string" && title.platform.trim()) {
+    return title.platform;
+  }
+
+  return "pc";
+}
+
 function getXboxIsStreamable(title = {}) {
   if (typeof title.isStreamable === "boolean") {
     return title.isStreamable;
@@ -233,7 +271,7 @@ async function normalizeXboxTitle(apiKey, title = {}) {
       lastPlayedAt: getXboxLastPlayedAt(title),
       includeInOverallTotal: true,
       launchUrl: null,
-      platform: "xbox",
+      platform: getXboxPlatform(title),
       devices: getXboxDevices(title),
       isStreamable: getXboxIsStreamable(title),
       achievement: title.achievement ?? null,

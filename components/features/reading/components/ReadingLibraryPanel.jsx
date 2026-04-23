@@ -1,6 +1,6 @@
 "use client";
 
-import { Book, BookCheck, BookMarked, LibraryBig, RefreshCcw } from "lucide-react";
+import { BookOpen, BookCheck, BookMarked, LibraryBig, RefreshCcw } from "lucide-react";
 import GamingLayoutToggle from "@/components/features/gaming/components/GamingLayoutToggle";
 import ReadingEmptyState from "@/components/features/reading/components/ReadingEmptyState";
 import ReadingLibraryArtworkView from "@/components/features/reading/components/ReadingLibraryArtworkView";
@@ -9,9 +9,9 @@ import { READING_FILTERS } from "@/lib/reading/constants";
 
 const FILTER_ICONS = {
   all: LibraryBig,
-  in_progress: BookCheck,
+  in_progress: BookOpen,
   reading_list: BookMarked,
-  finished: Book,
+  finished: BookCheck,
 };
 
 export default function ReadingLibraryPanel({
@@ -29,6 +29,8 @@ export default function ReadingLibraryPanel({
   statusUpdatingIds,
   isMobile,
   isCompact,
+  isOverlay = false,
+  showRefreshButton = true,
   targetHeight,
 }) {
   const renderBody = () => {
@@ -78,13 +80,28 @@ export default function ReadingLibraryPanel({
     <div
       style={{
         ...styles.largeCard,
-        padding: isMobile ? "14px" : isCompact ? "16px" : styles.largeCard.padding,
+        padding: isOverlay ? "0" : isMobile ? "14px" : isCompact ? "16px" : styles.largeCard.padding,
         display: "grid",
         gridTemplateRows: "auto 1fr",
         minHeight: 0,
-        height: isMobile ? "clamp(420px, 68vh, 620px)" : targetHeight ? `${targetHeight}px` : "auto",
-        maxHeight: isMobile ? "clamp(420px, 68vh, 620px)" : targetHeight ? `${targetHeight}px` : "none",
+        height: isOverlay
+          ? "100%"
+          : isMobile
+            ? "clamp(420px, 68vh, 620px)"
+            : targetHeight
+              ? `${targetHeight}px`
+              : "auto",
+        maxHeight: isOverlay
+          ? "none"
+          : isMobile
+            ? "clamp(420px, 68vh, 620px)"
+            : targetHeight
+              ? `${targetHeight}px`
+              : "none",
         overflow: "hidden",
+        border: isOverlay ? "none" : styles.largeCard.border,
+        background: isOverlay ? "transparent" : styles.largeCard.background,
+        boxShadow: isOverlay ? "none" : styles.largeCard.boxShadow,
       }}
     >
       <div
@@ -93,7 +110,7 @@ export default function ReadingLibraryPanel({
           flexDirection: "column",
           alignItems: "stretch",
           gap: isMobile ? "10px" : "14px",
-          marginBottom: isMobile ? "10px" : "14px",
+          marginBottom: isOverlay ? "12px" : isMobile ? "10px" : "14px",
         }}
       >
         <div
@@ -106,40 +123,42 @@ export default function ReadingLibraryPanel({
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <h2 style={styles.sectionTitle}>Reading Library</h2>
-            {!isMobile ? (
+            {!isOverlay ? <h2 style={styles.sectionTitle}>Reading Library</h2> : null}
+            {!isMobile && !isOverlay ? (
               <p style={styles.sectionText}>
                 Supabase-backed book tracking with status filters, cover-first browsing, and quick detail access.
               </p>
             ) : null}
           </div>
 
-          <button
-            type="button"
-            onClick={onRefresh}
-            style={{
-              border: "1px solid var(--app-border-soft)",
-              background: "var(--app-surface-elevated)",
-              color: "var(--app-text-soft)",
-              borderRadius: "12px",
-              padding: isMobile ? "8px" : "8px 12px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: isMobile ? "0" : "8px",
-              fontSize: "12px",
-              fontWeight: 700,
-              cursor: "pointer",
-              width: isMobile ? "36px" : "auto",
-              height: isMobile ? "36px" : "auto",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-            aria-label="Refresh reading library"
-            title="Refresh reading library"
-          >
-            <RefreshCcw size={13} />
-            {!isMobile ? "Refresh" : null}
-          </button>
+          {showRefreshButton ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              style={{
+                border: "1px solid var(--app-border-soft)",
+                background: "var(--app-surface-elevated)",
+                color: "var(--app-text-soft)",
+                borderRadius: "12px",
+                padding: isMobile ? "8px" : "8px 12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: isMobile ? "0" : "8px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                width: isMobile ? "36px" : "auto",
+                height: isMobile ? "36px" : "auto",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+              aria-label="Refresh reading library"
+              title="Refresh reading library"
+            >
+              <RefreshCcw size={13} />
+              {!isMobile ? "Refresh" : null}
+            </button>
+          ) : null}
         </div>
 
         <div
@@ -164,8 +183,8 @@ export default function ReadingLibraryPanel({
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
               flexWrap: "nowrap",
               minWidth: 0,
-              flex: "1 1 auto",
-              overflowX: "auto",
+              flex: isMobile ? "0 0 auto" : "1 1 auto",
+              overflowX: isMobile ? "visible" : "auto",
               scrollbarWidth: "none",
             }}
           >

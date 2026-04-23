@@ -5,9 +5,9 @@ import { Play, ToggleLeft, ToggleRight } from "lucide-react";
 import GameArtworkImage from "@/components/features/gaming/components/GameArtworkImage";
 import { openGameLauncher } from "@/lib/gaming/launchers";
 import {
+  getDeviceLabel,
   formatPlaytimeHours,
   formatRelativeLastPlayed,
-  getPlatformLabel,
   getSourceLabel,
   supportsTrackedPlaytime,
 } from "@/lib/gaming/gaming-utils";
@@ -84,7 +84,7 @@ function DesktopRow({ styles, game, onToggleInclude }) {
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <IncludeToggleButton game={game} onClick={() => onToggleInclude(game)} />
-            <MetaBadge label={getPlatformLabel(game.platform)} tone="neutral" />
+            <MetaBadge label={getDeviceLabel(game)} tone="neutral" />
             <MetaBadge label={getSourceLabel(game.source)} tone={game.source} />
           </div>
 
@@ -138,8 +138,8 @@ function CompactRow({ styles, game, onToggleInclude }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "84px minmax(0, 1fr)",
-          gap: "12px",
+          gridTemplateColumns: "96px minmax(0, 1fr)",
+          gap: "16px",
           alignItems: "start",
         }}
       >
@@ -190,7 +190,7 @@ function CompactRow({ styles, game, onToggleInclude }) {
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <IncludeToggleButton game={game} onClick={() => onToggleInclude(game)} />
-            <MetaBadge label={getPlatformLabel(game.platform)} tone="neutral" />
+            <MetaBadge label={getDeviceLabel(game)} tone="neutral" />
             <MetaBadge label={getSourceLabel(game.source)} tone={game.source} />
           </div>
 
@@ -277,7 +277,7 @@ function ArtworkCell({ game, compact }) {
           }}
         />
 
-        {game.launchUrl ? (
+        {game.launchUrl && !compact ? (
           <div
             style={{
               position: "absolute",

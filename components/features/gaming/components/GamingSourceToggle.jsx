@@ -21,6 +21,8 @@ export default function GamingSourceToggle({
         flexShrink: 0,
         gap: "10px",
         flexWrap: "wrap",
+        overflow: "visible",
+        padding: isMobile ? "1px 0 0 1px" : 0,
       }}
     >
       <PillSliderToggle
