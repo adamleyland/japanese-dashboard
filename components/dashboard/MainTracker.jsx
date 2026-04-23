@@ -23,6 +23,7 @@ export default function MainTracker({
   wordsWritten,
   authControl,
   onAdjustMetric,
+  isMobile,
   isCompact,
   focusMode,
   onToggleFocusMode,
@@ -185,90 +186,141 @@ export default function MainTracker({
   );
 
   const selectedMetricConfig = selectedMetric ? metricConfig[selectedMetric] : null;
-  const mobileMetrics = useMemo(
-    () => [...primaryMetrics, ...secondaryMetrics],
-    [primaryMetrics, secondaryMetrics],
+  const mobileTrackerMetrics = useMemo(
+    () => [
+      {
+        key: "listening",
+        label: metricConfig.listening.label,
+        icon: metricConfig.listening.icon,
+        accent: metricConfig.listening.accent,
+        onAdjust: () => setSelectedMetric("listening"),
+      },
+      {
+        key: "reading",
+        label: metricConfig.reading.label,
+        icon: metricConfig.reading.icon,
+        accent: metricConfig.reading.accent,
+        onAdjust: () => setSelectedMetric("reading"),
+      },
+      {
+        key: "shadowing",
+        label: metricConfig.shadowing.label,
+        icon: metricConfig.shadowing.icon,
+        accent: metricConfig.shadowing.accent,
+        onAdjust: () => setSelectedMetric("shadowing"),
+      },
+      {
+        key: "writing",
+        label: metricConfig.writing.label,
+        icon: metricConfig.writing.icon,
+        accent: metricConfig.writing.accent,
+        onAdjust: () => setSelectedMetric("writing"),
+      },
+      {
+        key: "gaming",
+        label: metricConfig.gaming.label,
+        icon: metricConfig.gaming.icon,
+        accent: metricConfig.gaming.accent,
+        onAdjust: () => setSelectedMetric("gaming"),
+      },
+    ],
+    [metricConfig],
   );
 
   return (
     <>
-      <div style={styles.heroCard}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "12px",
-            flexWrap: isCompact ? "wrap" : "nowrap",
-            marginBottom: isCompact ? "24px" : "35px",
-          }}
-        >
-          <h1
-            style={{
-              ...styles.title,
-              fontSize: isCompact ? "34px" : "30px",
-              margin: 0,
-            }}
-          >
-            Japanese Tracker
-          </h1>
+      <div
+        style={
+          isMobile
+            ? {
+                ...styles.heroCard,
+                padding: isCompact ? "12px" : "14px",
+              }
+            : styles.heroCard
+        }
+      >
+        {isMobile ? (
+          <div style={mobileStyles.metricButtonRow}>
+            {mobileTrackerMetrics.map((metric) => {
+              const Icon = metric.icon;
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              gap: "10px",
-              flexWrap: "wrap",
-              marginLeft: "auto",
-              width: isCompact ? "100%" : "auto",
-            }}
-          >
-            {authControl}
-            <TrackerFocusToggle active={focusMode} onToggle={onToggleFocusMode} compact={isCompact} />
+              return (
+                <button
+                  key={metric.key}
+                  type="button"
+                  onClick={metric.onAdjust}
+                  style={mobileStyles.metricButton(metric.accent)}
+                  aria-label={`Adjust ${metric.label}`}
+                  title={metric.label}
+                >
+                  <Icon size={isCompact ? 18 : 20} strokeWidth={2.1} color={metric.accent.bg} />
+                </button>
+              );
+            })}
           </div>
-        </div>
-
-        {focusMode ? (
-          <ExpandedTrackerOverview
-            styles={styles}
-            isCompact={isCompact}
-            overallMetric={overallMetric}
-            primaryMetrics={primaryMetrics}
-            secondaryMetrics={secondaryMetrics}
-            distributionItems={distributionItems}
-          />
         ) : (
           <>
-            <div style={styles.overallRow}>
-              <MetricCard
-                label={overallMetric.label}
-                value={overallMetric.value}
-                icon={overallMetric.icon}
-                featured
-                compact={isCompact}
-              />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: isCompact ? "wrap" : "nowrap",
+                marginBottom: isCompact ? "24px" : "35px",
+              }}
+            >
+              <h1
+                style={{
+                  ...styles.title,
+                  fontSize: isCompact ? "34px" : "30px",
+                  margin: 0,
+                }}
+              >
+                Japanese Tracker
+              </h1>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                  marginLeft: "auto",
+                  width: isCompact ? "100%" : "auto",
+                }}
+              >
+                {authControl}
+                <TrackerFocusToggle
+                  active={focusMode}
+                  onToggle={onToggleFocusMode}
+                  compact={isCompact}
+                />
+              </div>
             </div>
 
-            {isCompact ? (
-              <div
-                className="tracker-mobile-carousel"
-                style={mobileStyles.metricsScroller}
-              >
-                {mobileMetrics.map((metric) => (
-                  <div key={metric.key} style={mobileStyles.metricSlide}>
-                    <MetricCard
-                      label={metric.label}
-                      value={metric.value}
-                      icon={metric.icon}
-                      onAdjust={metric.onAdjust}
-                      compact
-                    />
-                  </div>
-                ))}
-              </div>
+            {focusMode ? (
+              <ExpandedTrackerOverview
+                styles={styles}
+                isCompact={isCompact}
+                overallMetric={overallMetric}
+                primaryMetrics={primaryMetrics}
+                secondaryMetrics={secondaryMetrics}
+                distributionItems={distributionItems}
+              />
             ) : (
               <>
+                <div style={styles.overallRow}>
+                  <MetricCard
+                    label={overallMetric.label}
+                    value={overallMetric.value}
+                    icon={overallMetric.icon}
+                    featured
+                    compact={isCompact}
+                  />
+                </div>
+
                 <div
                   style={{
                     ...styles.metricsGridThree,
@@ -348,23 +400,25 @@ export default function MainTracker({
 }
 
 const mobileStyles = {
-  metricsScroller: {
-    display: "flex",
-    gap: "12px",
-    overflowX: "auto",
-    overflowY: "hidden",
-    padding: "2px 4px 8px 4px",
-    margin: "12px -4px 0 -4px",
-    WebkitOverflowScrolling: "touch",
-    overscrollBehaviorX: "contain",
-    touchAction: "pan-x",
-    scrollbarWidth: "none",
-    msOverflowStyle: "none",
-    scrollSnapType: "x proximity",
+  metricButtonRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gap: "8px",
+    width: "100%",
   },
-  metricSlide: {
-    flex: "0 0 min(84vw, 236px)",
-    minWidth: "min(84vw, 236px)",
-    scrollSnapAlign: "start",
-  },
+  metricButton: (accent) => ({
+    width: "100%",
+    aspectRatio: "1 / 1",
+    borderRadius: "16px",
+    border: "1px solid var(--app-border-soft)",
+    background: accent.soft,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
+    touchAction: "manipulation",
+  }),
 };

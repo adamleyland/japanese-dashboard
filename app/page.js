@@ -947,6 +947,7 @@ export default function Home() {
                 wordsWrittenLabel={formatWords(wordsWritten)}
                 wordsWritten={wordsWritten}
                 onAdjustMetric={adjustMetricByDelta}
+                isMobile={isMobile}
                 isCompact={isCompact}
                 focusMode={trackerFocusMode}
                 onToggleFocusMode={() => setTrackerFocusMode((currentValue) => !currentValue)}
@@ -962,8 +963,6 @@ export default function Home() {
                   <DictionaryCarousel styles={styles} />
                 </div>
               </div>
-            ) : !trackerFocusMode ? (
-              <DictionaryCarousel styles={styles} />
             ) : null}
           </section>
         )}
