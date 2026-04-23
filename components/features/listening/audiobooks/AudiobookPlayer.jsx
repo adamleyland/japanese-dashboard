@@ -21,7 +21,9 @@ const FALLBACK_COVER_URL =
   `);
 
 export default function AudiobookPlayer({
+  activeChapterIndex = -1,
   book,
+  chapters = [],
   currentProgressSeconds,
   durationSeconds,
   hasPlayableAudio,
@@ -40,7 +42,8 @@ export default function AudiobookPlayer({
   }
 
   const playing = isPlaying ?? playbackState === "playing";
-  const chapterCount = (book.chapters || []).length;
+  const chapterCount = Array.isArray(chapters) ? chapters.length : 0;
+  const shouldRenderChapters = chapterCount > 0;
   const remainingSeconds = Math.max(0, durationSeconds - currentProgressSeconds);
   const plainDescription = clampWords(stripHtml(book.description), 50);
   const coverUrl = book.coverImage || book.cover_url || FALLBACK_COVER_URL;
@@ -292,23 +295,35 @@ export default function AudiobookPlayer({
             <div style={styles.chapterHeader}>
               <div style={styles.chapterEyebrow}>Chapters</div>
               <div style={styles.chapterCount}>
-                {chapterCount ? `${chapterCount} items` : "No chapter markers yet"}
+                {shouldRenderChapters ? `${chapterCount} items` : "Unavailable"}
               </div>
             </div>
 
-            <div style={chapterListStyle}>
-              {(book.chapters || []).map((chapter) => (
-                <button
-                  key={chapter.id}
-                  type="button"
-                  onClick={() => onSeekTo(chapter.startSeconds)}
-                  style={styles.chapterButton}
-                >
-                  <span style={styles.chapterTitle}>{chapter.title}</span>
-                  <span style={styles.chapterTime}>{formatClock(chapter.startSeconds)}</span>
-                </button>
-              ))}
-            </div>
+            {shouldRenderChapters ? (
+              <div style={chapterListStyle}>
+                {chapters.map((chapter, index) => {
+                  const isActiveChapter = index === activeChapterIndex;
+
+                  return (
+                    <button
+                      key={chapter.id}
+                      type="button"
+                      onClick={() => onSeekTo(chapter.startSeconds)}
+                      style={styles.chapterButton(isActiveChapter)}
+                    >
+                      <span style={styles.chapterTitle}>{chapter.title}</span>
+                      <span style={styles.chapterTime(isActiveChapter)}>
+                        {formatClock(chapter.startSeconds)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={styles.chapterEmptyState}>
+                Chapter markers are not available in the player yet.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -588,10 +603,19 @@ const styles = {
     overflowY: "auto",
     paddingRight: "4px",
   },
-  chapterButton: {
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-surface)",
-    color: "var(--app-text)",
+  chapterEmptyState: {
+    border: "1px dashed var(--app-border-soft)",
+    background: "rgba(255, 255, 255, 0.58)",
+    color: "var(--app-text-muted)",
+    borderRadius: "14px",
+    padding: "14px 12px",
+    fontSize: "13px",
+    lineHeight: 1.5,
+  },
+  chapterButton: (active) => ({
+    border: active ? "1px solid var(--app-selected-border)" : "1px solid var(--app-border-soft)",
+    background: active ? "var(--app-selected-surface)" : "var(--app-surface)",
+    color: active ? "var(--app-selected-text)" : "var(--app-text)",
     borderRadius: "12px",
     padding: "10px 12px",
     display: "flex",
@@ -602,15 +626,16 @@ const styles = {
     fontSize: "12px",
     fontWeight: 600,
     textAlign: "left",
-  },
+    transition: "background 160ms ease, border-color 160ms ease, color 160ms ease",
+  }),
   chapterTitle: {
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  chapterTime: {
-    color: "var(--app-text-muted)",
+  chapterTime: (active) => ({
+    color: active ? "rgba(248, 250, 252, 0.82)" : "var(--app-text-muted)",
     flexShrink: 0,
-  },
+  }),
 };

@@ -204,6 +204,36 @@ function probeAudiobook(filePath, ffprobePath) {
   return JSON.parse(result.stdout || "{}");
 }
 
+function probeAudiobookChapters(filePath, ffprobePath) {
+  const command = [
+    ffprobePath,
+    "-v",
+    "quiet",
+    "-print_format",
+    "json",
+    "-show_chapters",
+    filePath,
+  ];
+
+  console.log(`ffprobe chapter command: ${JSON.stringify(command)}`);
+
+  const result = spawnSync(
+    ffprobePath,
+    ["-v", "quiet", "-print_format", "json", "-show_chapters", filePath],
+    {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+    },
+  );
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "ffprobe chapter extraction failed");
+  }
+
+  return JSON.parse(result.stdout || "{}");
+}
+
 function extractAudiobookMetadata(filePath, probeData) {
   const formatTags = normalizeTagMap(probeData?.format?.tags || {});
   const audioStreamTags = normalizeTagMap(
@@ -234,6 +264,27 @@ function extractAudiobookMetadata(filePath, probeData) {
   console.log(`Normalized metadata: ${JSON.stringify(metadata, null, 2)}`);
 
   return metadata;
+}
+
+function normalizeChapters(chapterProbeData) {
+  const rawChapters = Array.isArray(chapterProbeData?.chapters) ? chapterProbeData.chapters : [];
+
+  return rawChapters
+    .map((chapter, index) => {
+      const title = cleanValue(chapter?.tags?.title) || `Chapter ${index + 1}`;
+      const startSeconds = Number.parseFloat(chapter?.start_time || "0");
+      const endSeconds = Number.parseFloat(chapter?.end_time || "0");
+      const normalizedEndSeconds =
+        Number.isFinite(endSeconds) && endSeconds > startSeconds ? endSeconds : null;
+
+      return {
+        chapter_index: index,
+        title,
+        start_seconds: Number.isFinite(startSeconds) ? startSeconds : 0,
+        end_seconds: normalizedEndSeconds,
+      };
+    })
+    .filter((chapter) => Number.isFinite(chapter.start_seconds));
 }
 
 function getAttachedPicStream(probeData) {
@@ -368,6 +419,38 @@ async function ensureUploadedArtwork(bucket, slug, extractedArtworkPath) {
   };
 }
 
+async function syncAudiobookChapters(supabase, audiobookId, chapters) {
+  const { error: deleteError } = await supabase
+    .from("audiobook_chapters")
+    .delete()
+    .eq("audiobook_id", audiobookId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (!Array.isArray(chapters) || chapters.length === 0) {
+    console.log(`No chapters found for audiobook ${audiobookId}; skipped chapter insert.`);
+    return;
+  }
+
+  const { error: insertError } = await supabase.from("audiobook_chapters").insert(
+    chapters.map((chapter, index) => ({
+      audiobook_id: audiobookId,
+      chapter_index: index,
+      title: chapter.title,
+      start_seconds: chapter.start_seconds,
+      end_seconds: chapter.end_seconds,
+    })),
+  );
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  console.log(`Synced ${chapters.length} chapters for audiobook ${audiobookId}`);
+}
+
 async function syncAudiobooks() {
   const {
     supabaseUrl,
@@ -420,7 +503,9 @@ async function syncAudiobooks() {
     console.log(`Local file path: ${localFilePath}`);
 
     const probeData = probeAudiobook(localFilePath, ffprobePath);
+    const chapterProbeData = probeAudiobookChapters(localFilePath, ffprobePath);
     const metadata = extractAudiobookMetadata(localFilePath, probeData);
+    const chapters = normalizeChapters(chapterProbeData);
     const uploadResult = await ensureUploadedAudio(bucket, gcsBucketName, localFilePath, sourceFilename);
     const existingRow = existingBySlug.get(slug) || null;
     const artworkObjectName = `${ARTWORK_FOLDER}/${slug}.jpg`;
@@ -486,8 +571,20 @@ async function syncAudiobooks() {
 
     console.log(`Synced ${sourceFilename} (${uploadResult.uploaded ? "uploaded" : "reused"})`);
     console.log(`Supabase response: ${JSON.stringify(data ?? null, null, 2)}`);
+    const audiobookId = data?.[0]?.id || existingRow?.id || null;
+
+    if (audiobookId) {
+      try {
+        await syncAudiobookChapters(supabase, audiobookId, chapters);
+      } catch (chapterError) {
+        console.error(`Failed syncing chapters for ${sourceFilename}: ${chapterError.message}`);
+        console.error(JSON.stringify(chapterError, null, 2));
+      }
+    }
+
     existingBySlug.set(slug, {
       ...(existingRow || {}),
+      id: audiobookId || existingRow?.id || null,
       slug,
       cover_url: resolvedCoverUrl || existingRow?.cover_url || "",
     });

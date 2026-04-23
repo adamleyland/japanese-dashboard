@@ -754,12 +754,27 @@ export default function Home() {
   useEffect(() => {
     const fetchAudiobooks = async () => {
       setAudiobooksLoading(true);
+      try {
+        const response = await fetch("/api/audiobooks", {
+          method: "GET",
+          cache: "no-store",
+        });
 
-      const { data, error } = await supabase.from("audiobooks").select("*");
+        const payload = await response.json().catch(() => null);
 
-      setAudiobooksData(data ?? []);
-      setAudiobooksError(error);
-      setAudiobooksLoading(false);
+        if (!response.ok) {
+          throw new Error(payload?.error || "Failed to load audiobooks.");
+        }
+
+        setAudiobooksData(Array.isArray(payload?.audiobooks) ? payload.audiobooks : []);
+        setAudiobooksError(null);
+      } catch (error) {
+        console.error("Failed to load audiobooks", error);
+        setAudiobooksData([]);
+        setAudiobooksError(error);
+      } finally {
+        setAudiobooksLoading(false);
+      }
     };
 
     fetchAudiobooks();

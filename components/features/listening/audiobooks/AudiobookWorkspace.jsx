@@ -16,7 +16,9 @@ export default function AudiobookWorkspace({
   audiobooksError,
 }) {
   const {
+    activeChapterIndex,
     books,
+    chapters,
     currentBook,
     currentProgressSeconds,
     closePlayer,
@@ -115,7 +117,9 @@ export default function AudiobookWorkspace({
     <div style={styles.shell}>
       {isPlayerOpen && currentBook && !isMobile ? (
         <AudiobookPlayer
+          activeChapterIndex={activeChapterIndex}
           book={currentBook}
+          chapters={chapters}
           currentProgressSeconds={currentProgressSeconds}
           durationSeconds={durationSeconds}
           hasPlayableAudio={hasPlayableAudio}
@@ -175,7 +179,9 @@ export default function AudiobookWorkspace({
             />
             <div style={styles.mobilePlayerSheet}>
               <AudiobookPlayer
+                activeChapterIndex={activeChapterIndex}
                 book={currentBook}
+                chapters={chapters}
                 currentProgressSeconds={currentProgressSeconds}
                 durationSeconds={durationSeconds}
                 hasPlayableAudio={hasPlayableAudio}

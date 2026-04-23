@@ -280,12 +280,79 @@ function normalizeChapters(chapters) {
   }
 
   return chapters
-    .map((chapter, index) => ({
-      id: chapter?.id || `chapter-${index + 1}`,
-      title: chapter?.title || `Chapter ${index + 1}`,
-      startSeconds: toSafeNumber(chapter?.startSeconds, chapter?.start_seconds),
-    }))
-    .filter((chapter) => chapter.title);
+    .map((chapter, index) => {
+      const chapterIndex = Math.max(
+        0,
+        Math.floor(
+          toSafeNumber(chapter?.chapterIndex, chapter?.chapter_index, chapter?.index, index),
+        ),
+      );
+      const audiobookId = String(chapter?.audiobookId ?? chapter?.audiobook_id ?? "");
+      const startSeconds = toSafeNumber(chapter?.startSeconds, chapter?.start_seconds);
+      const rawEndSeconds = chapter?.endSeconds ?? chapter?.end_seconds;
+      const parsedEndSeconds = Number(rawEndSeconds);
+      const endSeconds =
+        rawEndSeconds == null || rawEndSeconds === ""
+          ? null
+          : Number.isFinite(parsedEndSeconds) && parsedEndSeconds > startSeconds
+            ? parsedEndSeconds
+            : null;
+
+      return {
+        id: String(chapter?.id || `chapter-${chapterIndex + 1}`),
+        audiobookId,
+        chapterIndex,
+        title: chapter?.title || `Chapter ${chapterIndex + 1}`,
+        startSeconds,
+        endSeconds,
+      };
+    })
+    .filter((chapter) => chapter.title)
+    .sort((left, right) => left.chapterIndex - right.chapterIndex || left.startSeconds - right.startSeconds);
+}
+
+function getActiveChapterIndex(chapters, currentTimeSeconds) {
+  if (!Array.isArray(chapters) || !chapters.length) {
+    return -1;
+  }
+
+  for (let index = 0; index < chapters.length; index += 1) {
+    const chapter = chapters[index];
+    const nextChapter = chapters[index + 1];
+    const boundary =
+      nextChapter?.startSeconds ??
+      (Number.isFinite(chapter?.endSeconds) && chapter.endSeconds > chapter.startSeconds
+        ? chapter.endSeconds
+        : Number.POSITIVE_INFINITY);
+
+    if (currentTimeSeconds >= chapter.startSeconds && currentTimeSeconds < boundary) {
+      return index;
+    }
+  }
+
+  return currentTimeSeconds >= chapters[chapters.length - 1].startSeconds
+    ? chapters.length - 1
+    : -1;
+}
+
+function serializeError(error) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      ...error,
+    };
+  }
+
+  if (error && typeof error === "object") {
+    const entries = Object.entries(error);
+    if (entries.length) {
+      return Object.fromEntries(entries);
+    }
+  }
+
+  return error;
 }
 
 function normalizeAudiobook(book, index) {
@@ -362,6 +429,8 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
   const [activeBook, setActiveBook] = useState(null);
   const [progressMap, setProgressMap] = useState(defaultProgressMap);
   const [durationMap, setDurationMap] = useState(() => buildDefaultDurationMap(availableBooks));
+  const [chapterMap, setChapterMap] = useState({});
+  const [activeChapterIndex, setActiveChapterIndex] = useState(-1);
   const [playbackState, setPlaybackState] = useState("idle");
   const [savingProgress, setSavingProgress] = useState(false);
   const [serverCurrentBookId, setServerCurrentBookId] = useState(null);
@@ -378,6 +447,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     durationSeconds: -1,
   });
   const markedCurrentBookIdRef = useRef(null);
+  const fetchedChapterBookIdsRef = useRef(new Set());
   const availableBookIds = useMemo(
     () => new Set(availableBooks.map((book) => book.id)),
     [availableBooks],
@@ -399,6 +469,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
         return {
           ...book,
+          chapters: chapterMap[book.id] ?? book.chapters,
           durationSeconds: resolvedDurationSeconds,
           progressSeconds,
           progressPercent,
@@ -406,17 +477,21 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
           isFinished: progressSeconds >= resolvedDurationSeconds,
         };
       }),
-    [availableBooks, durationMap, progressMap],
+    [availableBooks, chapterMap, durationMap, progressMap],
   );
 
-  const currentBook =
-    activeBook && activeBook.id === resolvedCurrentBookId ? activeBook : null;
+  const currentBook = resolvedCurrentBookId
+    ? books.find((book) => book.id === resolvedCurrentBookId) || null
+    : null;
 
   const currentProgressSeconds = currentBook?.progressSeconds || 0;
   const durationSeconds = currentBook?.durationSeconds || 0;
   const progressPercent = currentBook?.progressPercent || 0;
 
-  const currentlyListeningBook = activeBook;
+  const currentlyListeningBook = activeBook
+    ? books.find((book) => book.id === activeBook.id) || activeBook
+    : null;
+  const currentChapters = currentBook?.chapters ?? [];
 
   useEffect(() => {
     currentBookRef.current = currentBook;
@@ -429,6 +504,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     setActiveBook((currentValue) => {
       if (currentValue) {
+        const resolvedBook = books.find((book) => book.id === currentValue.id);
         const nextProgress = clampProgress(
           progressMap[currentValue.id] ?? currentValue.progressSeconds,
           durationMap[currentValue.id] ?? currentValue.durationSeconds,
@@ -437,7 +513,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         const nextProgressPercent = nextDuration ? (nextProgress / nextDuration) * 100 : 0;
 
         return {
-          ...currentValue,
+          ...(resolvedBook || currentValue),
           progressSeconds: nextProgress,
           durationSeconds: nextDuration,
           progressPercent: nextProgressPercent,
@@ -464,6 +540,108 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
   useEffect(() => {
     currentBookIdRef.current = resolvedCurrentBookId;
   }, [resolvedCurrentBookId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadChapters() {
+      if (!currentBook?.id) {
+        setActiveChapterIndex(-1);
+        return;
+      }
+
+      if (Array.isArray(currentBook.chapters) && currentBook.chapters.length > 0) {
+        setChapterMap((currentValue) => {
+          if (currentValue[currentBook.id]?.length === currentBook.chapters.length) {
+            return currentValue;
+          }
+
+          return {
+            ...currentValue,
+            [currentBook.id]: currentBook.chapters,
+          };
+        });
+        setActiveChapterIndex(
+          getActiveChapterIndex(currentBook.chapters, currentBook.progressSeconds || 0),
+        );
+        fetchedChapterBookIdsRef.current.add(currentBook.id);
+        return;
+      }
+
+      if (fetchedChapterBookIdsRef.current.has(currentBook.id)) {
+        const nextIndex = getActiveChapterIndex(
+          chapterMap[currentBook.id] ?? currentBook.chapters,
+          currentBook.progressSeconds || 0,
+        );
+        setActiveChapterIndex(nextIndex);
+        return;
+      }
+
+      fetchedChapterBookIdsRef.current.add(currentBook.id);
+
+      const response = await fetch(
+        `/api/audiobooks/${encodeURIComponent(currentBook.id)}/chapters`,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      if (!response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+
+        console.error("Failed to load audiobook chapters", {
+          audiobookId: currentBook.id,
+          status: response.status,
+          error: payload?.error || "Chapter request failed.",
+        });
+        fetchedChapterBookIdsRef.current.delete(currentBook.id);
+        return;
+      }
+
+      const payload = await response.json();
+      const normalizedChapters = normalizeChapters(payload?.chapters);
+
+      if (
+        payload?.audiobookId &&
+        String(payload.audiobookId) !== String(currentBook.id)
+      ) {
+        console.error("Received chapters for the wrong audiobook", {
+          requestedAudiobookId: currentBook.id,
+          responseAudiobookId: payload.audiobookId,
+        });
+        fetchedChapterBookIdsRef.current.delete(currentBook.id);
+        return;
+      }
+
+      setChapterMap((currentValue) => ({
+        ...currentValue,
+        [currentBook.id]: normalizedChapters,
+      }));
+
+      setActiveChapterIndex(
+        getActiveChapterIndex(
+          normalizedChapters.length ? normalizedChapters : currentBook.chapters,
+          currentBook.progressSeconds || 0,
+        ),
+      );
+    }
+
+    void loadChapters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chapterMap, currentBook]);
 
   useEffect(() => {
     if (typeof window === "undefined" || storageHydrated) {
@@ -576,7 +754,14 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
           durationSeconds: roundedDuration,
         };
       } catch (error) {
-        console.error("Failed to persist audiobook progress", error);
+        console.error("Failed to persist audiobook progress", {
+          userId,
+          audiobookId,
+          progressSeconds: roundedProgress,
+          durationSeconds: roundedDuration,
+          markCurrent,
+          error: serializeError(error),
+        });
       } finally {
         saveInFlightRef.current = false;
         setSavingProgress(false);
@@ -681,6 +866,8 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         return;
       }
 
+      const activeBook = currentBookRef.current;
+
       const nextProgress = clampProgress(audio.currentTime, Number.isFinite(audio.duration) ? audio.duration : Infinity);
       setProgressMap((currentMap) => {
         const currentProgress = currentMap[activeBookId] ?? 0;
@@ -693,6 +880,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
           [activeBookId]: nextProgress,
         };
       });
+      setActiveChapterIndex(getActiveChapterIndex(activeBook?.chapters, nextProgress));
     };
 
     const syncDuration = () => {
@@ -764,6 +952,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         }));
       }
 
+      setActiveChapterIndex(getActiveChapterIndex(currentBookRef.current?.chapters, audio.duration || 0));
       setPlaybackState("paused");
     };
 
@@ -845,6 +1034,10 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     audio.pause();
   }, [currentBook, playbackState]);
+
+  useEffect(() => {
+    setActiveChapterIndex(getActiveChapterIndex(currentBook?.chapters, currentBook?.progressSeconds || 0));
+  }, [currentBook]);
 
   useEffect(() => {
     const activeBook = currentBookRef.current;
@@ -1025,12 +1218,14 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
   return {
     books,
+    chapters: currentChapters,
     currentBook,
     currentProgressSeconds,
     hasPlayableAudio: Boolean(currentBook?.audioUrl),
     isPlaying: playbackState === "playing",
     currentlyListeningBook,
     durationSeconds,
+    activeChapterIndex,
     loadBook,
     playbackState,
     progressPercent,
