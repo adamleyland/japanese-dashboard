@@ -57,7 +57,7 @@ const styles = {
   }),
   cover: (coverImage, coverGradient) => ({
     position: "relative",
-    aspectRatio: "4 / 5",
+    aspectRatio: "1 / 1",
     borderRadius: "16px",
     overflow: "hidden",
     background: coverGradient,

@@ -44,14 +44,12 @@ export default function AudiobookCurrentlyListening({
     ? {
         ...styles.cover(book.coverGradient),
         width: "min(100%, 165px)",
-        minHeight: 0,
-        aspectRatio: "4 / 5",
+        aspectRatio: "1 / 1",
       }
     : styles.cover(book.coverGradient);
   const coverImageStyle = isMobile
     ? {
         ...styles.coverImage,
-        minHeight: 0,
       }
     : styles.coverImage;
   const metaStyle = isMobile
@@ -238,7 +236,7 @@ const styles = {
     borderRadius: "20px",
     padding: "16px",
     display: "grid",
-    gridTemplateColumns: "160px minmax(0, 1fr)",
+    gridTemplateColumns: "220px minmax(0, 1fr)",
     gap: "16px",
     textAlign: "left",
     boxShadow: "0 16px 36px rgba(15,23,42,0.08)",
@@ -253,7 +251,8 @@ const styles = {
     borderRadius: "18px",
     background: coverGradient,
     overflow: "hidden",
-    minHeight: "200px",
+    width: "100%",
+    aspectRatio: "1 / 1",
     boxShadow: "0 12px 28px rgba(15,23,42,0.12)",
   }),
   coverImage: {
@@ -261,7 +260,6 @@ const styles = {
     height: "100%",
     objectFit: "cover",
     display: "block",
-    minHeight: "200px",
   },
   meta: {
     display: "grid",
