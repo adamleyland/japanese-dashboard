@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpenText, BookmarkCheck } from "lucide-react";
+import { BookOpenText, BookmarkCheck, Headphones } from "lucide-react";
 import ReadingCoverArtwork from "@/components/features/reading/components/ReadingCoverArtwork";
 import ReadingEmptyState from "@/components/features/reading/components/ReadingEmptyState";
 import { formatReadingPercent } from "@/lib/reading/normalizers";
 
-export default function CurrentlyReadingCard({ styles, item, loading, isMobile = false }) {
+export default function CurrentlyReadingCard({
+  styles,
+  item,
+  loading,
+  isMobile = false,
+  audiobookStatus = "idle",
+  onReadWithAudiobook,
+}) {
   const [coverHovered, setCoverHovered] = useState(false);
 
   if (!item && !loading) {
@@ -28,10 +35,31 @@ export default function CurrentlyReadingCard({ styles, item, loading, isMobile =
   const coverContent = (
     <ReadingCoverArtwork item={item} width={94} borderRadius={18} />
   );
+  const canOpenAudiobook = Boolean(item && onReadWithAudiobook);
+  const audiobookButtonLabel = getAudiobookButtonLabel(audiobookStatus);
 
   return (
     <div style={styles.sideCard}>
-      <CardHeader styles={styles} icon={BookmarkCheck} iconColor="#3b82f6" label="Currently Reading" />
+      <CardHeader
+        styles={styles}
+        icon={BookmarkCheck}
+        iconColor="#3b82f6"
+        label="Currently Reading"
+        action={
+          canOpenAudiobook ? (
+            <button
+              type="button"
+              onClick={onReadWithAudiobook}
+              disabled={audiobookStatus === "searching"}
+              style={audiobookButtonStyle(audiobookStatus)}
+              aria-label={audiobookButtonLabel}
+              title={audiobookButtonLabel}
+            >
+              <Headphones size={15} />
+            </button>
+          ) : null
+        }
+      />
 
       {loading && !item ? (
         <div style={{ ...styles.playerSub, padding: "8px 0" }}>Loading your active book...</div>
@@ -138,13 +166,62 @@ export default function CurrentlyReadingCard({ styles, item, loading, isMobile =
   );
 }
 
-function CardHeader({ styles, icon: Icon, iconColor, label }) {
+function getAudiobookButtonLabel(status) {
+  if (status === "searching") {
+    return "Finding...";
+  }
+
+  if (status === "ready") {
+    return "Audiobook ready";
+  }
+
+  if (status === "missing") {
+    return "No audiobook found";
+  }
+
+  return "Read with audiobook";
+}
+
+function audiobookButtonStyle(status) {
+  const searching = status === "searching";
+  const ready = status === "ready";
+  const missing = status === "missing";
+
+  return {
+    border: ready
+      ? "1px solid rgba(16,185,129,0.28)"
+      : missing
+        ? "1px solid rgba(239,68,68,0.22)"
+        : "1px solid var(--app-border)",
+    background: ready
+      ? "rgba(16,185,129,0.12)"
+      : missing
+        ? "rgba(239,68,68,0.1)"
+        : "var(--app-surface)",
+    color: ready ? "#059669" : missing ? "#dc2626" : "var(--app-text-soft)",
+    borderRadius: "999px",
+    width: "34px",
+    height: "34px",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: searching ? "wait" : "pointer",
+    opacity: searching ? 0.72 : 1,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    flexShrink: 0,
+  };
+}
+
+function CardHeader({ styles, icon: Icon, iconColor, label, action = null }) {
   return (
     <div
       style={{
         ...styles.wordCardHeader,
         marginBottom: "10px",
         alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: "12px",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
@@ -164,6 +241,8 @@ function CardHeader({ styles, icon: Icon, iconColor, label }) {
           <div style={styles.eyebrow}>{label}</div>
         </div>
       </div>
+
+      {action}
     </div>
   );
 }

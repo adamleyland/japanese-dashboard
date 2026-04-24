@@ -99,6 +99,9 @@ export default function ListeningTab({
   audiobooksData,
   audiobooksLoading,
   audiobooksError,
+  onAudiobookPlaybackStateChange,
+  audiobookLaunchRequest,
+  onAudiobookLaunchResult,
 }) {
   const {
     activeFeed,
@@ -154,6 +157,7 @@ export default function ListeningTab({
     currentTime: 0,
     durationSeconds: 0,
     isPlayerOpen: false,
+    isPlayerMinimized: false,
   });
   const playerRef = useRef(null);
   const playerHostRef = useRef(null);
@@ -168,6 +172,13 @@ export default function ListeningTab({
   const pendingSelectionPlaybackRef = useRef(null);
   const playbackIntentRef = useRef(false);
   const failedVideoIdsRef = useRef(new Set());
+  const currentQueueIndexRef = useRef(queueIndex);
+  const lastQueueTransitionRef = useRef({
+    triggerReason: "",
+    fromVideoId: "",
+    toVideoId: "",
+    at: 0,
+  });
   const previousWorkspaceSourceRef = useRef(workspaceSource);
   const playbackListRef = useRef(playbackList);
   const selectedVideoIdRef = useRef(safeVideoId);
@@ -354,6 +365,10 @@ export default function ListeningTab({
   useEffect(() => {
     selectedVideoIdRef.current = safeVideoId;
   }, [safeVideoId]);
+
+  useEffect(() => {
+    currentQueueIndexRef.current = queueIndex;
+  }, [queueIndex]);
 
   const resolvedVideoSource = useMemo(() => {
     if (selectedVideo?.id && selectedVideo?.id === selectedVideoId) {
@@ -665,6 +680,89 @@ export default function ListeningTab({
     setPlaybackState(buildPlaybackPayload(snapshot));
     return snapshot;
   }, [buildPlaybackPayload, capturePlaybackSnapshot, setPlaybackState]);
+
+  const advanceYoutubeQueue = useCallback(
+    ({
+      triggerReason = "unknown",
+      shouldPlay = isPlayerCurrentlyPlaying(),
+      skipFailedVideos = false,
+    } = {}) => {
+      const currentPlaybackList = playbackListRef.current;
+      const currentVideoId = selectedVideoIdRef.current || "";
+      if (!currentPlaybackList.length) {
+        console.warn("[YouTube Player] Queue transition skipped", {
+          triggerReason,
+          previousIndex: -1,
+          nextIndex: -1,
+          currentVideoId,
+          nextVideoId: "",
+          queueLength: 0,
+          skipReason: "empty-queue",
+        });
+        return false;
+      }
+
+      const now = Date.now();
+      const lastTransition = lastQueueTransitionRef.current;
+      if (
+        triggerReason === "natural-end" &&
+        now - lastTransition.at < 1500 &&
+        (lastTransition.fromVideoId === currentVideoId ||
+          lastTransition.toVideoId === currentVideoId)
+      ) {
+        console.info("[YouTube Player] Duplicate queue transition ignored", {
+          triggerReason,
+          currentVideoId,
+          lastTransition,
+        });
+        return false;
+      }
+
+      const foundIndex = currentPlaybackList.findIndex((video) => video.id === currentVideoId);
+      const previousIndex = foundIndex >= 0 ? foundIndex : currentQueueIndexRef.current;
+      let nextIndex = previousIndex + 1;
+
+      if (skipFailedVideos) {
+        while (
+          nextIndex < currentPlaybackList.length &&
+          failedVideoIdsRef.current.has(currentPlaybackList[nextIndex]?.id)
+        ) {
+          nextIndex += 1;
+        }
+      }
+
+      const nextVideo = currentPlaybackList[nextIndex] || null;
+      console.info("[YouTube Player] Queue transition", {
+        triggerReason,
+        previousIndex,
+        nextIndex: nextVideo?.id ? nextIndex : -1,
+        currentVideoId,
+        nextVideoId: nextVideo?.id || "",
+        queueLength: currentPlaybackList.length,
+        skipFailedVideos,
+      });
+
+      if (!nextVideo?.id) {
+        playbackIntentRef.current = false;
+        return false;
+      }
+
+      // The selected video drives currentIndex everywhere else, so update the ref
+      // immediately to keep player callbacks from advancing from stale state.
+      selectedVideoIdRef.current = nextVideo.id;
+      currentQueueIndexRef.current = nextIndex;
+      lastQueueTransitionRef.current = {
+        triggerReason,
+        fromVideoId: currentVideoId,
+        toVideoId: nextVideo.id,
+        at: now,
+      };
+      pendingSelectionPlaybackRef.current = { shouldPlay };
+      setSelectedVideoId(nextVideo.id);
+      return true;
+    },
+    [isPlayerCurrentlyPlaying, setSelectedVideoId],
+  );
 
   useEffect(() => {
     const previousWorkspaceSource = previousWorkspaceSourceRef.current;
@@ -1026,28 +1124,21 @@ export default function ListeningTab({
       syncYoutubeVideoProgress();
     };
 
-    const goNextVideo = () => {
-      const currentPlaybackList = playbackListRef.current;
-      const currentSelectedVideoId = selectedVideoIdRef.current;
-      if (!currentPlaybackList.length) return;
+    const goNextVideo = ({ triggerReason, skipFailedVideos = false } = {}) => {
+      const advanced = advanceYoutubeQueue({
+        triggerReason,
+        shouldPlay: true,
+        skipFailedVideos,
+      });
 
-      const next = currentPlaybackList.find(
-        (video) =>
-          video.id !== currentSelectedVideoId && !failedVideoIdsRef.current.has(video.id),
-      );
-
-      if (!next?.id) {
-        playbackIntentRef.current = false;
+      if (!advanced && skipFailedVideos) {
         console.warn("[YouTube Player] No playable fallback video remains in the queue", {
+          triggerReason,
           failedVideoCount: failedVideoIdsRef.current.size,
-          playbackListCount: currentPlaybackList.length,
-          lastFailedVideoId: currentSelectedVideoId || "",
+          playbackListCount: playbackListRef.current.length,
+          lastFailedVideoId: selectedVideoIdRef.current || "",
         });
-        return;
       }
-
-      pendingSelectionPlaybackRef.current = { shouldPlay: true };
-      setSelectedVideoId(next.id);
     };
 
     const onPlayerState = (event) => {
@@ -1108,7 +1199,7 @@ export default function ListeningTab({
           playerPlaying: false,
         });
         syncVideoProgress();
-        goNextVideo();
+        goNextVideo({ triggerReason: "natural-end" });
       }
     };
 
@@ -1129,7 +1220,7 @@ export default function ListeningTab({
       });
 
       if ([2, 5, 100, 101, 150].includes(errorCode) && playbackListRef.current.length > 1) {
-        goNextVideo();
+        goNextVideo({ triggerReason: `player-error-${errorCode}`, skipFailedVideos: true });
       }
     };
 
@@ -1238,6 +1329,7 @@ export default function ListeningTab({
       window.onYouTubeIframeAPIReady = priorReady;
     };
   }, [
+    advanceYoutubeQueue,
     applyPlaybackSnapshot,
     connectionStatus,
     focusMode,
@@ -1254,7 +1346,6 @@ export default function ListeningTab({
     selectedVideo?.id,
     selectedVideoId,
     setPlaybackState,
-    setSelectedVideoId,
     syncPlaybackSession,
     syncYoutubeVideoProgress,
     youtubeConnected,
@@ -1322,6 +1413,12 @@ export default function ListeningTab({
   }, [isMounted, workspaceSource]);
 
   useEffect(() => {
+    if (audiobookLaunchRequest && workspaceSource !== "audiobooks") {
+      setWorkspaceSource("audiobooks");
+    }
+  }, [audiobookLaunchRequest, setWorkspaceSource, workspaceSource]);
+
+  useEffect(() => {
     if (workspaceSource === "audiobooks" && focusMode) {
       setFocusMode(false);
     }
@@ -1365,17 +1462,10 @@ export default function ListeningTab({
   };
 
   const skipCurrentVideo = () => {
-    if (!playbackList.length) return;
-
-    const index = playbackList.findIndex((video) => video.id === selectedVideoId);
-    const next = playbackList[(index + 1) % playbackList.length];
-
-    if (next?.id) {
-      pendingSelectionPlaybackRef.current = {
-        shouldPlay: isPlayerCurrentlyPlaying(),
-      };
-      setSelectedVideoId(next.id);
-    }
+    advanceYoutubeQueue({
+      triggerReason: "manual-skip",
+      shouldPlay: isPlayerCurrentlyPlaying(),
+    });
   };
 
   const totalBlocks = Math.max(12, Math.ceil(Math.max(listeningGoal, listeningHours) / 10));
@@ -1389,6 +1479,7 @@ export default function ListeningTab({
       durationSeconds = 0,
       playbackState: nextPlaybackState = "idle",
       isPlayerOpen = false,
+      isPlayerMinimized = false,
     }) => {
       const nextSnapshot = {
         bookId: book?.id || null,
@@ -1396,6 +1487,7 @@ export default function ListeningTab({
         currentTime: Math.round(Math.max(0, Number(currentTime || 0)) * 10) / 10,
         durationSeconds: Math.round(Math.max(0, Number(durationSeconds || 0)) * 10) / 10,
         isPlayerOpen: Boolean(isPlayerOpen),
+        isPlayerMinimized: Boolean(isPlayerMinimized),
       };
       const previousSnapshot = audiobookPlaybackSnapshotRef.current;
 
@@ -1404,15 +1496,21 @@ export default function ListeningTab({
         previousSnapshot.isPlaying === nextSnapshot.isPlaying &&
         Math.abs(previousSnapshot.currentTime - nextSnapshot.currentTime) < 0.1 &&
         Math.abs(previousSnapshot.durationSeconds - nextSnapshot.durationSeconds) < 0.1 &&
-        previousSnapshot.isPlayerOpen === nextSnapshot.isPlayerOpen
+        previousSnapshot.isPlayerOpen === nextSnapshot.isPlayerOpen &&
+        previousSnapshot.isPlayerMinimized === nextSnapshot.isPlayerMinimized
       ) {
         return;
       }
 
       audiobookPlaybackSnapshotRef.current = nextSnapshot;
       syncPlaybackSession({ isPlaying });
+      onAudiobookPlaybackStateChange?.({
+        ...nextSnapshot,
+        book,
+        playbackState: nextPlaybackState,
+      });
     },
-    [syncPlaybackSession],
+    [onAudiobookPlaybackStateChange, syncPlaybackSession],
   );
 
   return (
@@ -1468,6 +1566,8 @@ export default function ListeningTab({
         audiobooksData={audiobooksData}
         audiobooksLoading={audiobooksLoading}
         audiobooksError={audiobooksError}
+        audiobookLaunchRequest={audiobookLaunchRequest}
+        onAudiobookLaunchResult={onAudiobookLaunchResult}
       />
 
       {isMobile ? (

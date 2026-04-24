@@ -85,6 +85,17 @@ export default function Home() {
   const [audiobooksData, setAudiobooksData] = useState([]);
   const [audiobooksError, setAudiobooksError] = useState(null);
   const [audiobooksLoading, setAudiobooksLoading] = useState(true);
+  const [audiobookPlaybackSnapshot, setAudiobookPlaybackSnapshot] = useState({
+    bookId: null,
+    isPlaying: false,
+    isPlayerOpen: false,
+    isPlayerMinimized: false,
+  });
+  const [audiobookLaunchRequest, setAudiobookLaunchRequest] = useState(null);
+  const [audiobookLaunchStatus, setAudiobookLaunchStatus] = useState({
+    state: "idle",
+    title: "",
+  });
   const authUserId = authUser?.id || "";
   const listeningHoursRef = useRef(listeningHours);
   const shadowingHoursRef = useRef(shadowingHours);
@@ -687,6 +698,89 @@ export default function Home() {
   const handleTabChange = useCallback((nextTab) => {
     setTab((currentTab) => (currentTab === nextTab ? null : nextTab));
   }, []);
+  const handleAudiobookPlaybackStateChange = useCallback((snapshot) => {
+    setAudiobookPlaybackSnapshot((currentSnapshot) => {
+      const nextSnapshot = {
+        bookId: snapshot?.bookId || snapshot?.book?.id || null,
+        isPlaying: Boolean(snapshot?.isPlaying),
+        isPlayerOpen: Boolean(snapshot?.isPlayerOpen),
+        isPlayerMinimized: Boolean(snapshot?.isPlayerMinimized),
+      };
+
+      if (
+        currentSnapshot.bookId === nextSnapshot.bookId &&
+        currentSnapshot.isPlaying === nextSnapshot.isPlaying &&
+        currentSnapshot.isPlayerOpen === nextSnapshot.isPlayerOpen &&
+        currentSnapshot.isPlayerMinimized === nextSnapshot.isPlayerMinimized
+      ) {
+        return currentSnapshot;
+      }
+
+      return nextSnapshot;
+    });
+  }, []);
+  const handleReadWithAudiobook = useCallback((book) => {
+    const title = typeof book?.title === "string" ? book.title.trim() : "";
+    if (!title) {
+      return;
+    }
+
+    const request = {
+      id: `${Date.now()}:${title}`,
+      title,
+      titleNormalized:
+        typeof book?.titleNormalized === "string" ? book.titleNormalized.trim() : "",
+      author: typeof book?.author === "string" ? book.author.trim() : "",
+    };
+
+    setAudiobookLaunchStatus({
+      state: "searching",
+      title,
+    });
+    setAudiobookLaunchRequest(request);
+  }, []);
+  const handleAudiobookLaunchResult = useCallback((result) => {
+    const title = result?.requestedTitle || result?.book?.title || "";
+
+    if (result?.ok && result.book?.id) {
+      setAudiobookPlaybackSnapshot({
+        bookId: result.book.id,
+        isPlaying: false,
+        isPlayerOpen: true,
+        isPlayerMinimized: true,
+      });
+      setAudiobookLaunchStatus({
+        state: "ready",
+        title,
+      });
+    } else {
+      setAudiobookLaunchStatus({
+        state: "missing",
+        title,
+      });
+    }
+
+    setAudiobookLaunchRequest(null);
+  }, []);
+  useEffect(() => {
+    if (!audiobookLaunchRequest) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAudiobookLaunchStatus({
+        state: "missing",
+        title: audiobookLaunchRequest.title,
+      });
+      setAudiobookLaunchRequest(null);
+    }, 8000);
+
+    return () => window.clearTimeout(timeout);
+  }, [audiobookLaunchRequest]);
+  const shouldKeepListeningTabMounted =
+    tab === "listening" ||
+    Boolean(audiobookLaunchRequest) ||
+    Boolean(audiobookPlaybackSnapshot.bookId && audiobookPlaybackSnapshot.isPlayerOpen);
 
   useEffect(() => {
     const onResize = () => {
@@ -968,20 +1062,25 @@ export default function Home() {
         )}
 
         <section style={styles.contentWrap}>
-          {tab === "listening" && (
-            <ListeningTab
-              styles={styles}
-              listeningHours={listeningHours}
-              adjustListeningHours={adjustListeningHours}
-              isMobile={isMobile}
-              isCompact={isCompact}
-              formatClock={formatClock}
-              authUserId={authUserId}
-              authResolved={!authLoading}
-              audiobooksData={audiobooksData}
-              audiobooksLoading={audiobooksLoading}
-              audiobooksError={audiobooksError}
-            />
+          {shouldKeepListeningTabMounted && (
+            <div style={{ display: tab === "listening" ? "block" : "none" }}>
+              <ListeningTab
+                styles={styles}
+                listeningHours={listeningHours}
+                adjustListeningHours={adjustListeningHours}
+                isMobile={isMobile}
+                isCompact={isCompact}
+                formatClock={formatClock}
+                authUserId={authUserId}
+                authResolved={!authLoading}
+                audiobooksData={audiobooksData}
+                audiobooksLoading={audiobooksLoading}
+                audiobooksError={audiobooksError}
+                onAudiobookPlaybackStateChange={handleAudiobookPlaybackStateChange}
+                audiobookLaunchRequest={audiobookLaunchRequest}
+                onAudiobookLaunchResult={handleAudiobookLaunchResult}
+              />
+            </div>
           )}
           {tab === "reading" && (
             <ReadingTab
@@ -991,6 +1090,8 @@ export default function Home() {
               lingqStats={lingqStats}
               isMobile={isMobile}
               isCompact={isCompact}
+              audiobookLaunchStatus={audiobookLaunchStatus}
+              onReadWithAudiobook={handleReadWithAudiobook}
             />
           )}
           {tab === "shadowing" && (

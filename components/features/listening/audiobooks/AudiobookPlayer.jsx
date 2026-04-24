@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import {
+  ChevronDown,
+  Headphones,
   List,
   Pause,
   Play,
@@ -42,6 +44,7 @@ export default function AudiobookPlayer({
   playbackState,
   progressPercent,
   onClosePlayer,
+  onMinimizePlayer,
   onSeekTo,
   onSkipBy,
   onTogglePlayback,
@@ -92,12 +95,14 @@ export default function AudiobookPlayer({
   const timelineRemainingLabel = activeChapter
     ? `${formatRemaining(activeChapterRemainingSeconds)} left in chapter`
     : `${formatRemaining(remainingSeconds)} left`;
+  const metadataLine = buildMetadataLine(book, durationSeconds);
   const shellStyle = isMobile
     ? {
         ...styles.shell,
         gap: "30px",
         padding: "14px",
         borderRadius: "24px",
+        background: "#ffffff",
         width: "100%",
         maxWidth: "560px",
         minHeight: "auto",
@@ -228,9 +233,12 @@ export default function AudiobookPlayer({
       <div style={playerHeaderStyle}>
         {isMobile ? (
           <div style={headerCopyStyle}>
-            <div style={styles.eyebrow}>Audiobook Player</div>
-            <h3 style={titleStyle}>{book.title}</h3>
-            <p style={metaStyle}>{buildMetadataLine(book, durationSeconds)}</p>
+            <div style={styles.mobilePlayerLabel}>
+              <span style={styles.mobilePlayerLabelIcon}>
+                <Headphones size={15} />
+              </span>
+              <span>Audiobook Player</span>
+            </div>
             {hasDescription ? (
               <button
                 type="button"
@@ -254,6 +262,17 @@ export default function AudiobookPlayer({
             marginLeft: "auto",
           }}
         >
+          {isMobile && onMinimizePlayer ? (
+            <button
+              type="button"
+              onClick={onMinimizePlayer}
+              style={iconButtonStyle}
+              aria-label="Minimize player"
+              title="Minimize player"
+            >
+              <ChevronDown size={18} />
+            </button>
+          ) : null}
           <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
             <X size={18} />
           </button>
@@ -610,6 +629,7 @@ export default function AudiobookPlayer({
                 <h4 id="audiobook-description-title" style={styles.descriptionModalTitle}>
                   {book.title}
                 </h4>
+                {metadataLine ? <p style={styles.descriptionModalMeta}>{metadataLine}</p> : null}
               </div>
 
               <button
@@ -717,6 +737,28 @@ const styles = {
     display: "grid",
     gap: "6px",
     minWidth: 0,
+  },
+  mobilePlayerLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "fit-content",
+    color: "var(--app-text)",
+    fontSize: "13px",
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+  mobilePlayerLabelIcon: {
+    width: "30px",
+    height: "30px",
+    borderRadius: "999px",
+    background: "#050505",
+    color: "#ffffff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxShadow: "0 10px 22px rgba(15,23,42,0.16)",
   },
   eyebrow: {
     fontSize: "11px",
@@ -883,6 +925,12 @@ const styles = {
     letterSpacing: "-0.03em",
     color: "var(--app-text)",
   },
+  descriptionModalMeta: {
+    margin: 0,
+    fontSize: "13px",
+    lineHeight: 1.5,
+    color: "var(--app-text-muted)",
+  },
   descriptionModalBody: {
     overflowY: "auto",
     paddingRight: "4px",
@@ -963,17 +1011,19 @@ const styles = {
   }),
   mobilePrimaryControlButton: (disabled) => ({
     border: "none",
-    background: "transparent",
-    color: "var(--app-selected-text)",
+    background: "#050505",
+    color: "#ffffff",
+    borderRadius: "999px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
-    width: "56px",
-    height: "56px",
+    width: "74px",
+    height: "74px",
     padding: 0,
     flexShrink: 0,
+    boxShadow: "0 16px 34px rgba(15,23,42,0.22)",
   }),
   mobileInlineControlButton: (disabled) => ({
     border: "none",

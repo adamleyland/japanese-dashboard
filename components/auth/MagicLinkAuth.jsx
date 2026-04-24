@@ -104,7 +104,11 @@ export default function MagicLinkAuth({ user, isCompact, isLoading }) {
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.delete("auth_status");
     nextUrl.searchParams.delete("auth_error");
+    nextUrl.searchParams.delete("auth_error_code");
     nextUrl.searchParams.delete("auth_message");
+    nextUrl.searchParams.delete("error");
+    nextUrl.searchParams.delete("error_code");
+    nextUrl.searchParams.delete("error_description");
     window.history.replaceState({}, "", nextUrl.toString());
   }, []);
 

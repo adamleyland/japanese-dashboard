@@ -90,6 +90,9 @@ async function getAuthenticatedUser() {
   console.info("[YouTube API] Resolved Supabase user from cookies", {
     hasUser: Boolean(data.user?.id),
     userId: data.user?.id || "",
+    googleIdentityCount: Array.isArray(data.user?.identities)
+      ? data.user.identities.filter((identity) => identity?.provider === "google").length
+      : 0,
     hasProviderToken: Boolean(sessionData?.session?.provider_token),
     hasProviderRefreshToken: Boolean(sessionData?.session?.provider_refresh_token),
   });
@@ -106,6 +109,11 @@ async function recoverGoogleTokensFromSession(userId, session) {
   const providerRefreshToken = session?.provider_refresh_token || "";
 
   if (!userId || !providerToken) {
+    console.info("[YouTube API] Live Supabase session has no Google provider token to recover", {
+      userId,
+      hasProviderToken: Boolean(providerToken),
+      hasProviderRefreshToken: Boolean(providerRefreshToken),
+    });
     return false;
   }
 

@@ -59,6 +59,8 @@ export default function ListeningWorkspace({
   audiobooksData,
   audiobooksLoading,
   audiobooksError,
+  audiobookLaunchRequest,
+  onAudiobookLaunchResult,
 }) {
   const [channelSearch, setChannelSearch] = useState("");
   const hasMounted = useSyncExternalStore(
@@ -680,6 +682,8 @@ export default function ListeningWorkspace({
             audiobooksData={audiobooksData}
             audiobooksLoading={audiobooksLoading}
             audiobooksError={audiobooksError}
+            audiobookLaunchRequest={audiobookLaunchRequest}
+            onAudiobookLaunchResult={onAudiobookLaunchResult}
             isMobile={isMobile}
           />
         ) : (

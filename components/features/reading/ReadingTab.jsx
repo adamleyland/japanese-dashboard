@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LibraryBig, RefreshCcw, X } from "lucide-react";
 import CurrentlyReadingCard from "@/components/features/reading/components/CurrentlyReadingCard";
@@ -28,6 +28,8 @@ export default function ReadingTab({
   lingqStats,
   isMobile,
   isCompact,
+  audiobookLaunchStatus,
+  onReadWithAudiobook,
 }) {
   const rightColumnRef = useRef(null);
   const [libraryHeight, setLibraryHeight] = useState(null);
@@ -189,6 +191,17 @@ export default function ReadingTab({
   const counts = useMemo(() => getReadingCounts(readingItems), [readingItems]);
   const effectiveWordsRead =
     typeof lingqStats.totalWordsRead === "number" ? lingqStats.totalWordsRead : wordsRead;
+  const currentBookAudiobookStatus =
+    currentBook?.title && audiobookLaunchStatus?.title === currentBook.title
+      ? audiobookLaunchStatus.state
+      : "idle";
+  const handleReadWithAudiobook = useCallback(() => {
+    if (!currentBook) {
+      return;
+    }
+
+    onReadWithAudiobook?.(currentBook);
+  }, [currentBook, onReadWithAudiobook]);
   const readingLibraryPanelProps = {
     styles,
     items: visibleItems,
@@ -220,6 +233,8 @@ export default function ReadingTab({
           item={currentBook}
           loading={readingLibrary.loading}
           isMobile={isMobile}
+          audiobookStatus={currentBookAudiobookStatus}
+          onReadWithAudiobook={isMobile && onReadWithAudiobook ? handleReadWithAudiobook : null}
         />
       ) : null}
 
@@ -252,6 +267,8 @@ export default function ReadingTab({
             item={currentBook}
             loading={readingLibrary.loading}
             isMobile={isMobile}
+            audiobookStatus={currentBookAudiobookStatus}
+            onReadWithAudiobook={isMobile && onReadWithAudiobook ? handleReadWithAudiobook : null}
           />
         ) : null}
         <ReadingProgressCard

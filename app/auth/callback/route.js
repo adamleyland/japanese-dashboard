@@ -51,13 +51,23 @@ export async function GET(request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const authError = requestUrl.searchParams.get("error");
+  const authErrorCode = requestUrl.searchParams.get("error_code");
   const authErrorDescription = requestUrl.searchParams.get("error_description");
 
   if (authError) {
     logAuthError("Callback", "Supabase Google auth callback returned an error", null, {
       authError,
+      authErrorCode,
       authErrorDescription,
     });
+
+    if (authErrorCode === "identity_already_exists") {
+      return redirectWithCookies(request, [], {
+        auth_status: "google_identity_already_linked",
+        auth_message: "Google is already linked. Restoring YouTube now.",
+        auth_error_code: authErrorCode,
+      });
+    }
 
     return redirectWithCookies(request, [], {
       auth_error: authError === "access_denied" ? "oauth_cancelled" : authError,

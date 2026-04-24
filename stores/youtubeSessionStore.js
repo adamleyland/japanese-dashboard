@@ -18,8 +18,13 @@ import {
 import {
   YOUTUBE_CONNECT_INTENT_STORAGE_KEY,
   getSafeAuthUser,
+  hasIdentityAlreadyExistsUrlError,
+  hasLinkedGoogleIdentity,
+  isIdentityAlreadyExistsAuthError,
   linkGoogleIdentity,
+  readFreshSupabaseAuthState,
   signInWithGoogle,
+  summarizeGoogleIdentities,
 } from "@/lib/auth";
 import { logAuthInfo, summarizeSupabaseSession } from "@/lib/authLogging";
 import { supabase } from "@/lib/supabase";
@@ -38,6 +43,7 @@ const DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY = "jp_youtube_discover_quota_cooldown_
 const ACCOUNT_DATA_TTL_MS = 30 * 60 * 1000;
 const AUTO_BOOTSTRAP_DEDUPE_WINDOW_MS = 10 * 1000;
 const AUTO_BOOTSTRAP_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+const AUTH_RESUME_CHECK_COOLDOWN_MS = 60 * 1000;
 
 const bootstrapRuntime = {
   userId: "",
@@ -377,6 +383,7 @@ export function YoutubeSessionProvider({ children }) {
   const stateRef = useRef(state);
   const autoBootstrapKeyRef = useRef("");
   const connectPromiseRef = useRef(null);
+  const lastAuthResumeCheckRef = useRef(0);
 
   useEffect(() => {
     stateRef.current = state;
@@ -708,11 +715,32 @@ export function YoutubeSessionProvider({ children }) {
           code === "google_refresh_failed" ||
           code === "google_refresh_not_configured"
         ) {
-          markSessionDisconnected({
-            clearPersistentConnection: true,
-            nextError: "reconnect-required",
-            cause: code,
+          const authState = await readFreshSupabaseAuthState({ forceRefresh: true });
+          const hasGoogleIdentity = hasLinkedGoogleIdentity(authState.user);
+          const currentState = stateRef.current;
+          console.warn("[YouTube] Google token refresh failed during bootstrap", {
+            code,
+            hasGoogleIdentity,
+            authSession: summarizeSupabaseSession(authState.session),
+            googleIdentitySummary: summarizeGoogleIdentities(authState.user),
+            hasRestorableAccountSnapshot: hasRestorableAccountSnapshot(currentState),
           });
+
+          if (hasGoogleIdentity && hasRestorableAccountSnapshot(currentState)) {
+            clearYoutubeConnectIntent();
+            setState((stateBeforeRecovery) => ({
+              ...stateBeforeRecovery,
+              connectionStatus: "connected",
+              wasConnected: true,
+              lastError: "reconnect-required",
+            }));
+          } else {
+            markSessionDisconnected({
+              clearPersistentConnection: true,
+              nextError: "reconnect-required",
+              cause: code,
+            });
+          }
         } else if (status >= 500 || !status) {
           markSessionDisconnected({
             clearPersistentConnection: false,
@@ -938,9 +966,18 @@ export function YoutubeSessionProvider({ children }) {
 
       if (shouldStartOAuth) {
         rememberYoutubeConnectIntent();
+        const freshAuthState = await readFreshSupabaseAuthState({ forceRefresh: true });
+        const freshUser = freshAuthState.user;
+        const googleIdentitySummary = summarizeGoogleIdentities(freshUser);
+        const hasExistingGoogleIdentity = hasLinkedGoogleIdentity(freshUser);
+
         console.info("[YouTube] Starting Google OAuth after manual connect failure", {
           errorCode,
           hasConnectIntent: hasYoutubeConnectIntent(),
+          authSession: summarizeSupabaseSession(freshAuthState.session),
+          hasAuthUser: Boolean(freshUser?.id),
+          hasExistingGoogleIdentity,
+          googleIdentitySummary,
         });
         markSessionDisconnected({
           clearPersistentConnection: true,
@@ -950,12 +987,45 @@ export function YoutubeSessionProvider({ children }) {
         });
 
         try {
-          const user = await getSafeAuthUser();
-          const { error: authError } = user?.id
-            ? await linkGoogleIdentity()
-            : await signInWithGoogle();
+          const user = freshUser || (await getSafeAuthUser());
+          const shouldRefreshExistingGoogleSession =
+            Boolean(user?.id) && hasLinkedGoogleIdentity(user);
+          // If Google is already linked, starting a normal OAuth sign-in refreshes provider
+          // tokens without asking Supabase to attach the same identity again.
+          const { error: authError } = shouldRefreshExistingGoogleSession
+            ? await signInWithGoogle()
+            : user?.id
+              ? await linkGoogleIdentity()
+              : await signInWithGoogle();
 
           if (authError) {
+            if (isIdentityAlreadyExistsAuthError(authError)) {
+              const recoveryAuthState = await readFreshSupabaseAuthState({ forceRefresh: true });
+              const recoveredLinkedIdentity = hasLinkedGoogleIdentity(recoveryAuthState.user);
+              console.info("[YouTube] Google identity already linked during connect", {
+                recoveredLinkedIdentity,
+                authSession: summarizeSupabaseSession(recoveryAuthState.session),
+                googleIdentitySummary: summarizeGoogleIdentities(recoveryAuthState.user),
+              });
+
+              if (recoveredLinkedIdentity) {
+                setState((currentState) => ({
+                  ...currentState,
+                  connectionStatus: currentState.wasConnected ? "connected" : "restoring",
+                  wasConnected: true,
+                  lastError: "",
+                }));
+                void runYoutubeBootstrap({
+                  caller: "YoutubeSessionProvider.connectYoutube.identityAlreadyLinkedRecovery",
+                  forceRefresh: true,
+                  manual: false,
+                  preserveSelectedVideo: true,
+                  reason: "identity-already-linked-recovery",
+                });
+                return true;
+              }
+            }
+
             throw authError;
           }
 
@@ -1079,22 +1149,55 @@ export function YoutubeSessionProvider({ children }) {
     let isActive = true;
 
     const resolveAuthUser = async () => {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error("[YouTube] Failed to restore Supabase session on load", sessionError);
+      const sawIdentityAlreadyLinkedError = hasIdentityAlreadyExistsUrlError();
+      const authState = await readFreshSupabaseAuthState({
+        forceRefresh: sawIdentityAlreadyLinkedError,
+      });
+
+      if (authState.sessionError) {
+        console.error("[YouTube] Failed to restore Supabase session on load", authState.sessionError);
       } else {
         logAuthInfo("YouTube", "Supabase session restored for YouTube provider", {
-          session: summarizeSupabaseSession(sessionData?.session ?? null),
+          session: summarizeSupabaseSession(authState.session),
         });
       }
 
-      const user = await getSafeAuthUser();
+      if (authState.userError) {
+        console.error("[YouTube] Failed to restore Supabase user identities on load", {
+          errorCode: authState.userError.code || "",
+          errorMessage: authState.userError.message || "",
+        });
+      }
 
       if (!isActive) {
         return;
       }
 
-      setAuthUserId(user?.id || "");
+      const hasGoogleIdentity = hasLinkedGoogleIdentity(authState.user);
+      console.info("[YouTube] Supabase identity restore diagnostics", {
+        hasAuthUser: Boolean(authState.user?.id),
+        userId: authState.user?.id || "",
+        sawIdentityAlreadyLinkedError,
+        hasGoogleIdentity,
+        googleIdentitySummary: summarizeGoogleIdentities(authState.user),
+        hasProviderToken: Boolean(authState.session?.provider_token),
+        hasProviderRefreshToken: Boolean(authState.session?.provider_refresh_token),
+      });
+
+      if (sawIdentityAlreadyLinkedError && authState.user?.id && hasGoogleIdentity) {
+        // Supabase can report identity_already_exists when the same Google account is
+        // already attached. Keep the YouTube restore intent alive and let bootstrap
+        // use the existing identity/tokens instead of relinking forever.
+        rememberYoutubeConnectIntent();
+        setState((currentState) => ({
+          ...currentState,
+          connectionStatus: currentState.wasConnected ? "connected" : "restoring",
+          wasConnected: true,
+          lastError: "",
+        }));
+      }
+
+      setAuthUserId(authState.user?.id || "");
       setAuthResolved(true);
     };
 
@@ -1110,6 +1213,8 @@ export function YoutubeSessionProvider({ children }) {
       logAuthInfo("YouTube", "Supabase auth state changed for YouTube provider", {
         event,
         session: summarizeSupabaseSession(session),
+        hasGoogleIdentity: hasLinkedGoogleIdentity(session?.user),
+        googleIdentitySummary: summarizeGoogleIdentities(session?.user),
       });
 
       const nextUserId = session?.user?.id || "";
@@ -1248,6 +1353,70 @@ export function YoutubeSessionProvider({ children }) {
       reason: hasConnectIntent ? "google-auth-return" : "session-restore",
     });
   }, [authResolved, authUserId, runYoutubeBootstrap, state.hydrated, state.wasConnected]);
+
+  useEffect(() => {
+    if (!state.hydrated || !authResolved || !authUserId) {
+      return undefined;
+    }
+
+    const handleAuthResume = async (triggerReason) => {
+      const now = Date.now();
+      if (now - lastAuthResumeCheckRef.current < AUTH_RESUME_CHECK_COOLDOWN_MS) {
+        return;
+      }
+
+      lastAuthResumeCheckRef.current = now;
+      const authState = await readFreshSupabaseAuthState();
+      const nextUserId = authState.user?.id || "";
+      const currentState = stateRef.current;
+      const hasConnectIntent = hasYoutubeConnectIntent();
+
+      console.info("[YouTube] Auth resume diagnostics", {
+        triggerReason,
+        currentUserId: authUserId,
+        nextUserId,
+        authSession: summarizeSupabaseSession(authState.session),
+        hasGoogleIdentity: hasLinkedGoogleIdentity(authState.user),
+        googleIdentitySummary: summarizeGoogleIdentities(authState.user),
+        wasConnected: currentState.wasConnected,
+        connectionStatus: currentState.connectionStatus,
+        hasConnectIntent,
+      });
+
+      if (nextUserId && nextUserId !== authUserId) {
+        setAuthUserId(nextUserId);
+      }
+
+      if (!nextUserId || (!currentState.wasConnected && !hasConnectIntent)) {
+        return;
+      }
+
+      void runYoutubeBootstrap({
+        caller: "YoutubeSessionProvider.authResume",
+        forceRefresh: hasConnectIntent,
+        manual: false,
+        preserveSelectedVideo: true,
+        reason: triggerReason,
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void handleAuthResume("visibility-resume");
+      }
+    };
+    const handleWindowFocus = () => {
+      void handleAuthResume("window-focus-resume");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [authResolved, authUserId, runYoutubeBootstrap, state.hydrated]);
 
   useEffect(() => {
     console.info("[YouTube] Connection state transition", {
