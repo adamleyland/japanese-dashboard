@@ -16,7 +16,9 @@ const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
+const YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY = "jp_youtube_recent_video_ids_v1";
 const YOUTUBE_WORKSPACE_RESUME_SCHEMA_VERSION = 2;
+const YOUTUBE_RECENT_VIDEO_HISTORY_LIMIT = 75;
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 
 function normalizeListeningGoalInput(value, fallback = DEFAULT_LISTENING_GOAL) {
@@ -106,6 +108,47 @@ function writeYoutubeWorkspaceResumeSnapshot(snapshot) {
   );
 }
 
+function readRecentYoutubeVideoIds() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY) || "[]",
+    );
+    return Array.isArray(value)
+      ? [...new Set(value.map((videoId) => String(videoId || "").trim()).filter(Boolean))].slice(
+          0,
+          YOUTUBE_RECENT_VIDEO_HISTORY_LIMIT,
+        )
+      : [];
+  } catch (error) {
+    console.warn("[YouTube Queue] Invalid recent video history cleared", {
+      errorMessage: error?.message || String(error || ""),
+    });
+    window.localStorage.removeItem(YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY);
+    return [];
+  }
+}
+
+function rememberRecentYoutubeVideo(videoId) {
+  if (typeof window === "undefined" || !videoId) {
+    return [];
+  }
+
+  const nextHistory = [
+    videoId,
+    ...readRecentYoutubeVideoIds().filter((recentVideoId) => recentVideoId !== videoId),
+  ].slice(0, YOUTUBE_RECENT_VIDEO_HISTORY_LIMIT);
+
+  window.localStorage.setItem(
+    YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY,
+    JSON.stringify(nextHistory),
+  );
+  return nextHistory;
+}
+
 function validateYoutubeWorkspaceResumeSnapshot(snapshot, playbackList) {
   if (!snapshot?.videoId) {
     return null;
@@ -177,6 +220,7 @@ export default function ListeningTab({
     discoverFilter,
     discoverLoading,
     discoverVideos,
+    generateYoutubeQueue,
     playbackList,
     playbackState,
     queueIndex,
@@ -749,7 +793,7 @@ export default function ListeningTab({
   }, [buildPlaybackPayload, capturePlaybackSnapshot, setPlaybackState]);
 
   const advanceYoutubeQueue = useCallback(
-    ({
+    async ({
       triggerReason = "unknown",
       shouldPlay = isPlayerCurrentlyPlaying(),
       skipFailedVideos = false,
@@ -788,6 +832,8 @@ export default function ListeningTab({
       const foundIndex = currentPlaybackList.findIndex((video) => video.id === currentVideoId);
       const previousIndex = foundIndex >= 0 ? foundIndex : currentQueueIndexRef.current;
       let nextIndex = previousIndex + 1;
+      const completedRecentVideoIds =
+        triggerReason === "natural-end" ? rememberRecentYoutubeVideo(currentVideoId) : [];
 
       if (skipFailedVideos) {
         while (
@@ -810,6 +856,51 @@ export default function ListeningTab({
       });
 
       if (!nextVideo?.id) {
+        if (triggerReason === "natural-end" && generateYoutubeQueue) {
+          const currentVideoIds = currentPlaybackList.map((video) => video.id).filter(Boolean);
+          console.info("[YouTube Queue] End of queue reached; requesting new queue", {
+            triggerReason: "end_of_queue",
+            previousIndex,
+            queueLength: currentPlaybackList.length,
+            completedVideoId: currentVideoId,
+            currentQueueVideoCount: currentVideoIds.length,
+            recentVideoCount: completedRecentVideoIds.length,
+          });
+          playbackIntentRef.current = Boolean(shouldPlay);
+          pendingSelectionPlaybackRef.current = { shouldPlay: true };
+          const result = await generateYoutubeQueue({
+            reason: "end_of_queue",
+            currentVideoIds,
+            recentVideoIds: completedRecentVideoIds,
+          });
+          const refreshedQueue = Array.isArray(result?.snapshot?.accountVideos)
+            ? result.snapshot.accountVideos
+            : playbackListRef.current;
+          const refreshedVideoId = refreshedQueue[0]?.id || "";
+          if (result?.ok && refreshedVideoId) {
+            selectedVideoIdRef.current = refreshedVideoId;
+            currentQueueIndexRef.current = 0;
+            lastQueueTransitionRef.current = {
+              triggerReason: "end_of_queue",
+              fromVideoId: currentVideoId,
+              toVideoId: refreshedVideoId,
+              at: Date.now(),
+            };
+            pendingSelectionPlaybackRef.current = { shouldPlay: true };
+            console.info("[YouTube Queue] Fresh queue loaded after end", {
+              previousVideoId: currentVideoId,
+              nextVideoId: refreshedVideoId,
+              refreshedQueueLength: refreshedQueue.length,
+            });
+            return true;
+          }
+
+          console.warn("[YouTube Queue] Fresh queue generation did not produce a playable video", {
+            ok: Boolean(result?.ok),
+            errorCode: result?.error?.code || "",
+            refreshedQueueLength: refreshedQueue.length,
+          });
+        }
         playbackIntentRef.current = false;
         return false;
       }
@@ -828,7 +919,7 @@ export default function ListeningTab({
       setSelectedVideoId(nextVideo.id);
       return true;
     },
-    [isPlayerCurrentlyPlaying, setSelectedVideoId],
+    [generateYoutubeQueue, isPlayerCurrentlyPlaying, setSelectedVideoId],
   );
 
   useEffect(() => {
@@ -1215,8 +1306,8 @@ export default function ListeningTab({
       syncYoutubeVideoProgress();
     };
 
-    const goNextVideo = ({ triggerReason, skipFailedVideos = false } = {}) => {
-      const advanced = advanceYoutubeQueue({
+    const goNextVideo = async ({ triggerReason, skipFailedVideos = false } = {}) => {
+      const advanced = await advanceYoutubeQueue({
         triggerReason,
         shouldPlay: true,
         skipFailedVideos,
@@ -1285,12 +1376,18 @@ export default function ListeningTab({
       }
 
       if (currentPlayerState === YTRef.ENDED) {
-        syncPlaybackSession({
-          isPlaying: false,
-          playerPlaying: false,
-        });
+        const endedVideoId = selectedVideoIdRef.current || "";
+        const endedQueueIndex = playbackListRef.current.findIndex((video) => video.id === endedVideoId);
+        const endedAtQueueTail =
+          endedQueueIndex >= 0 && endedQueueIndex === playbackListRef.current.length - 1;
+        if (!endedAtQueueTail) {
+          syncPlaybackSession({
+            isPlaying: false,
+            playerPlaying: false,
+          });
+        }
         syncVideoProgress();
-        goNextVideo({ triggerReason: "natural-end" });
+        void goNextVideo({ triggerReason: "natural-end" });
       }
     };
 
@@ -1311,7 +1408,7 @@ export default function ListeningTab({
       });
 
       if ([2, 5, 100, 101, 150].includes(errorCode) && playbackListRef.current.length > 1) {
-        goNextVideo({ triggerReason: `player-error-${errorCode}`, skipFailedVideos: true });
+        void goNextVideo({ triggerReason: `player-error-${errorCode}`, skipFailedVideos: true });
       }
     };
 
@@ -1556,7 +1653,7 @@ export default function ListeningTab({
   };
 
   const skipCurrentVideo = () => {
-    advanceYoutubeQueue({
+    void advanceYoutubeQueue({
       triggerReason: "manual-skip",
       shouldPlay: isPlayerCurrentlyPlaying(),
     });

@@ -60,7 +60,22 @@ function clearCachedAccountBundle(userId) {
 }
 
 function shouldBypassCache(reason) {
-  return reason === "manual-connect" || reason === "reset-youtube-state";
+  return (
+    reason === "manual-connect" ||
+    reason === "reset-youtube-state" ||
+    reason === "end_of_queue"
+  );
+}
+
+function parseCsvParam(searchParams, key, limit = 100) {
+  return [
+    ...new Set(
+      String(searchParams.get(key) || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, limit);
 }
 
 async function getAuthenticatedUser() {
@@ -144,7 +159,7 @@ async function recoverGoogleTokensFromSession(userId, session) {
   }
 }
 
-async function buildAccountResponse(userId, requestReason, session) {
+async function buildAccountResponse(userId, requestReason, session, queueOptions = {}) {
   let tokenResult = await getValidGoogleAccessToken(userId);
 
   if (!tokenResult.ok && tokenResult.code === "google_refresh_token_missing") {
@@ -171,6 +186,7 @@ async function buildAccountResponse(userId, requestReason, session) {
   try {
     const bundle = await fetchYouTubeAccountBundle(tokenResult.accessToken, [], {
       reason: requestReason,
+      ...queueOptions,
     });
 
     return {
@@ -218,6 +234,7 @@ async function buildAccountResponse(userId, requestReason, session) {
 
     const bundle = await fetchYouTubeAccountBundle(refreshedToken.accessToken, [], {
       reason: `${requestReason}:refreshed-token`,
+      ...queueOptions,
     });
 
     return {
@@ -251,6 +268,11 @@ export async function GET(request) {
 
   const requestUrl = new URL(request.url);
   const requestReason = requestUrl.searchParams.get("reason") || "unknown";
+  const queueOptions = {
+    selectedChannelIds: parseCsvParam(requestUrl.searchParams, "selectedChannelIds", 100),
+    excludeVideoIds: parseCsvParam(requestUrl.searchParams, "excludeVideoIds", 100),
+    recentVideoIds: parseCsvParam(requestUrl.searchParams, "recentVideoIds", 100),
+  };
   const cacheBypass = shouldBypassCache(requestReason);
   const endpoint = "/api/youtube/account";
 
@@ -263,6 +285,9 @@ export async function GET(request) {
     details: {
       userId: user.id,
       cacheBypass,
+      selectedChannelCount: queueOptions.selectedChannelIds.length,
+      excludedVideoCount: queueOptions.excludeVideoIds.length,
+      recentVideoCount: queueOptions.recentVideoIds.length,
     },
   });
 
@@ -319,7 +344,7 @@ export async function GET(request) {
   }
 
   const responsePromise = (async () => {
-    const response = await buildAccountResponse(user.id, requestReason, session);
+    const response = await buildAccountResponse(user.id, requestReason, session, queueOptions);
 
     if (!response.ok) {
       if (response.code === "google_refresh_not_configured") {

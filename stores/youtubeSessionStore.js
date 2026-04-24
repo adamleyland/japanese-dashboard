@@ -739,9 +739,24 @@ export function YoutubeSessionProvider({ children }) {
     [],
   );
 
-  const fetchYoutubeAccountSnapshot = useCallback(async ({ reason = "refresh", caller = "unknown" } = {}) => {
+  const fetchYoutubeAccountSnapshot = useCallback(async ({
+    reason = "refresh",
+    caller = "unknown",
+    selectedChannelIds = [],
+    excludeVideoIds = [],
+    recentVideoIds = [],
+  } = {}) => {
     const requestUrl = new URL("/api/youtube/account", window.location.origin);
     requestUrl.searchParams.set("reason", reason);
+    if (selectedChannelIds.length) {
+      requestUrl.searchParams.set("selectedChannelIds", selectedChannelIds.join(","));
+    }
+    if (excludeVideoIds.length) {
+      requestUrl.searchParams.set("excludeVideoIds", excludeVideoIds.join(","));
+    }
+    if (recentVideoIds.length) {
+      requestUrl.searchParams.set("recentVideoIds", recentVideoIds.join(","));
+    }
 
     logYoutubeApiCall({
       phase: "request",
@@ -749,6 +764,11 @@ export function YoutubeSessionProvider({ children }) {
       reason,
       caller,
       transport: "client",
+      details: {
+        selectedChannelCount: selectedChannelIds.length,
+        excludedVideoCount: excludeVideoIds.length,
+        recentVideoCount: recentVideoIds.length,
+      },
     });
 
     const response = await fetch(requestUrl.toString(), {
@@ -805,9 +825,22 @@ export function YoutubeSessionProvider({ children }) {
   const refreshYoutubeAccountData = useCallback(
     async (options = {}) => {
       try {
+        const currentSnapshotState = stateRef.current;
+        const selectedChannelIds =
+          Array.isArray(options.selectedChannelIds) && options.selectedChannelIds.length
+            ? options.selectedChannelIds
+            : currentSnapshotState.accountProfile || currentSnapshotState.wasConnected
+              ? currentSnapshotState.subscribedChannels
+                  .filter((channel) => channel.enabled !== false)
+                  .map((channel) => channel.channelId || channel.id)
+                  .filter(Boolean)
+              : [];
         const snapshot = await fetchYoutubeAccountSnapshot({
           reason: options.reason || "refresh",
           caller: options.caller || "YoutubeSessionProvider.refreshYoutubeAccountData",
+          selectedChannelIds,
+          excludeVideoIds: Array.isArray(options.excludeVideoIds) ? options.excludeVideoIds : [],
+          recentVideoIds: Array.isArray(options.recentVideoIds) ? options.recentVideoIds : [],
         });
 
         if (snapshot?.quotaExceeded) {
@@ -1329,6 +1362,38 @@ export function YoutubeSessionProvider({ children }) {
 
     return Boolean(result?.ok);
   }, [authUserId, runYoutubeBootstrap]);
+
+  const generateYoutubeQueue = useCallback(
+    async ({
+      reason = "manual_queue_refresh",
+      currentVideoIds = [],
+      recentVideoIds = [],
+    } = {}) => {
+      const currentState = stateRef.current;
+      const selectedChannelIds = currentState.subscribedChannels
+        .filter((channel) => channel.enabled !== false)
+        .map((channel) => channel.channelId || channel.id)
+        .filter(Boolean);
+
+      console.info("[YouTube Queue] Requesting fresh queue", {
+        reason,
+        selectedChannelCount: selectedChannelIds.length,
+        currentQueueVideoCount: currentVideoIds.length,
+        recentVideoCount: recentVideoIds.length,
+      });
+
+      return refreshYoutubeAccountData({
+        caller: "YoutubeSessionProvider.generateYoutubeQueue",
+        forceRefresh: true,
+        preserveSelectedVideo: false,
+        reason,
+        selectedChannelIds,
+        excludeVideoIds: currentVideoIds,
+        recentVideoIds,
+      });
+    },
+    [refreshYoutubeAccountData],
+  );
 
   const toggleChannelEnabled = useCallback((channelId) => {
     const currentChannel = stateRef.current.subscribedChannels.find(
@@ -1950,6 +2015,7 @@ export function YoutubeSessionProvider({ children }) {
       discoverLoading: state.discoverLoading,
       discoverVideos,
       ensureDiscoverVideos,
+      generateYoutubeQueue,
       playbackList,
       playbackState: state.playbackState,
       queueIndex,
@@ -1975,6 +2041,7 @@ export function YoutubeSessionProvider({ children }) {
       discoverVideos,
       disconnectYoutube,
       ensureDiscoverVideos,
+      generateYoutubeQueue,
       playbackList,
       queueIndex,
       queueTotal,
