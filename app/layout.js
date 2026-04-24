@@ -15,9 +15,13 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "\u65e5\u672c\u8a9e Dashboard",
   description: "Adam's Japanese Learning Dashboard",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
   },
   icons: {
     apple: [
