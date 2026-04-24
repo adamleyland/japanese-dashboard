@@ -1709,9 +1709,9 @@ const styles = {
       ? "10px 12px"
       : "12px 14px",
     display: "grid",
-    gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) auto" : "1fr auto 1fr",
+    gridTemplateColumns: isMobile ? "repeat(5, minmax(0, 1fr))" : "1fr auto 1fr",
     alignItems: "center",
-    gap: isMobile ? "6px" : isCompact ? "8px" : "14px",
+    gap: isMobile ? "0" : isCompact ? "8px" : "14px",
     position: isMobile ? "fixed" : "relative",
     left: isMobile ? "0" : "auto",
     right: isMobile ? "0" : "auto",
@@ -1737,6 +1737,12 @@ const styles = {
     justifyContent: "center",
     minWidth: 0,
     overflow: "visible",
+  },
+  mobileNavItemWrap: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 0,
   },
   topNavRight: {
     display: "flex",

@@ -19,6 +19,9 @@ export default function TopNav({
 }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const calendarRef = useRef(null);
+  const mobileModuleTabs = moduleTabs.filter(
+    (item) => item.key !== "shadowing" && item.key !== "writing",
+  );
 
   const dateLabel = useMemo(
     () => formatTodayLabel(isCompact),
@@ -45,50 +48,82 @@ export default function TopNav({
     };
   }, [calendarOpen]);
 
+  if (isMobile) {
+    return (
+      <section style={styles.topNavShell(isCompact, true)}>
+        <div style={styles.mobileNavItemWrap}>
+          <button
+            type="button"
+            onClick={onToggleDashboard}
+            style={styles.topNavIconButton(showDashboard, true)}
+            aria-pressed={showDashboard}
+            aria-label={showDashboard ? "Hide dashboard" : "Show dashboard"}
+          >
+            <LayoutDashboard size={20} />
+          </button>
+        </div>
+
+        {mobileModuleTabs.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.key;
+
+          return (
+            <div key={item.key} style={styles.mobileNavItemWrap}>
+              <button
+                type="button"
+                onClick={() => onChange(item.key)}
+                style={styles.moduleNavButton(isActive, true)}
+                aria-pressed={isActive}
+                aria-label={item.label}
+                title={item.label}
+              >
+                <Icon size={20} />
+              </button>
+            </div>
+          );
+        })}
+
+        <div style={styles.mobileNavItemWrap}>{authControl}</div>
+      </section>
+    );
+  }
+
   return (
-    <section style={styles.topNavShell(isCompact, isMobile)}>
+    <section style={styles.topNavShell(isCompact, false)}>
       <div style={styles.topNavLeft}>
         <button
           type="button"
           onClick={onToggleDashboard}
-          style={styles.topNavIconButton(showDashboard, isMobile)}
+          style={styles.topNavIconButton(showDashboard, false)}
           aria-pressed={showDashboard}
           aria-label={showDashboard ? "Hide dashboard" : "Show dashboard"}
         >
-          <LayoutDashboard size={isMobile ? 20 : 16} />
+          <LayoutDashboard size={16} />
         </button>
 
-        {!isMobile && (
-          <div ref={calendarRef} style={styles.topNavCalendarWrap}>
-            <button
-              type="button"
-              onClick={() => setCalendarOpen((open) => !open)}
-              style={styles.topNavDateButton}
-            >
-              {dateLabel}
-            </button>
+        <div ref={calendarRef} style={styles.topNavCalendarWrap}>
+          <button
+            type="button"
+            onClick={() => setCalendarOpen((open) => !open)}
+            style={styles.topNavDateButton}
+          >
+            {dateLabel}
+          </button>
 
-            {calendarOpen && (
-              <CalendarPopover
-                authUserId={authUserId}
-                isCompact={isCompact}
-                onClose={() => setCalendarOpen(false)}
-              />
-            )}
-          </div>
-        )}
+          {calendarOpen && (
+            <CalendarPopover
+              authUserId={authUserId}
+              isCompact={isCompact}
+              onClose={() => setCalendarOpen(false)}
+            />
+          )}
+        </div>
       </div>
 
-      <div
-        style={{
-          ...styles.topNavCenter,
-          justifyContent: isMobile ? "flex-start" : styles.topNavCenter.justifyContent,
-          width: isMobile ? "100%" : "auto",
-        }}
-      >
+      <div style={styles.topNavCenter}>
         <NavigationBar
           activeTab={activeTab}
-          isMobile={isMobile}
+          isMobile={false}
           moduleTabs={moduleTabs}
           onChange={onChange}
           styles={styles}
