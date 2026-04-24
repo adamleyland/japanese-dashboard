@@ -16,6 +16,7 @@ const LISTENING_GOAL_STORAGE_KEY = "jp_listening_goal_hours";
 const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
+const YOUTUBE_WORKSPACE_RESUME_SCHEMA_VERSION = 2;
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 
 function normalizeListeningGoalInput(value, fallback = DEFAULT_LISTENING_GOAL) {
@@ -67,11 +68,29 @@ function readYoutubeWorkspaceResumeSnapshot() {
   }
 
   try {
-    return JSON.parse(window.sessionStorage.getItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY) || "null");
+    const snapshot = JSON.parse(
+      window.sessionStorage.getItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY) || "null",
+    );
+    if (!snapshot) {
+      return null;
+    }
+
+    if (snapshot.version !== YOUTUBE_WORKSPACE_RESUME_SCHEMA_VERSION) {
+      window.sessionStorage.removeItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY);
+      console.warn("[YouTube Player][Mobile Storage] Invalidated workspace resume snapshot", {
+        reason: "schema-version-mismatch",
+        version: snapshot.version || null,
+        expectedVersion: YOUTUBE_WORKSPACE_RESUME_SCHEMA_VERSION,
+      });
+      return null;
+    }
+
+    return snapshot;
   } catch (error) {
     console.warn("[YouTube Player] Failed to parse workspace resume snapshot", {
       errorMessage: error?.message || String(error || ""),
     });
+    window.sessionStorage.removeItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY);
     return null;
   }
 }
@@ -85,6 +104,53 @@ function writeYoutubeWorkspaceResumeSnapshot(snapshot) {
     YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY,
     JSON.stringify(snapshot),
   );
+}
+
+function validateYoutubeWorkspaceResumeSnapshot(snapshot, playbackList) {
+  if (!snapshot?.videoId) {
+    return null;
+  }
+
+  const queue = Array.isArray(playbackList) ? playbackList : [];
+  const requestedIndex = Number(snapshot.currentIndex);
+  const indexInBounds =
+    Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < queue.length;
+  const queueVideoId = indexInBounds ? queue[requestedIndex]?.id || "" : "";
+
+  if (indexInBounds && queueVideoId === snapshot.videoId) {
+    console.info("[YouTube Player][Mobile Queue] Workspace resume validated", {
+      currentIndex: requestedIndex,
+      currentVideoId: snapshot.videoId,
+      queueLength: queue.length,
+    });
+    return snapshot;
+  }
+
+  const repairedIndex = queue.findIndex((video) => video.id === snapshot.videoId);
+  if (repairedIndex >= 0) {
+    console.warn("[YouTube Player][Mobile Queue] Repaired workspace resume queue index", {
+      requestedIndex,
+      requestedVideoId: snapshot.videoId,
+      repairedIndex,
+      queueLength: queue.length,
+    });
+    return {
+      ...snapshot,
+      currentIndex: repairedIndex,
+      currentVideoId: snapshot.videoId,
+      queueVideoIds: queue.map((video) => video.id),
+    };
+  }
+
+  console.warn("[YouTube Player][Mobile Queue] Cleared invalid workspace resume snapshot", {
+    requestedIndex,
+    requestedVideoId: snapshot.videoId,
+    queueLength: queue.length,
+  });
+  if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY);
+  }
+  return null;
 }
 
 export default function ListeningTab({
@@ -115,6 +181,7 @@ export default function ListeningTab({
     playbackState,
     queueIndex,
     queueTotal,
+    resetYoutubeState,
     selectedChannelAvatar,
     selectedDiscoverVideo,
     selectedVideo,
@@ -773,8 +840,12 @@ export default function ListeningTab({
     }
 
     if (previousWorkspaceSource === "youtube" && workspaceSource !== "youtube") {
+      const currentQueueIndex = currentQueueIndexRef.current;
       const snapshot = {
+        version: YOUTUBE_WORKSPACE_RESUME_SCHEMA_VERSION,
         videoId: selectedVideoIdRef.current || safeVideoId || DEFAULT_VIDEO_ID,
+        currentIndex: currentQueueIndex,
+        currentVideoId: selectedVideoIdRef.current || safeVideoId || DEFAULT_VIDEO_ID,
         currentTime: getPlayerCurrentTime(),
         shouldPlay: isPlayerCurrentlyPlaying(),
         queueVideoIds: playbackListRef.current.map((video) => video.id),
@@ -788,7 +859,10 @@ export default function ListeningTab({
     }
 
     if (previousWorkspaceSource !== "youtube" && workspaceSource === "youtube") {
-      const resumeSnapshot = pendingRestoreRef.current || readYoutubeWorkspaceResumeSnapshot();
+      const resumeSnapshot = validateYoutubeWorkspaceResumeSnapshot(
+        pendingRestoreRef.current || readYoutubeWorkspaceResumeSnapshot(),
+        playbackListRef.current,
+      );
       if (!resumeSnapshot?.videoId) {
         return;
       }
@@ -1052,6 +1126,10 @@ export default function ListeningTab({
   useEffect(() => {
     if (!isYoutubeMode) {
       if (playerRef.current) {
+        console.info("[YouTube Player][Mobile Remount] Destroying player because workspace changed", {
+          isMobile,
+          safeVideoId,
+        });
         pendingRestoreRef.current = persistCurrentPlayerState();
         playerRef.current.pauseVideo?.();
         playerRef.current.destroy?.();
@@ -1075,6 +1153,13 @@ export default function ListeningTab({
       });
 
       if (playerRef.current) {
+        console.info("[YouTube Player][Mobile Remount] Destroying player until playable video is ready", {
+          isMobile,
+          connectionStatus,
+          playbackListCount: playbackList.length,
+          selectedVideoId: selectedVideoId || "",
+          resolvedVideoId: safeVideoId || "",
+        });
         playerRef.current.pauseVideo?.();
         playerRef.current.destroy?.();
         playerRef.current = null;
@@ -1095,6 +1180,12 @@ export default function ListeningTab({
       : playerHostRef.current;
 
     if (playerRef.current && activeHost !== activePlayerHostRef.current) {
+      console.info("[YouTube Player][Mobile Remount] Player host changed; remounting", {
+        isMobile,
+        focusMode,
+        selectedVideoId: selectedVideoIdRef.current || "",
+        queueIndex: currentQueueIndexRef.current,
+      });
       pendingRestoreRef.current = persistCurrentPlayerState();
       playerRef.current.destroy?.();
       playerRef.current = null;
@@ -1285,6 +1376,9 @@ export default function ListeningTab({
       console.info("[YouTube Player] Mounting iframe player", {
         videoId: selectedVideoIdRef.current || DEFAULT_VIDEO_ID,
         connectionStatus,
+        isMobile,
+        focusMode,
+        queueIndex: currentQueueIndexRef.current,
         selectedVideoSource: resolvedVideoSource,
       });
 
@@ -1544,6 +1638,7 @@ export default function ListeningTab({
         showDiscoverSubscribe={Boolean(selectedDiscoverVideo?.channelId)}
         queueTotal={queueTotal}
         queueIndex={queueIndex}
+        resetYoutubeState={resetYoutubeState}
         skipCurrentVideo={skipCurrentVideo}
         workspaceTab={workspaceTab}
         setWorkspaceTab={setWorkspaceTab}

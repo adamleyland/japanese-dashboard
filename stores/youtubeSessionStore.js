@@ -36,10 +36,13 @@ import {
 import { logYoutubeApiCall, logYoutubeBootstrap } from "@/lib/youtubeDiagnostics";
 
 const YOUTUBE_SESSION_STORAGE_KEY = "jp_dashboard_youtube_session_v2";
+const YOUTUBE_STATE_VERSION_STORAGE_KEY = "youtube_state_version";
+const YOUTUBE_STATE_SCHEMA_VERSION = "3";
 const LEGACY_WATCH_STATE_STORAGE_KEY = "jp_dashboard_youtube_session";
 const DAILY_QUEUE_STORAGE_KEY = "jp_daily_video_queue";
 const DISCOVER_CACHE_STORAGE_KEY = "jp_youtube_discover_cache_v1";
 const DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY = "jp_youtube_discover_quota_cooldown_v1";
+const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
 const ACCOUNT_DATA_TTL_MS = 30 * 60 * 1000;
 const AUTO_BOOTSTRAP_DEDUPE_WINDOW_MS = 10 * 1000;
 const AUTO_BOOTSTRAP_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
@@ -117,6 +120,11 @@ function writeJsonStorage(storageKey, value) {
 function removeStorageKey(storageKey) {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(storageKey);
+}
+
+function removeSessionStorageKey(storageKey) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(storageKey);
 }
 
 function normalizePlaybackState(playbackState) {
@@ -258,31 +266,220 @@ function logExcludedChannelDiagnostics({
   });
 }
 
-function readPersistedSessionSnapshot() {
-  const snapshot = readJsonStorage(YOUTUBE_SESSION_STORAGE_KEY);
-  if (snapshot?.version === 2) {
-    return snapshot;
+function hasAnyPersistedYoutubeStorage() {
+  if (typeof window === "undefined") {
+    return false;
   }
 
-  const legacyWatchState = readJsonStorage(LEGACY_WATCH_STATE_STORAGE_KEY);
-  if (!legacyWatchState?.selectedVideoId) {
-    return null;
-  }
-
-  return {
-    version: 2,
-    wasConnected: false,
-    selectedVideoId: legacyWatchState.selectedVideoId,
-    playbackState: legacyWatchState,
-  };
+  return [
+    YOUTUBE_SESSION_STORAGE_KEY,
+    LEGACY_WATCH_STATE_STORAGE_KEY,
+    DAILY_QUEUE_STORAGE_KEY,
+    DISCOVER_CACHE_STORAGE_KEY,
+    DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY,
+    YOUTUBE_STATE_VERSION_STORAGE_KEY,
+  ].some((storageKey) => window.localStorage.getItem(storageKey) != null) ||
+    window.sessionStorage.getItem(YOUTUBE_CONNECT_INTENT_STORAGE_KEY) != null ||
+    window.sessionStorage.getItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY) != null;
 }
 
-function clearPersistedYoutubeSession() {
+function clearPersistedYoutubeSession({ clearConnectIntent = false, reason = "unknown" } = {}) {
+  console.info("[YouTube][Mobile Storage] Clearing persisted YouTube state", {
+    reason,
+    clearConnectIntent,
+  });
   removeStorageKey(YOUTUBE_SESSION_STORAGE_KEY);
   removeStorageKey(LEGACY_WATCH_STATE_STORAGE_KEY);
   removeStorageKey(DAILY_QUEUE_STORAGE_KEY);
   removeStorageKey(DISCOVER_CACHE_STORAGE_KEY);
   removeStorageKey(DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY);
+  removeStorageKey(YOUTUBE_STATE_VERSION_STORAGE_KEY);
+  removeSessionStorageKey(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY);
+
+  if (clearConnectIntent) {
+    clearYoutubeConnectIntent();
+  }
+}
+
+function buildPersistedQueueState(videos, selectedVideoId) {
+  const queue = normalizeVideoList(videos);
+  const currentIndex = queue.findIndex((video) => video.id === selectedVideoId);
+
+  return {
+    currentIndex: currentIndex >= 0 ? currentIndex : 0,
+    currentVideoId: queue[currentIndex >= 0 ? currentIndex : 0]?.id || "",
+    videoIds: queue.map((video) => video.id),
+    updatedAt: Date.now(),
+  };
+}
+
+function validatePersistedQueueState(snapshot, { context = "storage-restore" } = {}) {
+  const queue = normalizeVideoList(snapshot?.accountVideos);
+  const queueState = snapshot?.queueState;
+  const selectedVideoId = snapshot?.selectedVideoId || snapshot?.playbackState?.selectedVideoId || "";
+
+  if (!queue.length) {
+    console.info("[YouTube][Mobile Queue] Queue restore skipped", {
+      context,
+      reason: "empty-queue",
+      selectedVideoId,
+    });
+    return {
+      ok: true,
+      repaired: false,
+      selectedVideoId: selectedVideoId || DEFAULT_VIDEO_ID,
+      queue,
+    };
+  }
+
+  const requestedIndex = Number(queueState?.currentIndex);
+  const indexInBounds =
+    Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < queue.length;
+  const queuedVideoIdAtIndex = indexInBounds ? queue[requestedIndex]?.id || "" : "";
+  const requestedVideoId = queueState?.currentVideoId || selectedVideoId;
+  const selectedIndex = queue.findIndex((video) => video.id === selectedVideoId);
+  const requestedVideoIndex = queue.findIndex((video) => video.id === requestedVideoId);
+
+  if (indexInBounds && requestedVideoId && queuedVideoIdAtIndex === requestedVideoId) {
+    console.info("[YouTube][Mobile Queue] Queue restore validated", {
+      context,
+      currentIndex: requestedIndex,
+      currentVideoId: requestedVideoId,
+      queueLength: queue.length,
+    });
+    return {
+      ok: true,
+      repaired: false,
+      selectedVideoId: requestedVideoId,
+      queue,
+      queueState: {
+        ...queueState,
+        currentIndex: requestedIndex,
+        currentVideoId: requestedVideoId,
+      },
+    };
+  }
+
+  const repairedIndex = selectedIndex >= 0 ? selectedIndex : requestedVideoIndex;
+  if (repairedIndex >= 0) {
+    const repairedVideoId = queue[repairedIndex]?.id || DEFAULT_VIDEO_ID;
+    console.warn("[YouTube][Mobile Queue] Repaired persisted queue state", {
+      context,
+      requestedIndex,
+      requestedVideoId,
+      selectedVideoId,
+      repairedIndex,
+      repairedVideoId,
+      queueLength: queue.length,
+    });
+    return {
+      ok: true,
+      repaired: true,
+      selectedVideoId: repairedVideoId,
+      queue,
+      queueState: {
+        currentIndex: repairedIndex,
+        currentVideoId: repairedVideoId,
+        videoIds: queue.map((video) => video.id),
+        updatedAt: Date.now(),
+      },
+    };
+  }
+
+  console.warn("[YouTube][Mobile Queue] Invalid persisted queue state cleared", {
+    context,
+    requestedIndex,
+    requestedVideoId,
+    selectedVideoId,
+    queueLength: queue.length,
+  });
+  return {
+    ok: false,
+    repaired: false,
+    selectedVideoId: queue[0]?.id || DEFAULT_VIDEO_ID,
+    queue,
+  };
+}
+
+function readPersistedSessionSnapshot() {
+  if (typeof window === "undefined") {
+    return {
+      snapshot: null,
+      invalidated: false,
+      reason: "server",
+    };
+  }
+
+  const storedSchemaVersion = window.localStorage.getItem(YOUTUBE_STATE_VERSION_STORAGE_KEY) || "";
+  const snapshot = readJsonStorage(YOUTUBE_SESSION_STORAGE_KEY);
+
+  console.info("[YouTube][Mobile Storage] Restoring YouTube persisted state", {
+    storedSchemaVersion,
+    expectedSchemaVersion: YOUTUBE_STATE_SCHEMA_VERSION,
+    hasSnapshot: Boolean(snapshot),
+    hasLegacyWatchState: Boolean(window.localStorage.getItem(LEGACY_WATCH_STATE_STORAGE_KEY)),
+    hasDailyQueue: Boolean(window.localStorage.getItem(DAILY_QUEUE_STORAGE_KEY)),
+    hasWorkspaceResume: Boolean(window.sessionStorage.getItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY)),
+  });
+
+  if (!storedSchemaVersion && !snapshot && !hasAnyPersistedYoutubeStorage()) {
+    return {
+      snapshot: null,
+      invalidated: false,
+      reason: "missing-empty",
+    };
+  }
+
+  if (storedSchemaVersion !== YOUTUBE_STATE_SCHEMA_VERSION) {
+    clearPersistedYoutubeSession({
+      reason: storedSchemaVersion ? "schema-version-mismatch" : "schema-version-missing",
+    });
+    console.warn("[YouTube][Mobile Storage] Invalidated persisted YouTube state", {
+      reason: storedSchemaVersion ? "schema-version-mismatch" : "schema-version-missing",
+      storedSchemaVersion,
+      expectedSchemaVersion: YOUTUBE_STATE_SCHEMA_VERSION,
+    });
+    return {
+      snapshot: null,
+      invalidated: true,
+      reason: "schema-version-invalid",
+    };
+  }
+
+  if (snapshot?.version === 3) {
+    const queueValidation = validatePersistedQueueState(snapshot, {
+      context: "versioned-session-snapshot",
+    });
+
+    if (!queueValidation.ok) {
+      clearPersistedYoutubeSession({ reason: "invalid-queue-state" });
+      return {
+        snapshot: null,
+        invalidated: true,
+        reason: "invalid-queue-state",
+      };
+    }
+
+    return {
+      snapshot: {
+        ...snapshot,
+        selectedVideoId: queueValidation.selectedVideoId,
+        queueState: queueValidation.queueState || snapshot.queueState,
+      },
+      invalidated: false,
+      repaired: queueValidation.repaired,
+      reason: queueValidation.repaired ? "queue-repaired" : "valid",
+    };
+  }
+
+  clearPersistedYoutubeSession({
+    reason: snapshot ? "snapshot-version-outdated" : "snapshot-missing",
+  });
+  return {
+    snapshot: null,
+    invalidated: true,
+    reason: snapshot ? "snapshot-version-outdated" : "snapshot-missing",
+  };
 }
 
 function rememberYoutubeConnectIntent() {
@@ -384,6 +581,8 @@ export function YoutubeSessionProvider({ children }) {
   const autoBootstrapKeyRef = useRef("");
   const connectPromiseRef = useRef(null);
   const lastAuthResumeCheckRef = useRef(0);
+  const storageInvalidatedRef = useRef(false);
+  const storageNeedsSupabaseRebuildRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -687,6 +886,8 @@ export function YoutubeSessionProvider({ children }) {
         if (hasYoutubeConnectIntent()) {
           console.info("[YouTube] Clearing connect intent after successful account bootstrap");
         }
+        storageInvalidatedRef.current = false;
+        storageNeedsSupabaseRebuildRef.current = false;
         clearYoutubeConnectIntent();
 
         return {
@@ -1074,6 +1275,61 @@ export function YoutubeSessionProvider({ children }) {
     }));
   }, []);
 
+  const resetYoutubeState = useCallback(async () => {
+    console.info("[YouTube][Mobile Storage] Manual YouTube state reset requested", {
+      authUserId,
+      connectionStatus: stateRef.current.connectionStatus,
+      wasConnected: stateRef.current.wasConnected,
+    });
+    clearPersistedYoutubeSession({
+      clearConnectIntent: true,
+      reason: "manual-reset-action",
+    });
+    autoBootstrapKeyRef.current = "";
+    resetBootstrapRuntime();
+    storageInvalidatedRef.current = true;
+    storageNeedsSupabaseRebuildRef.current = true;
+
+    const authState = await readFreshSupabaseAuthState({ forceRefresh: true });
+    const nextUserId = authState.user?.id || authUserId;
+    const hasGoogleIdentity = hasLinkedGoogleIdentity(authState.user);
+    console.info("[YouTube][Mobile Supabase] Session recheck after YouTube reset", {
+      currentUserId: authUserId,
+      nextUserId,
+      authSession: summarizeSupabaseSession(authState.session),
+      hasGoogleIdentity,
+      googleIdentitySummary: summarizeGoogleIdentities(authState.user),
+      hasProviderToken: Boolean(authState.session?.provider_token),
+      hasProviderRefreshToken: Boolean(authState.session?.provider_refresh_token),
+    });
+
+    if (nextUserId && nextUserId !== authUserId) {
+      setAuthUserId(nextUserId);
+    }
+
+    setState((currentState) => ({
+      ...createDefaultState(),
+      hydrated: currentState.hydrated,
+      connectionStatus: hasGoogleIdentity ? "restoring" : "disconnected",
+      wasConnected: hasGoogleIdentity,
+      lastError: "",
+    }));
+
+    if (!nextUserId || !hasGoogleIdentity) {
+      return false;
+    }
+
+    const result = await runYoutubeBootstrap({
+      caller: "YoutubeSessionProvider.resetYoutubeState",
+      forceRefresh: true,
+      manual: false,
+      preserveSelectedVideo: false,
+      reason: "reset-youtube-state",
+    });
+
+    return Boolean(result?.ok);
+  }, [authUserId, runYoutubeBootstrap]);
+
   const toggleChannelEnabled = useCallback((channelId) => {
     const currentChannel = stateRef.current.subscribedChannels.find(
       (channel) => (channel.channelId || channel.id) === channelId,
@@ -1178,16 +1434,22 @@ export function YoutubeSessionProvider({ children }) {
         hasAuthUser: Boolean(authState.user?.id),
         userId: authState.user?.id || "",
         sawIdentityAlreadyLinkedError,
+        storageInvalidated: storageInvalidatedRef.current,
+        storageNeedsSupabaseRebuild: storageNeedsSupabaseRebuildRef.current,
         hasGoogleIdentity,
         googleIdentitySummary: summarizeGoogleIdentities(authState.user),
         hasProviderToken: Boolean(authState.session?.provider_token),
         hasProviderRefreshToken: Boolean(authState.session?.provider_refresh_token),
       });
 
-      if (sawIdentityAlreadyLinkedError && authState.user?.id && hasGoogleIdentity) {
+      if (
+        authState.user?.id &&
+        hasGoogleIdentity &&
+        (sawIdentityAlreadyLinkedError || storageNeedsSupabaseRebuildRef.current)
+      ) {
         // Supabase can report identity_already_exists when the same Google account is
         // already attached. Keep the YouTube restore intent alive and let bootstrap
-        // use the existing identity/tokens instead of relinking forever.
+        // use the existing identity/tokens instead of stale local state or relinking forever.
         rememberYoutubeConnectIntent();
         setState((currentState) => ({
           ...currentState,
@@ -1241,10 +1503,19 @@ export function YoutubeSessionProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const persistedSnapshot = readPersistedSessionSnapshot();
+    const persistedRead = readPersistedSessionSnapshot();
+    const persistedSnapshot = persistedRead.snapshot;
+    storageInvalidatedRef.current = Boolean(persistedRead.invalidated);
+    storageNeedsSupabaseRebuildRef.current = Boolean(
+      persistedRead.invalidated || persistedRead.reason === "missing-empty",
+    );
     const hasRestorableSnapshot = hasRestorableAccountSnapshot(persistedSnapshot);
-    console.info("[YouTube] Hydrating persisted YouTube session snapshot", {
+    console.info("[YouTube][Mobile Storage] Hydrating persisted YouTube session snapshot", {
       hasSnapshot: Boolean(persistedSnapshot),
+      storageReadReason: persistedRead.reason,
+      storageInvalidated: Boolean(persistedRead.invalidated),
+      storageNeedsSupabaseRebuild: storageNeedsSupabaseRebuildRef.current,
+      storageRepaired: Boolean(persistedRead.repaired),
       wasConnected: Boolean(persistedSnapshot?.wasConnected),
       hasRestorableSnapshot,
       hasAccountProfile: Boolean(persistedSnapshot?.accountProfile),
@@ -1280,7 +1551,7 @@ export function YoutubeSessionProvider({ children }) {
         ...currentState,
         hydrated: true,
         connectionStatus:
-          persistedSnapshot?.wasConnected && hasRestorableSnapshot ? "connected" : "disconnected",
+          persistedSnapshot?.wasConnected && hasRestorableSnapshot ? "restoring" : "disconnected",
         wasConnected: Boolean(persistedSnapshot?.wasConnected),
         tokenMeta: persistedSnapshot?.tokenMeta || null,
         accountProfile: persistedSnapshot?.accountProfile || null,
@@ -1387,8 +1658,18 @@ export function YoutubeSessionProvider({ children }) {
         setAuthUserId(nextUserId);
       }
 
-      if (!nextUserId || (!currentState.wasConnected && !hasConnectIntent)) {
+      const hasGoogleIdentity = hasLinkedGoogleIdentity(authState.user);
+      if (!nextUserId || (!currentState.wasConnected && !hasConnectIntent && !hasGoogleIdentity)) {
         return;
+      }
+
+      if (hasGoogleIdentity && currentState.connectionStatus === "disconnected") {
+        setState((stateBeforeRecheck) => ({
+          ...stateBeforeRecheck,
+          connectionStatus: "restoring",
+          wasConnected: true,
+          lastError: "",
+        }));
       }
 
       void runYoutubeBootstrap({
@@ -1408,13 +1689,23 @@ export function YoutubeSessionProvider({ children }) {
     const handleWindowFocus = () => {
       void handleAuthResume("window-focus-resume");
     };
+    const handlePageShow = (event) => {
+      void handleAuthResume(event.persisted ? "pageshow-bfcache-resume" : "pageshow-resume");
+    };
+    const handleOnline = () => {
+      void handleAuthResume("online-resume");
+    };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("online", handleOnline);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("online", handleOnline);
     };
   }, [authResolved, authUserId, runYoutubeBootstrap, state.hydrated]);
 
@@ -1497,8 +1788,14 @@ export function YoutubeSessionProvider({ children }) {
       return;
     }
 
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(YOUTUBE_STATE_VERSION_STORAGE_KEY, YOUTUBE_STATE_SCHEMA_VERSION);
+    }
+
+    const queueState = buildPersistedQueueState(state.accountVideos, state.selectedVideoId);
     writeJsonStorage(YOUTUBE_SESSION_STORAGE_KEY, {
-      version: 2,
+      version: 3,
+      schemaVersion: YOUTUBE_STATE_SCHEMA_VERSION,
       wasConnected: state.wasConnected,
       tokenMeta: state.tokenMeta,
       accountProfile: state.accountProfile,
@@ -1510,6 +1807,7 @@ export function YoutubeSessionProvider({ children }) {
       accountVideos: state.accountVideos,
       discoverFilter: state.discoverFilter,
       selectedVideoId: state.selectedVideoId,
+      queueState,
       playbackState: state.playbackState,
       workspaceTab: state.workspaceTab,
       lastSyncedAt: state.lastSyncedAt,
@@ -1656,6 +1954,7 @@ export function YoutubeSessionProvider({ children }) {
       playbackState: state.playbackState,
       queueIndex,
       queueTotal,
+      resetYoutubeState,
       selectedChannelAvatar,
       selectedDiscoverVideo,
       selectedVideo,
@@ -1679,6 +1978,7 @@ export function YoutubeSessionProvider({ children }) {
       playbackList,
       queueIndex,
       queueTotal,
+      resetYoutubeState,
       selectedChannelAvatar,
       selectedDiscoverVideo,
       selectedVideo,

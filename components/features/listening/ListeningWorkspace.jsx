@@ -44,6 +44,7 @@ export default function ListeningWorkspace({
   selectedChannelAvatar,
   queueTotal,
   queueIndex,
+  resetYoutubeState,
   skipCurrentVideo,
   workspaceTab,
   setWorkspaceTab,
@@ -769,6 +770,21 @@ export default function ListeningWorkspace({
                         {!!youtubeStatusMessage && (
                           <div style={styles.playerSub}>{youtubeStatusMessage}</div>
                         )}
+
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.miniActionButton("grey"),
+                            justifySelf: "start",
+                          }}
+                          onClick={() => {
+                            void resetYoutubeState?.();
+                          }}
+                          aria-label="Reset YouTube state"
+                          title="Reset YouTube state"
+                        >
+                          Reset YouTube state
+                        </button>
                       </div>
                     )}
 

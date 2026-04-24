@@ -60,7 +60,7 @@ function clearCachedAccountBundle(userId) {
 }
 
 function shouldBypassCache(reason) {
-  return reason === "manual-connect";
+  return reason === "manual-connect" || reason === "reset-youtube-state";
 }
 
 async function getAuthenticatedUser() {
