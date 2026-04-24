@@ -63,7 +63,7 @@ export default function ReadingBookModal({
         onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: "min(760px, 100%)",
-          maxHeight: "min(720px, calc(100vh - 32px))",
+          maxHeight: "min(720px, calc(100dvh - 32px))",
           overflowY: "auto",
           borderRadius: "24px",
           border: "1px solid var(--app-border-soft)",
