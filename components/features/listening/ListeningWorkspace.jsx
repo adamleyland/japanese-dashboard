@@ -611,7 +611,6 @@ export default function ListeningWorkspace({
       </div>
     </div>
   );
-
   return (
     <>
       <div
@@ -676,7 +675,15 @@ export default function ListeningWorkspace({
           />
         </div>
 
-        {isAudiobookMode ? (
+        <div
+          key={isMobile ? workspaceSource : "desktop-listening-source"}
+          className={
+            isMobile
+              ? `listening-source-panel listening-source-panel-${workspaceSource}`
+              : undefined
+          }
+        >
+          {isAudiobookMode ? (
           <AudiobookWorkspace
             authUserId={authUserId}
             onPlaybackStateChange={onAudiobookPlaybackStateChange}
@@ -1043,7 +1050,8 @@ export default function ListeningWorkspace({
               </div>
             )}
           </>
-        )}
+          )}
+        </div>
       </div>
 
       {hasMounted &&
@@ -1163,3 +1171,4 @@ function getLandscapeOrientationSnapshot() {
 function getServerLandscapeOrientationSnapshot() {
   return false;
 }
+

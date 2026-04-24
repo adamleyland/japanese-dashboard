@@ -304,6 +304,12 @@ export default function ListeningTab({
     videoId: playbackResumeVideoId,
     currentTime: playbackResumeTime,
   });
+  const mobileSwipeRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startedAt: 0,
+  });
 
   const roundToTenth = useCallback((value) => Math.round(value * 10) / 10, []);
 
@@ -1662,6 +1668,53 @@ export default function ListeningTab({
   const totalBlocks = Math.max(12, Math.ceil(Math.max(listeningGoal, listeningHours) / 10));
   const listeningProgress = Math.min(100, (listeningHours / Math.max(1, listeningGoal)) * 100);
 
+  const handleListeningTouchStart = useCallback(
+    (event) => {
+      if (!isMobile || event.touches.length !== 1) {
+        mobileSwipeRef.current.active = false;
+        return;
+      }
+
+      const touch = event.touches[0];
+      mobileSwipeRef.current = {
+        active: true,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startedAt: Date.now(),
+      };
+    },
+    [isMobile],
+  );
+
+  const handleListeningTouchEnd = useCallback(
+    (event) => {
+      const swipe = mobileSwipeRef.current;
+      mobileSwipeRef.current.active = false;
+
+      if (!isMobile || !swipe.active || event.changedTouches.length !== 1) {
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+      const deltaX = touch.clientX - swipe.startX;
+      const deltaY = touch.clientY - swipe.startY;
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      const elapsed = Date.now() - swipe.startedAt;
+
+      if (absX < 56 || absX < absY * 1.35 || elapsed > 900) {
+        return;
+      }
+
+      if (deltaX < 0 && workspaceSource !== "audiobooks") {
+        setWorkspaceSource("audiobooks");
+      } else if (deltaX > 0 && workspaceSource !== "youtube") {
+        setWorkspaceSource("youtube");
+      }
+    },
+    [isMobile, setWorkspaceSource, workspaceSource],
+  );
+
   const handleAudiobookPlaybackStateChange = useCallback(
     ({
       isPlaying,
@@ -1706,10 +1759,13 @@ export default function ListeningTab({
 
   return (
     <div
+      onTouchStart={handleListeningTouchStart}
+      onTouchEnd={handleListeningTouchEnd}
       style={{
         ...styles.listeningMainGrid,
         gridTemplateColumns: isMobile ? "1fr" : "1.6fr 1fr",
         minWidth: 0,
+        touchAction: isMobile ? "pan-y" : "auto",
       }}
     >
       <ListeningWorkspace

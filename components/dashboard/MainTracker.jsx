@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { Blocks, Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import ExpandedTrackerOverview from "@/components/dashboard/ExpandedTrackerOverview";
 import MetricCard from "@/components/dashboard/MetricCard";
@@ -25,6 +26,7 @@ export default function MainTracker({
   onAdjustMetric,
   isMobile,
   isCompact,
+  isVisible = true,
   focusMode,
   onToggleFocusMode,
   isAdditionalOpen,
@@ -229,11 +231,21 @@ export default function MainTracker({
 
   return (
     <>
-      <div
+      <motion.div
+        initial={false}
+        animate={
+          isMobile
+            ? isVisible
+              ? mobileMotion.visible
+              : mobileMotion.hidden
+            : mobileMotion.static
+        }
+        transition={mobileMotion.transition}
         style={
           isMobile
             ? {
-                ...styles.heroCard,
+                ...mobileStyles.pinnedShell,
+                ...(isVisible ? null : mobileStyles.pinnedShellHidden),
                 padding: isCompact ? "12px" : "14px",
               }
             : styles.heroCard
@@ -379,7 +391,7 @@ export default function MainTracker({
             )}
           </>
         )}
-      </div>
+      </motion.div>
 
       {selectedMetricConfig && (
         <MetricAdjustmentModal
@@ -399,7 +411,51 @@ export default function MainTracker({
   );
 }
 
+const mobileMotion = {
+  visible: {
+    y: 0,
+    opacity: 1,
+    scale: 1,
+  },
+  hidden: {
+    y: 44,
+    opacity: 0,
+    scale: 0.96,
+  },
+  static: {
+    y: 0,
+    opacity: 1,
+    scale: 1,
+  },
+  transition: {
+    duration: 0.36,
+    ease: [0.22, 1, 0.36, 1],
+  },
+};
+
 const mobileStyles = {
+  pinnedShell: {
+    position: "fixed",
+    left: "16px",
+    right: "16px",
+    bottom: "calc(88px + env(safe-area-inset-bottom))",
+    zIndex: 90,
+    width: "auto",
+    height: "auto",
+    maxWidth: "calc(100% - 32px)",
+    margin: "0 auto",
+    boxSizing: "border-box",
+    borderRadius: "24px",
+    border: "var(--app-glass-border)",
+    background: "var(--app-glass-bg)",
+    boxShadow: "var(--app-glass-shadow)",
+    backdropFilter: "blur(18px)",
+    WebkitBackdropFilter: "blur(18px)",
+    transformOrigin: "center bottom",
+  },
+  pinnedShellHidden: {
+    pointerEvents: "none",
+  },
   metricButtonRow: {
     display: "grid",
     gridTemplateColumns: "repeat(5, minmax(0, 1fr))",

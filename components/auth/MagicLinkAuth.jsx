@@ -33,7 +33,7 @@ function GoogleMark() {
   );
 }
 
-export default function MagicLinkAuth({ user, isCompact, isLoading }) {
+export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = false }) {
   const { isDarkMode, toggleTheme } = useTheme();
   const [email, setEmail] = useState(user?.email || "");
   const [isOpen, setIsOpen] = useState(false);
@@ -236,7 +236,7 @@ export default function MagicLinkAuth({ user, isCompact, isLoading }) {
       </button>
 
       {isOpen && (
-        <div style={styles.popup(isCompact)} role="dialog" aria-modal="false">
+        <div style={styles.popup(isCompact, isMobile)} role="dialog" aria-modal="false">
           <div style={styles.popupHeader}>
             <div style={styles.popupTitleWrap}>
               <div style={styles.eyebrow}>Sync</div>
@@ -362,11 +362,15 @@ const styles = {
     background: isLoading ? "#cbd5e1" : signedIn ? "#10b981" : "#cbd5e1",
     boxShadow: "0 0 0 2px rgba(255,255,255,0.95)",
   }),
-  popup: (isCompact) => ({
+  popup: (isCompact, isMobile) => ({
     position: "absolute",
-    top: "calc(100% + 10px)",
+    top: isMobile ? "auto" : "calc(100% + 10px)",
+    bottom: isMobile ? "calc(100% + 10px)" : "auto",
     right: 0,
     width: isCompact ? "min(260px, calc(100vw - 56px))" : "280px",
+    maxHeight: isMobile ? "calc(100dvh - 136px - env(safe-area-inset-bottom))" : "none",
+    overflowY: isMobile ? "auto" : "visible",
+    overscrollBehavior: "contain",
     borderRadius: "18px",
     border: "1px solid rgba(255,255,255,0.82)",
     background: "var(--app-surface-strong)",
@@ -376,7 +380,7 @@ const styles = {
     padding: "14px",
     display: "grid",
     gap: "10px",
-    zIndex: 140,
+    zIndex: 10020,
   }),
   popupHeader: {
     display: "flex",

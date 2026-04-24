@@ -51,7 +51,9 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="h-full overflow-hidden flex flex-col">
-        <AppProviders>{children}</AppProviders>
+        <div className="app-root">
+          <AppProviders>{children}</AppProviders>
+        </div>
       </body>
     </html>
   );

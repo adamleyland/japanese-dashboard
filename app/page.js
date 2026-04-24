@@ -994,7 +994,7 @@ export default function Home() {
       className="app-shell"
       style={{
         ...styles.page,
-        ...(isMobile ? styles.mobilePageSafeArea : null),
+        ...(isMobile ? styles.mobilePageSafeArea(showDashboard) : null),
       }}
     >
       <div style={styles.bgOrb1} />
@@ -1007,6 +1007,7 @@ export default function Home() {
             <MagicLinkAuth
               user={authUser}
               isCompact={isCompact}
+              isMobile={isMobile}
               isLoading={authLoading}
             />
           }
@@ -1020,7 +1021,7 @@ export default function Home() {
           styles={styles}
         />
 
-        {showDashboard && (
+        {(showDashboard || isMobile) && (
           <section
             style={{
               ...styles.heroGrid,
@@ -1049,6 +1050,7 @@ export default function Home() {
                 onAdjustMetric={adjustMetricByDelta}
                 isMobile={isMobile}
                 isCompact={isCompact}
+                isVisible={showDashboard}
                 focusMode={trackerFocusMode}
                 onToggleFocusMode={() => setTrackerFocusMode((currentValue) => !currentValue)}
                 isAdditionalOpen={isAdditionalOpen}
@@ -1161,20 +1163,24 @@ const glass = {
 
 const styles = {
   page: {
-    minHeight: "100vh",
     width: "100%",
     background: "var(--app-page-bg)",
     fontFamily: "Inter, system-ui, -apple-system, sans-serif",
     color: "var(--app-page-text)",
-    padding: "16px",
+    paddingTop: "16px",
+    paddingRight: "16px",
+    paddingBottom: "16px",
+    paddingLeft: "16px",
     position: "relative",
     overflowX: "hidden",
     boxSizing: "border-box",
   },
-  mobilePageSafeArea: {
+  mobilePageSafeArea: (hasPinnedTracker) => ({
     paddingTop: "calc(16px + env(safe-area-inset-top))",
-    paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
-  },
+    paddingBottom: hasPinnedTracker
+      ? "calc(194px + env(safe-area-inset-bottom))"
+      : "calc(104px + env(safe-area-inset-bottom))",
+  }),
   bgOrb1: {
     position: "absolute",
     width: "420px",
@@ -1702,8 +1708,13 @@ const styles = {
     gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) auto" : "1fr auto 1fr",
     alignItems: "center",
     gap: isCompact ? "8px" : "14px",
-    position: "relative",
-    zIndex: 12,
+    position: isMobile ? "fixed" : "relative",
+    left: isMobile ? "16px" : "auto",
+    right: isMobile ? "16px" : "auto",
+    bottom: isMobile ? "calc(12px + env(safe-area-inset-bottom))" : "auto",
+    maxWidth: isMobile ? "calc(100% - 32px)" : "none",
+    margin: isMobile ? "0 auto" : 0,
+    zIndex: isMobile ? 100 : 12,
   }),
   topNavLeft: {
     display: "flex",
