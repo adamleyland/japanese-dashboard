@@ -15,6 +15,19 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "\u65e5\u672c\u8a9e Dashboard",
   description: "Adam's Japanese Learning Dashboard",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: [
+      {
+        url: "https://storage.googleapis.com/jpdashboard_media/other_media/jpdashboard_app_icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
   robots: {
     index: false,
     follow: false,
@@ -25,13 +38,19 @@ export const metadata = {
   },
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="h-full overflow-hidden flex flex-col">
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

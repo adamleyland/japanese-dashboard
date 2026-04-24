@@ -990,7 +990,13 @@ export default function Home() {
   ]);
 
   return (
-    <main style={styles.page}>
+    <main
+      className="app-shell"
+      style={{
+        ...styles.page,
+        ...(isMobile ? styles.mobilePageSafeArea : null),
+      }}
+    >
       <div style={styles.bgOrb1} />
       <div style={styles.bgOrb2} />
 
@@ -1164,6 +1170,10 @@ const styles = {
     position: "relative",
     overflowX: "hidden",
     boxSizing: "border-box",
+  },
+  mobilePageSafeArea: {
+    paddingTop: "calc(16px + env(safe-area-inset-top))",
+    paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
   },
   bgOrb1: {
     position: "absolute",
