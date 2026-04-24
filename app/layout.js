@@ -48,6 +48,45 @@ export const viewport = {
   viewportFit: "cover",
 };
 
+const iosStandaloneViewportBootstrap = `
+(function () {
+  function isIosDevice() {
+    var navigator = window.navigator || {};
+    var platform = navigator.platform || "";
+    var userAgent = navigator.userAgent || "";
+    var maxTouchPoints = navigator.maxTouchPoints || 0;
+
+    return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
+  }
+
+  function isStandaloneDisplay() {
+    return window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  }
+
+  function syncViewport() {
+    var isIosStandalone = isIosDevice() && isStandaloneDisplay();
+    var root = document.documentElement;
+    var body = document.body;
+
+    if (!body) {
+      return;
+    }
+
+    root.classList.toggle("ios-standalone", isIosStandalone);
+    body.classList.toggle("ios-standalone", isIosStandalone);
+
+    if (isIosStandalone) {
+      var viewportHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      root.style.setProperty("--app-height", viewportHeight + "px");
+    }
+  }
+
+  syncViewport();
+  window.requestAnimationFrame(syncViewport);
+})();
+`;
+
 export default function RootLayout({ children }) {
   return (
     <html
@@ -55,6 +94,7 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: iosStandaloneViewportBootstrap }} />
         <div className="app-root">
           <AppProviders>{children}</AppProviders>
         </div>
