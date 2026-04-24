@@ -31,28 +31,11 @@ export default function StandaloneViewportProvider() {
     let isIosStandalone = false;
     let orientationTimeoutId;
 
-    const setAppHeight = () => {
-      if (!isIosStandalone) {
-        root.style.removeProperty("--app-height");
-        return;
-      }
-
-      const viewportHeight = window.visualViewport?.height || window.innerHeight;
-      root.style.setProperty("--app-height", `${viewportHeight}px`);
-    };
-
     const syncStandaloneViewport = () => {
       isIosStandalone = isIosDevice() && isStandaloneDisplay(displayModeQuery);
 
       root.classList.toggle("ios-standalone", isIosStandalone);
       body.classList.toggle("ios-standalone", isIosStandalone);
-
-      if (isIosStandalone) {
-        setAppHeight();
-        window.requestAnimationFrame(setAppHeight);
-      } else {
-        root.style.removeProperty("--app-height");
-      }
     };
 
     const syncAfterOrientationChange = () => {
@@ -81,7 +64,6 @@ export default function StandaloneViewportProvider() {
 
     syncStandaloneViewport();
 
-    window.visualViewport?.addEventListener("resize", setAppHeight);
     window.addEventListener("resize", syncStandaloneViewport);
     window.addEventListener("orientationchange", syncAfterOrientationChange);
     addDisplayModeListener();
@@ -90,8 +72,6 @@ export default function StandaloneViewportProvider() {
       window.clearTimeout(orientationTimeoutId);
       root.classList.remove("ios-standalone");
       body.classList.remove("ios-standalone");
-      root.style.removeProperty("--app-height");
-      window.visualViewport?.removeEventListener("resize", setAppHeight);
       window.removeEventListener("resize", syncStandaloneViewport);
       window.removeEventListener("orientationchange", syncAfterOrientationChange);
       removeDisplayModeListener();

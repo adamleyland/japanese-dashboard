@@ -85,7 +85,12 @@ html,
 body,
 #root,
 #__next,
-.app-root,
+.app-root {
+  width: 100%;
+  min-height: 100%;
+  background: var(--app-page-bg);
+}
+
 .app-shell {
   min-height: 100dvh;
 }
@@ -118,29 +123,54 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-html.ios-standalone,
-body.ios-standalone,
-html.ios-standalone .app-root,
-html.ios-standalone .app-shell {
-  height: 100svh;
-  height: 100dvh;
-  height: 100lvh;
-  height: var(--app-height, 100lvh);
-  min-height: 100svh;
-  min-height: 100dvh;
-  min-height: 100lvh;
-  min-height: var(--app-height, 100lvh);
+.ios-standalone-bg {
+  display: none;
+}
+
+html.ios-standalone {
+  width: 100%;
+  min-height: 100%;
+  background: var(--app-page-bg);
 }
 
 body.ios-standalone {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100lvh;
+  min-height: 100lvh;
+  overflow: hidden;
+  background: var(--app-page-bg);
+}
+
+html.ios-standalone #root,
+html.ios-standalone #__next,
+html.ios-standalone .app-root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  background: var(--app-page-bg);
   overflow: hidden;
 }
 
 html.ios-standalone .app-shell {
+  height: 100%;
+  min-height: 100%;
+  background: transparent !important;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+html.ios-standalone .ios-standalone-bg {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100lvh;
+  min-height: 100lvh;
+  background: var(--app-page-bg);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .tracker-mobile-carousel::-webkit-scrollbar {

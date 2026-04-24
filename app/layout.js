@@ -75,11 +75,6 @@ const iosStandaloneViewportBootstrap = `
 
     root.classList.toggle("ios-standalone", isIosStandalone);
     body.classList.toggle("ios-standalone", isIosStandalone);
-
-    if (isIosStandalone) {
-      var viewportHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-      root.style.setProperty("--app-height", viewportHeight + "px");
-    }
   }
 
   syncViewport();
@@ -95,6 +90,7 @@ export default function RootLayout({ children }) {
     >
       <body className="flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: iosStandaloneViewportBootstrap }} />
+        <div className="ios-standalone-bg" aria-hidden="true" />
         <div className="app-root">
           <AppProviders>{children}</AppProviders>
         </div>
