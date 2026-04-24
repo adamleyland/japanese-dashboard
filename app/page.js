@@ -1178,8 +1178,8 @@ const styles = {
   mobilePageSafeArea: (hasPinnedTracker) => ({
     paddingTop: "calc(16px + env(safe-area-inset-top))",
     paddingBottom: hasPinnedTracker
-      ? "calc(194px + env(safe-area-inset-bottom))"
-      : "calc(104px + env(safe-area-inset-bottom))",
+      ? "calc(236px + env(safe-area-inset-bottom))"
+      : "calc(136px + env(safe-area-inset-bottom))",
   }),
   bgOrb1: {
     position: "absolute",
@@ -1702,24 +1702,33 @@ const styles = {
   },
   topNavShell: (isCompact, isMobile) => ({
     ...glass,
-    borderRadius: "26px",
-    padding: isCompact ? "10px 12px" : "12px 14px",
+    borderRadius: isMobile ? "0px" : "26px",
+    padding: isMobile
+      ? "10px 12px calc(12px + env(safe-area-inset-bottom)) 12px"
+      : isCompact
+      ? "10px 12px"
+      : "12px 14px",
     display: "grid",
     gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) auto" : "1fr auto 1fr",
     alignItems: "center",
-    gap: isCompact ? "8px" : "14px",
+    gap: isMobile ? "6px" : isCompact ? "8px" : "14px",
     position: isMobile ? "fixed" : "relative",
-    left: isMobile ? "16px" : "auto",
-    right: isMobile ? "16px" : "auto",
-    bottom: isMobile ? "calc(12px + env(safe-area-inset-bottom))" : "auto",
-    maxWidth: isMobile ? "calc(100% - 32px)" : "none",
+    left: isMobile ? "0" : "auto",
+    right: isMobile ? "0" : "auto",
+    bottom: isMobile ? "0" : "auto",
+    width: isMobile ? "100%" : "auto",
+    maxWidth: isMobile ? "100%" : "none",
     margin: isMobile ? "0 auto" : 0,
+    borderTop: isMobile ? "1px solid rgba(255,255,255,0.64)" : undefined,
+    boxShadow: isMobile
+      ? "0 -18px 36px rgba(15,23,42,0.12)"
+      : "var(--app-glass-shadow)",
     zIndex: isMobile ? 100 : 12,
   }),
   topNavLeft: {
     display: "flex",
     alignItems: "center",
-    gap: "10px",
+    gap: "6px",
     minWidth: 0,
     justifySelf: "start",
   },
@@ -1735,19 +1744,41 @@ const styles = {
     minWidth: 0,
     justifySelf: "end",
   },
-  topNavIconButton: (active) => ({
-    width: "38px",
-    height: "38px",
-    borderRadius: "999px",
-    border: active ? "1px solid var(--app-selected-border)" : "1px solid var(--app-border-soft)",
-    background: active ? "var(--app-selected-surface)" : "var(--app-surface-elevated)",
-    color: active ? "var(--app-selected-text)" : "var(--app-text-soft)",
+  topNavIconButton: (active, isMobile) => ({
+    width: isMobile ? "44px" : "38px",
+    height: isMobile ? "44px" : "38px",
+    minHeight: isMobile ? "44px" : "38px",
+    borderRadius: isMobile ? "12px" : "999px",
+    border: isMobile
+      ? "none"
+      : active
+      ? "1px solid var(--app-selected-border)"
+      : "1px solid var(--app-border-soft)",
+    background: isMobile
+      ? "transparent"
+      : active
+      ? "var(--app-selected-surface)"
+      : "var(--app-surface-elevated)",
+    color: active
+      ? isMobile
+        ? "var(--app-text)"
+        : "var(--app-selected-text)"
+      : "var(--app-text-muted)",
     display: "inline-flex",
+    flexDirection: isMobile ? "column" : "row",
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
-    boxShadow: active ? "0 10px 24px rgba(15,23,42,0.14)" : "0 10px 24px rgba(15,23,42,0.08)",
+    boxShadow: isMobile
+      ? "none"
+      : active
+      ? "0 10px 24px rgba(15,23,42,0.14)"
+      : "0 10px 24px rgba(15,23,42,0.08)",
     flexShrink: 0,
+    gap: "0",
+    padding: "0",
+    opacity: active || !isMobile ? 1 : 0.58,
+    transition: "color 180ms ease, opacity 180ms ease",
   }),
   topNavCalendarWrap: {
     position: "relative",
@@ -1768,32 +1799,44 @@ const styles = {
   contentWrap: { minWidth: 0, width: "100%" },
   moduleNavTrack: {
     display: "flex",
-    gap: "10px",
-    padding: "4px",
+    gap: "6px",
+    padding: "0",
     borderRadius: "999px",
-    background: "var(--app-pill-track)",
-    border: "1px solid var(--app-border-soft)",
+    background: "transparent",
+    border: "none",
     width: "fit-content",
     maxWidth: "100%",
     overflowX: "auto",
     scrollbarWidth: "none",
   },
-  moduleNavButton: (active) => ({
+  moduleNavButton: (active, isMobile) => ({
     border: "none",
-    borderRadius: "999px",
-    background: active ? "var(--app-selected-surface)" : "transparent",
-    color: active ? "var(--app-selected-text)" : "var(--app-text-muted)",
+    borderRadius: isMobile ? "12px" : "999px",
+    background: isMobile ? "transparent" : active ? "var(--app-selected-surface)" : "transparent",
+    color: active
+      ? isMobile
+        ? "var(--app-text)"
+        : "var(--app-selected-text)"
+      : "var(--app-text-muted)",
     cursor: "pointer",
-    padding: active ? "10px 20px" : "10px",
+    padding: isMobile ? "0" : active ? "10px 20px" : "10px",
     display: "inline-flex",
+    flexDirection: isMobile ? "column" : "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: isMobile ? "6px" : "0",
     fontWeight: 700,
-    fontSize: "13px",
+    fontSize: isMobile ? "11px" : "13px",
+    width: isMobile ? "44px" : "auto",
+    height: isMobile ? "44px" : "auto",
+    minHeight: isMobile ? "44px" : "0",
     transition: "all 300ms cubic-bezier(0.23, 1, 0.32, 1)",
-    boxShadow: active
+    boxShadow: isMobile
+      ? "none"
+      : active
       ? "0 4px 12px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.04)"
       : "none",
+    opacity: active || !isMobile ? 1 : 0.58,
   }),
   listeningMainGrid: {
     display: "grid",

@@ -438,7 +438,7 @@ const mobileStyles = {
     position: "fixed",
     left: "16px",
     right: "16px",
-    bottom: "calc(88px + env(safe-area-inset-bottom))",
+    bottom: "calc(72px + env(safe-area-inset-bottom))",
     zIndex: 90,
     width: "auto",
     height: "auto",

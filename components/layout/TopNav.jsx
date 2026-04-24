@@ -51,11 +51,11 @@ export default function TopNav({
         <button
           type="button"
           onClick={onToggleDashboard}
-          style={styles.topNavIconButton(showDashboard)}
+          style={styles.topNavIconButton(showDashboard, isMobile)}
           aria-pressed={showDashboard}
           aria-label={showDashboard ? "Hide dashboard" : "Show dashboard"}
         >
-          <LayoutDashboard size={16} />
+          <LayoutDashboard size={isMobile ? 20 : 16} />
         </button>
 
         {!isMobile && (

@@ -226,13 +226,13 @@ export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = f
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        style={styles.triggerButton(signedIn)}
+        style={styles.triggerButton(signedIn, isMobile)}
         aria-label={signedIn ? `Signed in as ${user?.email || "your account"}` : "Open sign-in"}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
       >
-        <span style={styles.triggerDot(signedIn, isLoading)} />
-        <UserCircle2 size={16} strokeWidth={2} />
+        {!isMobile ? <span style={styles.triggerDot(signedIn, isLoading)} /> : null}
+        <UserCircle2 size={isMobile ? 20 : 16} strokeWidth={2} />
       </button>
 
       {isOpen && (
@@ -338,19 +338,29 @@ const styles = {
     position: "relative",
     flexShrink: 0,
   },
-  triggerButton: (signedIn) => ({
-    width: "38px",
-    height: "38px",
-    borderRadius: "999px",
-    border: signedIn ? "1px solid rgba(16,185,129,0.25)" : "1px solid var(--app-border)",
-    background: "var(--app-surface)",
-    color: signedIn ? "#047857" : "var(--app-text-muted)",
-    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+  triggerButton: (signedIn, isMobile) => ({
+    width: isMobile ? "44px" : "38px",
+    height: isMobile ? "44px" : "38px",
+    borderRadius: isMobile ? "12px" : "999px",
+    border: isMobile
+      ? "none"
+      : signedIn
+      ? "1px solid rgba(16,185,129,0.25)"
+      : "1px solid var(--app-border)",
+    background: isMobile ? "transparent" : "var(--app-surface)",
+    color: signedIn
+      ? isMobile
+        ? "var(--app-text)"
+        : "#047857"
+      : "var(--app-text-muted)",
+    boxShadow: isMobile ? "none" : "0 12px 28px rgba(15,23,42,0.08)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
     position: "relative",
+    opacity: signedIn || !isMobile ? 1 : 0.58,
+    transition: "color 180ms ease, opacity 180ms ease",
   }),
   triggerDot: (signedIn, isLoading) => ({
     position: "absolute",

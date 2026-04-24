@@ -1,14 +1,18 @@
 export default function NavigationBar({ activeTab, isMobile, onChange, moduleTabs, styles }) {
+  const visibleTabs = isMobile
+    ? moduleTabs.filter((item) => item.key !== "shadowing" && item.key !== "writing")
+    : moduleTabs;
+
   return (
     <div
       style={{
         ...styles.moduleNavTrack,
         width: isMobile ? "100%" : styles.moduleNavTrack.width,
-        gap: isMobile ? "6px" : styles.moduleNavTrack.gap,
+        gap: isMobile ? "4px" : styles.moduleNavTrack.gap,
         justifyContent: isMobile ? "space-between" : "flex-start",
       }}
     >
-      {moduleTabs.map((item) => {
+      {visibleTabs.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.key;
 
@@ -18,8 +22,7 @@ export default function NavigationBar({ activeTab, isMobile, onChange, moduleTab
             key={item.key}
             onClick={() => onChange(item.key)}
             style={{
-              ...styles.moduleNavButton(isActive),
-              padding: isMobile ? "10px" : styles.moduleNavButton(isActive).padding,
+              ...styles.moduleNavButton(isActive, isMobile),
               flex: isMobile ? "1 1 0" : "0 0 auto",
               minWidth: 0,
             }}
@@ -27,7 +30,7 @@ export default function NavigationBar({ activeTab, isMobile, onChange, moduleTab
             aria-label={item.label}
             title={item.label}
           >
-            <Icon size={18} />
+            <Icon size={isMobile ? 20 : 18} />
             {!isMobile && isActive && <span style={{ marginLeft: "6px" }}>{item.label}</span>}
           </button>
         );
