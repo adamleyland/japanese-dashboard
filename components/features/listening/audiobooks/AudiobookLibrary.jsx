@@ -48,7 +48,7 @@ export default function AudiobookLibrary({
   return (
     <section style={isOverlay ? styles.overlaySection : styles.section}>
       <div style={isOverlay ? styles.overlaySectionHeader : styles.sectionHeader}>
-        <div style={styles.sectionEyebrow}>Library</div>
+        <div style={isOverlay ? styles.overlaySectionEyebrow : styles.sectionEyebrow}>Library</div>
         <input
           type="search"
           value={searchQuery}
@@ -59,7 +59,9 @@ export default function AudiobookLibrary({
         />
       </div>
 
-      {showHelperText ? <div style={styles.sectionHint}>{hint}</div> : null}
+      {showHelperText ? (
+        <div style={isOverlay ? styles.overlaySectionHint : styles.sectionHint}>{hint}</div>
+      ) : null}
 
       {filteredBooks.length ? (
         <div
@@ -78,7 +80,9 @@ export default function AudiobookLibrary({
           ))}
         </div>
       ) : (
-        <div style={styles.emptyState}>No audiobooks match your search.</div>
+        <div style={isOverlay ? styles.overlayEmptyState : styles.emptyState}>
+          No audiobooks match your search.
+        </div>
       )}
     </section>
   );
@@ -92,7 +96,7 @@ const styles = {
   overlaySection: {
     display: "grid",
     gridTemplateRows: "auto auto minmax(0, 1fr)",
-    gap: "12px",
+    gap: "14px",
     minHeight: 0,
   },
   sectionHeader: {
@@ -117,6 +121,17 @@ const styles = {
     fontSize: "12px",
     color: "var(--app-text-faint)",
   },
+  overlaySectionEyebrow: {
+    fontSize: "12px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "rgba(226,232,240,0.72)",
+  },
+  overlaySectionHint: {
+    fontSize: "12px",
+    color: "rgba(226,232,240,0.68)",
+  },
   searchInput: {
     width: "100%",
     maxWidth: "280px",
@@ -140,7 +155,7 @@ const styles = {
   overlayList: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "12px",
+    gap: "14px",
     overflowY: "auto",
     paddingRight: "4px",
     minHeight: 0,
@@ -155,13 +170,22 @@ const styles = {
   },
   overlaySearchInput: {
     width: "100%",
-    border: "1px solid var(--app-border)",
-    background: "var(--app-surface)",
-    color: "var(--app-text)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f8fafc",
     borderRadius: "14px",
     padding: "12px 14px",
     fontSize: "13px",
     lineHeight: 1.2,
-    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    boxShadow: "none",
+  },
+  overlayEmptyState: {
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(248,250,252,0.82)",
+    borderRadius: "18px",
+    padding: "18px",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
 };

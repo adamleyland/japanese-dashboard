@@ -3,6 +3,7 @@
 export default function AudiobookCard({ book, onSelect, compact = false, fullWidth = false }) {
   const progressPercent = Math.max(0, Math.min(100, book.progressPercent || 0));
   const useBareArtwork = compact && fullWidth;
+  const isOverlayCard = compact && fullWidth;
 
   return (
     <button type="button" onClick={() => onSelect(book)} style={styles.card(compact, fullWidth)}>
@@ -17,16 +18,16 @@ export default function AudiobookCard({ book, onSelect, compact = false, fullWid
       </div>
 
       <div style={styles.meta}>
-        <div style={styles.title}>{book.title}</div>
-        <div style={styles.author}>{book.author}</div>
+        <div style={styles.title(isOverlayCard)}>{book.title}</div>
+        <div style={styles.author(isOverlayCard)}>{book.author}</div>
       </div>
 
-      <div style={styles.progressMeta}>
+      <div style={styles.progressMeta(isOverlayCard)}>
         <span style={styles.progressLabel}>{progressPercent.toFixed(0)}% complete</span>
         <span style={styles.progressTime}>{formatDuration(book.remainingSeconds)} left</span>
       </div>
 
-      <div style={styles.progressTrack}>
+      <div style={styles.progressTrack(isOverlayCard)}>
         <div style={styles.progressFill(progressPercent, book.accentColor)} />
       </div>
     </button>
@@ -47,9 +48,15 @@ function formatDuration(totalSeconds) {
 
 const styles = {
   card: (compact, fullWidth) => ({
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card)",
-    borderRadius: "18px",
+    border:
+      compact && fullWidth
+        ? "1px solid rgba(255,255,255,0.1)"
+        : "1px solid var(--app-border-soft)",
+    background:
+      compact && fullWidth
+        ? "linear-gradient(180deg, rgba(30,41,59,0.94) 0%, rgba(30,41,59,0.9) 100%)"
+        : "var(--app-card)",
+    borderRadius: compact && fullWidth ? "20px" : "18px",
     padding: compact ? "12px" : "14px",
     display: "grid",
     gap: "12px",
@@ -57,7 +64,10 @@ const styles = {
     textAlign: "left",
     minWidth: fullWidth ? "100%" : compact ? "190px" : "220px",
     width: fullWidth ? "100%" : "auto",
-    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+    boxShadow:
+      compact && fullWidth
+        ? "0 16px 34px rgba(15,23,42,0.16)"
+        : "0 12px 28px rgba(15,23,42,0.08)",
   }),
   cover: (coverImage, coverGradient, useBareArtwork) => ({
     position: "relative",
@@ -110,37 +120,37 @@ const styles = {
     display: "grid",
     gap: "4px",
   },
-  title: {
+  title: (overlay) => ({
     fontSize: "14px",
     fontWeight: 700,
-    color: "var(--app-text)",
+    color: overlay ? "#f8fafc" : "var(--app-text)",
     lineHeight: 1.3,
-  },
-  author: {
+  }),
+  author: (overlay) => ({
     fontSize: "12px",
-    color: "var(--app-text-muted)",
-  },
-  progressMeta: {
+    color: overlay ? "rgba(226,232,240,0.72)" : "var(--app-text-muted)",
+  }),
+  progressMeta: (overlay) => ({
     display: "flex",
     justifyContent: "space-between",
     gap: "10px",
     alignItems: "center",
     fontSize: "11px",
-    color: "var(--app-text-muted)",
-  },
+    color: overlay ? "rgba(226,232,240,0.72)" : "var(--app-text-muted)",
+  }),
   progressLabel: {
     fontWeight: 700,
   },
   progressTime: {
     whiteSpace: "nowrap",
   },
-  progressTrack: {
+  progressTrack: (overlay) => ({
     height: "6px",
     borderRadius: "999px",
-    background: "var(--app-progress-track)",
-    border: "1px solid var(--app-border-soft)",
+    background: overlay ? "rgba(255,255,255,0.08)" : "var(--app-progress-track)",
+    border: overlay ? "1px solid rgba(255,255,255,0.08)" : "1px solid var(--app-border-soft)",
     overflow: "hidden",
-  },
+  }),
   progressFill: (progressPercent, accentColor) => ({
     width: `${progressPercent}%`,
     height: "100%",
