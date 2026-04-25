@@ -1160,7 +1160,7 @@ const styles = {
   },
   mobileChapterSheet: {
     position: "absolute",
-    inset: "max(env(safe-area-inset-top), 10px) 10px max(env(safe-area-inset-bottom), 10px) 10px",
+    inset: "10px",
     display: "grid",
     gridTemplateRows: "auto auto minmax(0, 1fr)",
     gap: "14px",

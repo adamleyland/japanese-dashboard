@@ -344,10 +344,8 @@ export default function ListeningWorkspace({
   );
 
   const mobileFocusAvailableHeight = "calc(100svh - 132px)";
-  const mobileLandscapeFocusAvailableHeight =
-    "calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px)";
-  const mobileLandscapeFocusFrameMaxWidth =
-    "calc((100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px) * 1.7777778)";
+  const mobileLandscapeFocusAvailableHeight = "calc(100svh - 20px)";
+  const mobileLandscapeFocusFrameMaxWidth = "calc((100svh - 20px) * 1.7777778)";
   const focusContentStyle = isMobile
     ? {
         ...styles.focusContent,
@@ -509,9 +507,9 @@ export default function ListeningWorkspace({
       <div
         style={{
           position: "absolute",
-          top: "calc(env(safe-area-inset-top) + 14px)",
-          left: "calc(env(safe-area-inset-left) + 14px)",
-          right: "calc(env(safe-area-inset-right) + 92px)",
+          top: "14px",
+          left: "14px",
+          right: "92px",
           pointerEvents: "none",
         }}
         aria-hidden="true"
@@ -532,7 +530,7 @@ export default function ListeningWorkspace({
         style={{
           position: "absolute",
           top: "50%",
-          right: "calc(env(safe-area-inset-right) + 12px)",
+          right: "12px",
           transform: "translateY(-50%)",
           display: "grid",
           gap: "10px",

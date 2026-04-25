@@ -378,7 +378,7 @@ const styles = {
     bottom: isMobile ? "calc(100% + 10px)" : "auto",
     right: 0,
     width: isCompact ? "min(260px, calc(100vw - 56px))" : "280px",
-    maxHeight: isMobile ? "calc(100dvh - 136px - env(safe-area-inset-bottom))" : "none",
+    maxHeight: isMobile ? "calc(100dvh - 136px)" : "none",
     overflowY: isMobile ? "auto" : "visible",
     overscrollBehavior: "contain",
     borderRadius: "18px",

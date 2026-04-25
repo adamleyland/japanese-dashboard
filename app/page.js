@@ -1176,10 +1176,8 @@ const styles = {
     boxSizing: "border-box",
   },
   mobilePageSafeArea: (hasPinnedTracker) => ({
-    paddingTop: "calc(16px + env(safe-area-inset-top))",
-    paddingBottom: hasPinnedTracker
-      ? "calc(236px + env(safe-area-inset-bottom))"
-      : "calc(136px + env(safe-area-inset-bottom))",
+    paddingTop: "16px",
+    paddingBottom: hasPinnedTracker ? "236px" : "136px",
   }),
   bgOrb1: {
     position: "absolute",
@@ -1704,7 +1702,7 @@ const styles = {
     ...glass,
     borderRadius: isMobile ? "0px" : "26px",
     padding: isMobile
-      ? "10px 12px calc(12px + env(safe-area-inset-bottom)) 12px"
+      ? "10px 12px 12px 12px"
       : isCompact
       ? "10px 12px"
       : "12px 14px",

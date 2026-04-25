@@ -724,7 +724,7 @@ const styles = {
   },
   mobilePlayerSheet: {
     position: "absolute",
-    inset: "max(env(safe-area-inset-top), 10px) 10px max(env(safe-area-inset-bottom), 10px) 10px",
+    inset: "10px",
     display: "flex",
     justifyContent: "center",
     overflowY: "auto",
@@ -784,7 +784,7 @@ const styles = {
   },
   mobileLibrarySheet: {
     position: "absolute",
-    inset: "max(env(safe-area-inset-top), 10px) 10px max(env(safe-area-inset-bottom), 10px) 10px",
+    inset: "10px",
     display: "grid",
     gridTemplateRows: "auto minmax(0, 1fr)",
     gap: "14px",
@@ -840,7 +840,7 @@ const styles = {
     right: 0,
     bottom: 0,
     zIndex: 10003,
-    padding: "0 10px max(env(safe-area-inset-bottom), 10px) 10px",
+    padding: "0 10px 10px 10px",
     pointerEvents: "none",
   },
   mobileMiniPlayer: {
@@ -994,7 +994,7 @@ const styles = {
     position: "absolute",
     left: "10px",
     right: "10px",
-    bottom: "max(env(safe-area-inset-bottom), 10px)",
+    bottom: "10px",
     maxHeight: "min(70svh, 520px)",
     width: "min(calc(100% - 20px), 560px)",
     margin: "0 auto",
