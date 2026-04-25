@@ -973,7 +973,7 @@ const styles = {
     display: "grid",
     gap: "12px",
     paddingTop: "30px",
-    paddingBottom: "50px",
+    paddingBottom: "25px",
   },
   mobileCoverFade: {
     position: "absolute",
