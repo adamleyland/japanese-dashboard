@@ -97,7 +97,7 @@ export default function AudiobookPlayer({
         background: "#ffffff",
         width: "100%",
         maxWidth: "100%",
-        minHeight: "100svh",
+        minHeight: "100dvh",
         alignContent: "start",
         boxSizing: "border-box",
       }

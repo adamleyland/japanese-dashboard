@@ -731,6 +731,7 @@ const styles = {
     position: "absolute",
     inset: 0,
     height: "100dvh",
+    background: "#ffffff",
     overflowY: "auto",
     overscrollBehavior: "none",
     WebkitOverflowScrolling: "touch",
