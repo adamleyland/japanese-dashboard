@@ -59,7 +59,7 @@ export default function TopNav({
             aria-pressed={showDashboard}
             aria-label={showDashboard ? "Hide dashboard" : "Show dashboard"}
           >
-            <LayoutDashboard size={20} />
+            <LayoutDashboard size={22} />
           </button>
         </div>
 
@@ -77,7 +77,7 @@ export default function TopNav({
                 aria-label={item.label}
                 title={item.label}
               >
-                <Icon size={20} />
+                <Icon size={22} />
               </button>
             </div>
           );

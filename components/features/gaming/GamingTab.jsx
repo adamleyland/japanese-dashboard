@@ -216,7 +216,12 @@ export default function GamingTab({
       }}
     >
       {isMobile ? (
-        <CurrentlyPlayingCard styles={styles} currentGame={currentGame} loading={loading} />
+        <CurrentlyPlayingCard
+          styles={styles}
+          currentGame={currentGame}
+          loading={loading}
+          isMobile={isMobile}
+        />
       ) : (
         <GamingLibraryPanel
           {...gamingLibraryPanelProps}

@@ -12,12 +12,17 @@ import {
   supportsTrackedPlaytime,
 } from "@/lib/gaming/gaming-utils";
 
-export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
+export default function CurrentlyPlayingCard({ styles, currentGame, loading, isMobile = false }) {
   const canShowTrackedPlaytime = supportsTrackedPlaytime(currentGame);
+  const cardStyle = {
+    ...styles.sideCard,
+    border: isMobile ? "var(--gaming-mobile-top-card-border)" : styles.sideCard.border,
+    boxShadow: isMobile ? "var(--gaming-mobile-top-card-shadow)" : styles.sideCard.boxShadow,
+  };
 
   if (!currentGame && !loading) {
     return (
-      <div style={styles.sideCard}>
+      <div style={cardStyle}>
         <div style={styles.wordCardHeader}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={styles.progressContainer}>
@@ -55,7 +60,7 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading }) {
   }
 
   return (
-    <div style={styles.sideCard}>
+    <div style={cardStyle}>
       <div
         style={{
           ...styles.wordCardHeader,

@@ -997,8 +997,9 @@ export default function Home() {
         ...(isMobile ? styles.mobilePageSafeArea(showDashboard) : null),
       }}
     >
-      <div style={styles.bgOrb1} />
-      <div style={styles.bgOrb2} />
+      <div style={{ ...styles.bgOrb1, ...(isMobile ? styles.mobileBgOrb1 : null) }} />
+      <div style={{ ...styles.bgOrb2, ...(isMobile ? styles.mobileBgOrb2 : null) }} />
+      {isMobile && <div style={styles.mobileTopWash} />}
 
       <div style={styles.container}>
         <TopNav
@@ -1190,6 +1191,11 @@ const styles = {
     left: "-80px",
     pointerEvents: "none",
   },
+  mobileBgOrb1: {
+    top: "92px",
+    left: "-150px",
+    opacity: 0.42,
+  },
   bgOrb2: {
     position: "absolute",
     width: "420px",
@@ -1200,6 +1206,21 @@ const styles = {
     top: "-120px",
     right: "-80px",
     pointerEvents: "none",
+  },
+  mobileBgOrb2: {
+    top: "110px",
+    right: "-170px",
+    opacity: 0.34,
+  },
+  mobileTopWash: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "150px",
+    background: "var(--app-mobile-top-wash)",
+    pointerEvents: "none",
+    zIndex: 0,
   },
   container: {
     maxWidth: "1300px",
@@ -1702,7 +1723,7 @@ const styles = {
     ...glass,
     borderRadius: isMobile ? "0px" : "26px",
     padding: isMobile
-      ? "10px 12px 12px 12px"
+      ? "10px 12px 25px 12px"
       : isCompact
       ? "10px 12px"
       : "12px 14px",

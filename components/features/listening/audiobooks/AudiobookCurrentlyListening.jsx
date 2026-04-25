@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Play, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { CircleHelp, List, Play, X } from "lucide-react";
 import { clampWords, stripHtml } from "@/lib/stripHtml";
 
 const FALLBACK_COVER_URL =
@@ -24,6 +25,8 @@ const FALLBACK_COVER_URL =
 export default function AudiobookCurrentlyListening({
   book,
   isMobile = false,
+  libraryCount = 0,
+  onOpenLibrary,
   onOpenPlayer,
   onPlayNow,
 }) {
@@ -40,7 +43,8 @@ export default function AudiobookCurrentlyListening({
   const cardStyle = isMobile
     ? {
         ...styles.card,
-        gridTemplateColumns: "1fr",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        alignItems: "start",
         gap: "14px",
         padding: "14px",
       }
@@ -48,8 +52,9 @@ export default function AudiobookCurrentlyListening({
   const coverStyle = isMobile
     ? {
         ...styles.cover(book.coverGradient),
-        width: "min(100%, 165px)",
+        width: "min(100%, 164px)",
         aspectRatio: "1 / 1",
+        borderRadius: "18px",
       }
     : styles.cover(book.coverGradient);
   const coverImageStyle = isMobile
@@ -60,31 +65,22 @@ export default function AudiobookCurrentlyListening({
   const metaStyle = isMobile
     ? {
         ...styles.meta,
-        gap: "8px",
+        gap: "10px",
         alignContent: "start",
       }
     : styles.meta;
-  const metaTopRowStyle = isMobile
-    ? {
-        ...styles.metaTopRow,
-        alignItems: "flex-start",
-      }
-    : styles.metaTopRow;
   const titleStyle = isMobile
     ? {
         ...styles.title,
         fontSize: "18px",
-        lineHeight: 1.18,
-        display: "-webkit-box",
-        WebkitLineClamp: 3,
-        WebkitBoxOrient: "vertical",
-        overflow: "hidden",
+        lineHeight: 1.15,
       }
     : styles.title;
   const authorStyle = isMobile
     ? {
         ...styles.author,
-        fontSize: "13px",
+        fontSize: "12px",
+        lineHeight: 1.3,
       }
     : styles.author;
   const descriptionStyle = isMobile
@@ -103,9 +99,6 @@ export default function AudiobookCurrentlyListening({
         borderRadius: "12px",
       }
     : styles.iconButton;
-  const mobileCoverPlayButtonStyle = {
-    ...styles.mobileCoverPlayButton,
-  };
 
   return (
     <section style={styles.section}>
@@ -127,17 +120,17 @@ export default function AudiobookCurrentlyListening({
         aria-label={`Open player for ${book.title}`}
       >
         <div style={cardStyle}>
-          <div style={isMobile ? styles.mobileCoverWrap : undefined}>
-            <div style={coverStyle} aria-hidden="true">
-              <img
-                key={`${book.id}-${coverUrl}`}
-                src={coverUrl}
-                alt=""
-                style={coverImageStyle}
-                onError={(event) => {
-                  event.currentTarget.src = FALLBACK_COVER_URL;
-                }}
-              />
+          <div
+            style={
+              isMobile
+                ? {
+                    ...styles.mobileCoverWrap,
+                    gridColumn: "1 / -1",
+                  }
+                : undefined
+            }
+          >
+            <div style={coverStyle}>
               {isMobile ? (
                 <button
                   type="button"
@@ -146,50 +139,61 @@ export default function AudiobookCurrentlyListening({
                     event.stopPropagation();
                     onPlayNow?.();
                   }}
-                  style={mobileCoverPlayButtonStyle}
-                  aria-label={`Play ${book.title}`}
+                  style={styles.mobileArtworkButton}
+                  aria-label={`Play ${book.title} and open player`}
                 >
-                  <Play size={16} fill="currentColor" />
+                  <img
+                    key={`${book.id}-${coverUrl}`}
+                    src={coverUrl}
+                    alt=""
+                    style={coverImageStyle}
+                    onError={(event) => {
+                      event.currentTarget.src = FALLBACK_COVER_URL;
+                    }}
+                  />
                 </button>
-              ) : null}
+              ) : (
+                <img
+                  key={`${book.id}-${coverUrl}`}
+                  src={coverUrl}
+                  alt=""
+                  style={coverImageStyle}
+                  onError={(event) => {
+                    event.currentTarget.src = FALLBACK_COVER_URL;
+                  }}
+                />
+              )}
             </div>
           </div>
 
-          <div style={metaStyle}>
-            <div style={metaTopRowStyle}>
-              <div style={titleStyle}>{book.title}</div>
-              {!isMobile ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onPlayNow?.();
-                  }}
-                  style={iconButtonStyle}
-                  aria-label={`Play ${book.title}`}
-                >
-                  <Play size={18} />
-                </button>
-              ) : null}
-            </div>
-            <div style={authorStyle}>{book.author}</div>
+          <div style={isMobile ? { ...metaStyle, minWidth: 0 } : metaStyle}>
             {isMobile ? (
-              hasDescription ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setIsDescriptionOpen(true);
-                  }}
-                  style={styles.descriptionPillButton}
-                >
-                  About this book
-                </button>
-              ) : null
+              <>
+                <div style={styles.mobileTitleWrap}>
+                  <AutoScrollingTitle text={book.title} />
+                </div>
+                {book.author ? <div style={authorStyle}>{book.author}</div> : null}
+              </>
             ) : (
-              <div style={descriptionStyle}>{plainDescription}</div>
+              <>
+                <div style={styles.metaTopRow}>
+                  <div style={titleStyle}>{book.title}</div>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onPlayNow?.();
+                    }}
+                    style={iconButtonStyle}
+                    aria-label={`Play ${book.title}`}
+                  >
+                    <Play size={18} />
+                  </button>
+                </div>
+                <div style={authorStyle}>{book.author}</div>
+                <div style={descriptionStyle}>{plainDescription}</div>
+              </>
             )}
 
             <div style={styles.progressMeta}>
@@ -203,49 +207,160 @@ export default function AudiobookCurrentlyListening({
               <div style={styles.progressFill(book.progressPercent, book.accentColor)} />
             </div>
           </div>
+
+          {isMobile ? (
+            <div style={styles.mobileActionRail}>
+              {onOpenLibrary ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onOpenLibrary?.();
+                  }}
+                  style={styles.mobileUtilityButton}
+                  aria-label={`Open audiobook library${libraryCount ? ` with ${libraryCount} books` : ""}`}
+                  title={`Open audiobook library${libraryCount ? ` (${libraryCount} books)` : ""}`}
+                >
+                  <List size={18} />
+                </button>
+              ) : null}
+              {hasDescription ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setIsDescriptionOpen(true);
+                  }}
+                  style={styles.mobileUtilityButton}
+                  aria-label={`About ${book.title}`}
+                  title={`About ${book.title}`}
+                >
+                  <CircleHelp size={18} />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      {isMobile && isDescriptionOpen ? (
-        <div
-          style={styles.descriptionModalOverlay}
-          onClick={() => setIsDescriptionOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="currently-listening-description-title"
-            style={styles.descriptionModal}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={styles.descriptionModalHeader}>
-              <div style={styles.descriptionModalHeaderCopy}>
-                <div style={styles.sectionEyebrow}>Audiobook Description</div>
-                <h4
-                  id="currently-listening-description-title"
-                  style={styles.descriptionModalTitle}
-                >
-                  {book.title}
-                </h4>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsDescriptionOpen(false)}
-                style={styles.iconButton}
-                aria-label="Close description"
+      {isMobile && isDescriptionOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              style={styles.descriptionModalOverlay}
+              onClick={() => setIsDescriptionOpen(false)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="currently-listening-description-title"
+                style={styles.descriptionModal}
+                onClick={(event) => event.stopPropagation()}
               >
-                <X size={18} />
-              </button>
-            </div>
+                <div style={styles.descriptionModalHeader}>
+                  <div style={styles.descriptionModalHeaderCopy}>
+                    <div style={styles.descriptionModalEyebrow}>Audiobook Description</div>
+                    <h4
+                      id="currently-listening-description-title"
+                      style={styles.descriptionModalTitle}
+                    >
+                      {book.title}
+                    </h4>
+                  </div>
 
-            <div style={styles.descriptionModalBody}>
-              <p style={styles.descriptionModalText}>{fullDescription}</p>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setIsDescriptionOpen(false)}
+                    style={styles.descriptionModalCloseButton}
+                    aria-label="Close description"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div style={styles.descriptionModalBody}>
+                  {book.author ? (
+                    <div style={styles.descriptionModalAuthor}>{book.author}</div>
+                  ) : null}
+                  <p style={styles.descriptionModalText}>{fullDescription}</p>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
+  );
+}
+
+function AutoScrollingTitle({ text }) {
+  const viewportRef = useRef(null);
+  const textRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [scrollDistance, setScrollDistance] = useState(0);
+
+  useEffect(() => {
+    const viewportNode = viewportRef.current;
+    const textNode = textRef.current;
+
+    if (!viewportNode || !textNode) {
+      return undefined;
+    }
+
+    const updateOverflow = () => {
+      const nextDistance = Math.ceil(textNode.scrollWidth);
+      const nextOverflow = nextDistance - viewportNode.clientWidth > 6;
+      setIsOverflowing(nextOverflow);
+      setScrollDistance(nextOverflow ? nextDistance + 28 : 0);
+    };
+
+    updateOverflow();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateOverflow);
+      return () => window.removeEventListener("resize", updateOverflow);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateOverflow();
+    });
+
+    resizeObserver.observe(viewportNode);
+    resizeObserver.observe(textNode);
+
+    return () => resizeObserver.disconnect();
+  }, [text]);
+
+  if (!isOverflowing) {
+    return (
+      <div ref={viewportRef} style={styles.mobileTitleViewport}>
+        <span ref={textRef} style={styles.mobileTitleStatic}>
+          {text}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={viewportRef}
+      className="audiobook-title-marquee"
+      style={{
+        ...styles.mobileTitleViewport,
+        "--audiobook-title-distance": `-${scrollDistance}px`,
+        "--audiobook-title-duration": `${Math.max(8, Math.min(18, text.length * 0.38))}s`,
+      }}
+    >
+      <div className="audiobook-title-marquee-track" style={styles.mobileTitleTrack}>
+        <span ref={textRef} style={styles.mobileTitleText}>
+          {text}
+        </span>
+        <span aria-hidden="true" style={styles.mobileTitleText}>
+          {text}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -341,29 +456,56 @@ const styles = {
     objectFit: "cover",
     display: "block",
   },
-  mobileCoverPlayButton: {
-    position: "absolute",
-    left: "10px",
-    bottom: "10px",
-    width: "42px",
-    height: "42px",
-    borderRadius: "12px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,0.16)",
-    color: "#f8fafc",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    boxShadow: "0 10px 20px rgba(15,23,42,0.22)",
+  mobileArtworkButton: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    width: "100%",
+    height: "100%",
     cursor: "pointer",
+    lineHeight: 0,
+    display: "block",
   },
   meta: {
     display: "grid",
     gap: "10px",
     alignContent: "center",
     minWidth: 0,
+  },
+  mobileTitleWrap: {
+    minWidth: 0,
+  },
+  mobileTitleViewport: {
+    minWidth: 0,
+    width: "100%",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+  mobileTitleStatic: {
+    display: "block",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--app-text)",
+    fontSize: "16px",
+    fontWeight: 700,
+    lineHeight: 1.15,
+    letterSpacing: "-0.02em",
+  },
+  mobileTitleTrack: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "28px",
+    minWidth: "max-content",
+  },
+  mobileTitleText: {
+    color: "var(--app-text)",
+    fontSize: "16px",
+    fontWeight: 700,
+    lineHeight: 1.15,
+    letterSpacing: "-0.02em",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   metaTopRow: {
     display: "flex",
@@ -409,28 +551,50 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
   },
+  mobileActionRail: {
+    display: "grid",
+    gap: "10px",
+    alignContent: "start",
+    justifyItems: "end",
+  },
+  mobileUtilityButton: {
+    width: "42px",
+    height: "42px",
+    borderRadius: "12px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text-soft)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
   descriptionModalOverlay: {
     position: "fixed",
     inset: 0,
-    zIndex: 10001,
-    background: "rgba(2, 6, 23, 0.62)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    zIndex: 10050,
+    background: "rgba(248, 250, 252, 0.56)",
+    backdropFilter: "blur(22px) saturate(1.05)",
+    WebkitBackdropFilter: "blur(22px) saturate(1.05)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "24px",
+    padding: "20px 16px calc(20px + env(safe-area-inset-bottom, 0px))",
   },
   descriptionModal: {
-    width: "min(100%, 720px)",
-    maxHeight: "min(80vh, 720px)",
+    width: "min(100%, 460px)",
+    maxHeight: "min(78svh, 640px)",
     display: "grid",
-    gap: "16px",
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card)",
-    borderRadius: "22px",
-    padding: "20px",
-    boxShadow: "0 24px 60px rgba(2, 6, 23, 0.28)",
+    gap: "14px",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background:
+      "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.92) 100%)",
+    borderRadius: "24px",
+    padding: "18px",
+    boxShadow: "0 28px 80px rgba(2, 6, 23, 0.34)",
+    color: "#f8fafc",
   },
   descriptionModalHeader: {
     display: "flex",
@@ -440,25 +604,52 @@ const styles = {
   },
   descriptionModalHeaderCopy: {
     display: "grid",
-    gap: "8px",
+    gap: "6px",
     minWidth: 0,
+  },
+  descriptionModalEyebrow: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "rgba(226, 232, 240, 0.72)",
   },
   descriptionModalTitle: {
     margin: 0,
-    fontSize: "24px",
-    lineHeight: 1.12,
+    fontSize: "22px",
+    lineHeight: 1.16,
     letterSpacing: "-0.03em",
-    color: "var(--app-text)",
+    color: "#f8fafc",
+  },
+  descriptionModalCloseButton: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "12px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f8fafc",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
   },
   descriptionModalBody: {
     overflowY: "auto",
     paddingRight: "4px",
+    display: "grid",
+    gap: "12px",
+  },
+  descriptionModalAuthor: {
+    fontSize: "13px",
+    lineHeight: 1.4,
+    color: "rgba(226, 232, 240, 0.78)",
   },
   descriptionModalText: {
     margin: 0,
     fontSize: "14px",
-    lineHeight: 1.8,
-    color: "var(--app-text-soft)",
+    lineHeight: 1.75,
+    color: "rgba(248, 250, 252, 0.92)",
     whiteSpace: "pre-wrap",
   },
   progressMeta: {

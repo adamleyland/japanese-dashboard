@@ -23,6 +23,10 @@ export default function ListeningSourceToggle({ value, onChange, isCompact, isMo
         width={isMobile ? 96 : isCompact ? 220 : 240}
         size="sm"
         iconOnly={isMobile}
+        sliderBackground={isMobile ? "var(--app-selected-surface)" : undefined}
+        activeColor={isMobile ? "var(--app-selected-text)" : undefined}
+        inactiveColor={isMobile ? "var(--app-text-muted)" : undefined}
+        borderColor={isMobile ? "var(--app-border-soft)" : undefined}
       />
     </div>
   );

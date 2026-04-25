@@ -615,6 +615,10 @@ export default function ListeningWorkspace({
         style={{
           ...styles.largeCard,
           padding: isCompact ? "16px" : styles.largeCard.padding,
+          border: isMobile ? "var(--listening-mobile-workspace-border)" : styles.largeCard.border,
+          boxShadow: isMobile
+            ? "var(--listening-mobile-workspace-shadow)"
+            : styles.largeCard.boxShadow,
         }}
       >
         <div

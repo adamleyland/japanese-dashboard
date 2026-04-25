@@ -1,8 +1,9 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { ChevronUp, List, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
+import { List, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import AudiobookCurrentlyListening from "@/components/features/listening/audiobooks/AudiobookCurrentlyListening";
 import AudiobookLibrary from "@/components/features/listening/audiobooks/AudiobookLibrary";
 import AudiobookPlayer from "@/components/features/listening/audiobooks/AudiobookPlayer";
@@ -218,6 +219,8 @@ export default function AudiobookWorkspace({
           <AudiobookCurrentlyListening
             book={currentlyListeningBook}
             isMobile={isMobile}
+            libraryCount={books.length}
+            onOpenLibrary={isMobile ? () => setIsLibraryOpen(true) : null}
             onOpenPlayer={() => {
               selectCurrentlyListening("loaded");
               setIsPlayerOpen(true);
@@ -229,22 +232,7 @@ export default function AudiobookWorkspace({
               setIsPlayerMinimized(false);
             }}
           />
-          {isMobile ? (
-            <button
-              type="button"
-              onClick={() => setIsLibraryOpen(true)}
-              style={styles.mobileLibraryLauncher}
-            >
-              <span style={styles.mobileLibraryLauncherLabel}>Library</span>
-
-              <div style={styles.mobileLibraryLauncherMeta}>
-                <span style={styles.mobileLibraryLauncherCount}>{books.length} books</span>
-                <span style={styles.mobileLibraryLauncherIconWrap}>
-                  <List size={18} />
-                </span>
-              </div>
-            </button>
-          ) : (
+          {isMobile ? null : (
             <AudiobookLibrary
               books={books}
               onSelect={(book) => loadBook(book, "loaded", "library")}
@@ -262,43 +250,63 @@ export default function AudiobookWorkspace({
         </>
       )}
 
-      {showMobilePlayerOverlay &&
+      {hasMounted &&
         createPortal(
-          <div style={styles.mobilePlayerOverlay}>
-            <div
-              style={styles.mobilePlayerBackdrop}
-              onClick={() => {
-                closePlayer();
-                setIsPlayerOpen(false);
-                setIsPlayerMinimized(false);
-              }}
-            />
-            <div style={styles.mobilePlayerSheet}>
-              <AudiobookPlayer
-                activeChapterIndex={activeChapterIndex}
-                book={currentBook}
-                chapters={chapters}
-                currentProgressSeconds={currentProgressSeconds}
-                durationSeconds={durationSeconds}
-                hasPlayableAudio={hasPlayableAudio}
-                isMobile
-                isPlaying={isPlaying}
-                playbackState={playbackState}
-                progressPercent={progressPercent}
-                onPlayFromStart={playFromStart}
-                onClosePlayer={() => {
-                  closePlayer();
-                  setIsPlayerOpen(false);
-                  setIsPlayerMinimized(false);
-                }}
-                onMinimizePlayer={() => setIsPlayerMinimized(true)}
-                savingProgress={savingProgress}
-                onSeekTo={seekTo}
-                onSkipBy={skipBy}
-                onTogglePlayback={togglePlayback}
-              />
-            </div>
-          </div>,
+          <AnimatePresence>
+            {showMobilePlayerOverlay ? (
+              <motion.div
+                style={styles.mobilePlayerOverlay}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <motion.div
+                  style={styles.mobilePlayerBackdrop}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => {
+                    closePlayer();
+                    setIsPlayerOpen(false);
+                    setIsPlayerMinimized(false);
+                  }}
+                />
+                <motion.div
+                  style={styles.mobilePlayerSheet}
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <AudiobookPlayer
+                    activeChapterIndex={activeChapterIndex}
+                    book={currentBook}
+                    chapters={chapters}
+                    currentProgressSeconds={currentProgressSeconds}
+                    durationSeconds={durationSeconds}
+                    hasPlayableAudio={hasPlayableAudio}
+                    isMobile
+                    isPlaying={isPlaying}
+                    playbackState={playbackState}
+                    progressPercent={progressPercent}
+                    onPlayFromStart={playFromStart}
+                    onClosePlayer={() => {
+                      closePlayer();
+                      setIsPlayerOpen(false);
+                      setIsPlayerMinimized(false);
+                    }}
+                    onMinimizePlayer={() => setIsPlayerMinimized(true)}
+                    savingProgress={savingProgress}
+                    onSeekTo={seekTo}
+                    onSkipBy={skipBy}
+                    onTogglePlayback={togglePlayback}
+                  />
+                </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>,
           document.body,
         )}
 
@@ -322,8 +330,6 @@ export default function AudiobookWorkspace({
             activeChapterIndex={activeChapterIndex}
             chapters={chapters}
             onOpenChapters={() => setIsMiniChapterPickerOpen(true)}
-            onSeekTo={seekTo}
-            onSkipBy={skipBy}
             onTogglePlayback={togglePlayback}
           />,
           document.body,
@@ -528,8 +534,6 @@ function MiniAudiobookPlayer({
   onClose,
   onExpand,
   onOpenChapters,
-  onSeekTo,
-  onSkipBy,
   onTogglePlayback,
 }) {
   const playing = isPlaying ?? playbackState === "playing";
@@ -556,17 +560,33 @@ function MiniAudiobookPlayer({
   const activeChapterProgressPercent = activeChapterDuration
     ? (activeChapterProgressSeconds / activeChapterDuration) * 100
     : progressPercent || 0;
-  const timelineMax = Math.max(0, Number(activeChapterDuration || durationSeconds || 0));
-  const timelineValue = Math.max(0, Math.min(timelineMax, Number(activeChapterProgressSeconds || 0)));
   const coverUrl = book?.coverImage || book?.cover_url || MINI_FALLBACK_COVER_URL;
-  const chapterLabel = activeChapter?.title || `${Math.round(progressPercent || 0)}% complete`;
 
   return (
     <div style={styles.mobileMiniPlayerWrap}>
-      <div style={styles.mobileMiniPlayer}>
+      <div
+        style={styles.mobileMiniPlayer}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open full player for ${book.title}`}
+        onClick={() => onExpand?.()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onExpand?.();
+          }
+        }}
+      >
+        <div style={styles.mobileMiniProgressTrack} aria-hidden="true">
+          <div style={styles.mobileMiniProgressFill(activeChapterProgressPercent)} />
+        </div>
+
         <button
           type="button"
-          onClick={onExpand}
+          onClick={(event) => {
+            event.stopPropagation();
+            onExpand?.();
+          }}
           style={styles.mobileMiniArtworkButton}
           aria-label="Open full player"
         >
@@ -584,30 +604,23 @@ function MiniAudiobookPlayer({
           <div style={styles.mobileMiniTopRow}>
             <button
               type="button"
-              onClick={onExpand}
+              onClick={(event) => {
+                event.stopPropagation();
+                onExpand?.();
+              }}
               style={styles.mobileMiniTitleButton}
               aria-label="Open full player"
             >
               <span style={styles.mobileMiniTitle}>{book.title}</span>
-              <span style={styles.mobileMiniActiveChapterTitle}>{chapterLabel}</span>
-              <span style={styles.mobileMiniTime}>
-                {formatMiniClock(timelineValue)} / {formatMiniClock(timelineMax)}
-              </span>
             </button>
 
             <div style={styles.mobileMiniWindowActions}>
               <button
                 type="button"
-                onClick={onExpand}
-                style={styles.mobileMiniIconButton(false)}
-                aria-label="Open full player"
-                title="Open full player"
-              >
-                <ChevronUp size={17} />
-              </button>
-              <button
-                type="button"
-                onClick={onOpenChapters}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenChapters();
+                }}
                 disabled={!chapterCount}
                 style={styles.mobileMiniIconButton(!chapterCount)}
                 aria-label="Choose chapter"
@@ -617,7 +630,27 @@ function MiniAudiobookPlayer({
               </button>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onTogglePlayback();
+                }}
+                disabled={!hasPlayableAudio}
+                style={styles.mobileMiniPlayButton(!hasPlayableAudio)}
+                aria-label={playing ? "Pause audiobook" : "Play audiobook"}
+                title={playing ? "Pause audiobook" : "Play audiobook"}
+              >
+                {playing ? (
+                  <Pause size={18} fill="currentColor" />
+                ) : (
+                  <Play size={18} fill="currentColor" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClose();
+                }}
                 style={styles.mobileMiniIconButton(false)}
                 aria-label="Close player"
                 title="Close player"
@@ -625,56 +658,6 @@ function MiniAudiobookPlayer({
                 <X size={17} />
               </button>
             </div>
-          </div>
-
-          <input
-            type="range"
-            min={0}
-            max={timelineMax}
-            value={timelineValue}
-            onChange={(event) =>
-              onSeekTo(
-                activeChapter
-                  ? activeChapterStart + Number(event.target.value)
-                  : Number(event.target.value),
-              )
-            }
-            disabled={!hasPlayableAudio || timelineMax <= 0}
-            style={styles.mobileMiniTimeline}
-            aria-label={`Chapter progress ${Math.round(activeChapterProgressPercent || 0)}%`}
-          />
-
-          <div style={styles.mobileMiniControls}>
-            <button
-              type="button"
-              onClick={() => onSkipBy(-10)}
-              disabled={!hasPlayableAudio}
-              style={styles.mobileMiniControlButton(!hasPlayableAudio)}
-              aria-label="Skip back 10 seconds"
-              title="Skip back 10 seconds"
-            >
-              <RotateCcw size={17} />
-            </button>
-            <button
-              type="button"
-              onClick={onTogglePlayback}
-              disabled={!hasPlayableAudio}
-              style={styles.mobileMiniPlayButton(!hasPlayableAudio)}
-              aria-label={playing ? "Pause audiobook" : "Play audiobook"}
-              title={playing ? "Pause audiobook" : "Play audiobook"}
-            >
-              {playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => onSkipBy(10)}
-              disabled={!hasPlayableAudio}
-              style={styles.mobileMiniControlButton(!hasPlayableAudio)}
-              aria-label="Skip forward 10 seconds"
-              title="Skip forward 10 seconds"
-            >
-              <RotateCw size={17} />
-            </button>
           </div>
         </div>
       </div>
@@ -724,51 +707,9 @@ const styles = {
   },
   mobilePlayerSheet: {
     position: "absolute",
-    inset: "10px",
-    display: "flex",
-    justifyContent: "center",
+    inset: 0,
     overflowY: "auto",
-  },
-  mobileLibraryLauncher: {
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card)",
-    borderRadius: "18px",
-    padding: "12px 14px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-    textAlign: "left",
-    boxShadow: "0 16px 36px rgba(15,23,42,0.08)",
-    cursor: "pointer",
-  },
-  mobileLibraryLauncherLabel: {
-    fontSize: "14px",
-    fontWeight: 700,
-    lineHeight: 1.2,
-    color: "var(--app-text)",
-    minWidth: 0,
-  },
-  mobileLibraryLauncherMeta: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    flexShrink: 0,
-  },
-  mobileLibraryLauncherCount: {
-    fontSize: "12px",
-    color: "var(--app-text-muted)",
-  },
-  mobileLibraryLauncherIconWrap: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "12px",
-    border: "1px solid var(--app-border)",
-    background: "var(--app-surface)",
-    color: "var(--app-text-soft)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
+    overscrollBehavior: "contain",
   },
   mobileLibraryOverlay: {
     position: "fixed",
@@ -838,9 +779,9 @@ const styles = {
     position: "fixed",
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: "calc(95px + env(safe-area-inset-bottom, 0px))",
     zIndex: 10003,
-    padding: "0 10px 10px 10px",
+    padding: "0 10px 0 10px",
     pointerEvents: "none",
   },
   mobileMiniPlayer: {
@@ -849,13 +790,15 @@ const styles = {
     border: "1px solid rgba(15,23,42,0.1)",
     background: "#ffffff",
     borderRadius: "20px",
-    padding: "10px",
+    padding: "10px 10px 9px 10px",
     display: "grid",
     gridTemplateColumns: "62px minmax(0, 1fr)",
     gap: "10px",
     alignItems: "center",
     boxShadow: "0 20px 56px rgba(15,23,42,0.22)",
     pointerEvents: "auto",
+    position: "relative",
+    overflow: "hidden",
   },
   mobileMiniArtworkButton: {
     border: "none",
@@ -876,13 +819,13 @@ const styles = {
   },
   mobileMiniMain: {
     display: "grid",
-    gap: "7px",
+    gap: "0",
     minWidth: 0,
   },
   mobileMiniTopRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    alignItems: "center",
     gap: "8px",
     minWidth: 0,
   },
@@ -890,10 +833,11 @@ const styles = {
     border: "none",
     background: "transparent",
     padding: 0,
-    display: "grid",
-    gap: "3px",
-    flex: "1 1 auto",
+    display: "block",
     minWidth: 0,
+    width: "100%",
+    maxWidth: "100%",
+    overflow: "hidden",
     textAlign: "left",
     cursor: "pointer",
   },
@@ -906,22 +850,6 @@ const styles = {
     fontSize: "13px",
     fontWeight: 800,
     lineHeight: 1.15,
-  },
-  mobileMiniActiveChapterTitle: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    color: "var(--app-text-soft)",
-    fontSize: "11px",
-    fontWeight: 700,
-    lineHeight: 1.1,
-  },
-  mobileMiniTime: {
-    color: "var(--app-text-muted)",
-    fontSize: "11px",
-    fontWeight: 700,
-    lineHeight: 1.1,
   },
   mobileMiniWindowActions: {
     display: "inline-flex",
@@ -943,30 +871,6 @@ const styles = {
     opacity: disabled ? 0.5 : 1,
     padding: 0,
   }),
-  mobileMiniTimeline: {
-    width: "100%",
-    accentColor: "#050505",
-    cursor: "pointer",
-  },
-  mobileMiniControls: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "16px",
-  },
-  mobileMiniControlButton: (disabled) => ({
-    border: "none",
-    background: "transparent",
-    color: "var(--app-text-soft)",
-    width: "34px",
-    height: "34px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-    padding: 0,
-  }),
   mobileMiniPlayButton: (disabled) => ({
     border: "none",
     background: "#050505",
@@ -981,6 +885,21 @@ const styles = {
     opacity: disabled ? 0.5 : 1,
     padding: 0,
     boxShadow: "0 10px 24px rgba(15,23,42,0.2)",
+  }),
+  mobileMiniProgressTrack: {
+    position: "absolute",
+    left: "14px",
+    right: "14px",
+    top: 0,
+    height: "3px",
+    borderRadius: "999px",
+    background: "rgba(15,23,42,0.08)",
+    overflow: "hidden",
+  },
+  mobileMiniProgressFill: (progressPercent) => ({
+    width: `${Math.max(0, Math.min(100, progressPercent || 0))}%`,
+    height: "100%",
+    background: "#050505",
   }),
   mobileMiniChapterOverlay: {
     position: "fixed",

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
-  Headphones,
+  CircleHelp,
   List,
   Pause,
   Play,
@@ -65,7 +66,6 @@ export default function AudiobookPlayer({
     activeChapterIndex >= 0 && activeChapterIndex < chapterCount - 1
       ? chapters[activeChapterIndex + 1]
       : null;
-  const remainingSeconds = Math.max(0, durationSeconds - currentProgressSeconds);
   const fullDescription = stripHtml(book.description);
   const hasDescription = Boolean(fullDescription);
   const coverUrl = book.coverImage || book.cover_url || FALLBACK_COVER_URL;
@@ -85,27 +85,19 @@ export default function AudiobookPlayer({
   const activeChapterProgressPercent = activeChapterDuration
     ? (activeChapterProgressSeconds / activeChapterDuration) * 100
     : 0;
-  const activeChapterRemainingSeconds = Math.max(
-    0,
-    activeChapterDuration - activeChapterProgressSeconds,
-  );
   const timelineMax = Math.max(0, activeChapterDuration || durationSeconds);
   const timelineValue = Math.max(0, Math.min(timelineMax, activeChapterProgressSeconds));
-  const timelineSummaryLabel = activeChapter ? activeChapter.title : `${progressPercent.toFixed(0)}% complete`;
-  const timelineRemainingLabel = activeChapter
-    ? `${formatRemaining(activeChapterRemainingSeconds)} left in chapter`
-    : `${formatRemaining(remainingSeconds)} left`;
   const metadataLine = buildMetadataLine(book, durationSeconds);
   const shellStyle = isMobile
     ? {
         ...styles.shell,
-        gap: "30px",
-        padding: "14px",
-        borderRadius: "24px",
+        gap: "22px",
+        padding: "max(16px, env(safe-area-inset-top, 0px)) 30px calc(28px + env(safe-area-inset-bottom, 0px))",
+        borderRadius: 0,
         background: "#ffffff",
         width: "100%",
-        maxWidth: "560px",
-        minHeight: "auto",
+        maxWidth: "100%",
+        minHeight: "100svh",
         alignContent: "start",
         boxSizing: "border-box",
       }
@@ -113,18 +105,12 @@ export default function AudiobookPlayer({
   const playerHeaderStyle = isMobile
     ? {
         ...styles.playerHeader,
-        alignItems: "flex-start",
-        gap: "20px",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
         flexWrap: "nowrap",
       }
     : styles.playerHeader;
-  const headerCopyStyle = isMobile
-    ? {
-        ...styles.headerCopy,
-        gap: "6px",
-        flex: "1 1 auto",
-      }
-    : styles.headerCopy;
   const titleStyle = isMobile
     ? {
         ...styles.title,
@@ -151,7 +137,7 @@ export default function AudiobookPlayer({
     ? {
         ...styles.playerGrid,
         gridTemplateColumns: "1fr",
-        gap: "40px",
+        gap: "22px",
       }
     : styles.playerGrid;
   const coverWrapStyle = styles.coverWrap;
@@ -167,7 +153,10 @@ export default function AudiobookPlayer({
   const timelineWrapStyle = isMobile
     ? {
         ...styles.timelineWrap,
-        padding: "12px",
+        padding: "0",
+        border: "none",
+        background: "transparent",
+        gap: "8px",
       }
     : styles.timelineWrap;
   const actionRowStyle = isMobile
@@ -232,23 +221,21 @@ export default function AudiobookPlayer({
     <section style={shellStyle}>
       <div style={playerHeaderStyle}>
         {isMobile ? (
-          <div style={headerCopyStyle}>
-            <div style={styles.mobilePlayerLabel}>
-              <span style={styles.mobilePlayerLabelIcon}>
-                <Headphones size={15} />
-              </span>
-              <span>Audiobook Player</span>
-            </div>
-            {hasDescription ? (
+          <>
+            {onMinimizePlayer ? (
               <button
                 type="button"
-                onClick={() => setIsDescriptionOpen(true)}
-                style={styles.descriptionPillButton}
+                onClick={onMinimizePlayer}
+                style={iconButtonStyle}
+                aria-label="Minimize player"
+                title="Minimize player"
               >
-                About this book
+                <ChevronDown size={18} />
               </button>
-            ) : null}
-          </div>
+            ) : (
+              <div style={styles.mobileHeaderSpacer} />
+            )}
+          </>
         ) : (
           <div style={styles.headerLabelWrap}>
             <div style={styles.eyebrow}>Audiobook Player</div>
@@ -259,38 +246,46 @@ export default function AudiobookPlayer({
           style={{
             ...styles.headerActions,
             alignSelf: "flex-start",
-            marginLeft: "auto",
+            marginLeft: isMobile ? 0 : "auto",
           }}
         >
-          {isMobile && onMinimizePlayer ? (
-            <button
-              type="button"
-              onClick={onMinimizePlayer}
-              style={iconButtonStyle}
-              aria-label="Minimize player"
-              title="Minimize player"
-            >
-              <ChevronDown size={18} />
+          <div style={styles.mobileHeaderActionGroup}>
+            {isMobile && hasDescription ? (
+              <button
+                type="button"
+                onClick={() => setIsDescriptionOpen(true)}
+                style={iconButtonStyle}
+                aria-label="About this book"
+                title="About this book"
+              >
+                <CircleHelp size={18} />
+              </button>
+            ) : null}
+            <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
+              <X size={18} />
             </button>
-          ) : null}
-          <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
-            <X size={18} />
-          </button>
+          </div>
         </div>
       </div>
 
       <div style={playerGridStyle}>
         {isMobile ? (
-          <div style={styles.mobileCoverCard}>
-            <img
-              key={`${book.id}-${coverUrl}`}
-              src={coverUrl}
-              alt={`Cover artwork for ${book.title}`}
-              style={styles.mobileCoverImage}
-              onError={(event) => {
-                event.currentTarget.src = FALLBACK_COVER_URL;
-              }}
-            />
+          <div style={styles.mobileHeroSection}>
+            <div style={styles.mobileCoverCard}>
+              <img
+                key={`${book.id}-${coverUrl}`}
+                src={coverUrl}
+                alt={`Cover artwork for ${book.title}`}
+                style={styles.mobileCoverImage}
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_COVER_URL;
+                }}
+              />
+              <div style={styles.mobileCoverFade} aria-hidden="true" />
+            </div>
+            <div style={styles.mobileArtworkTitlePill}>
+              <AutoScrollingPlayerTitle text={book.title} />
+            </div>
           </div>
         ) : (
           <div style={coverWrapStyle}>
@@ -330,11 +325,6 @@ export default function AudiobookPlayer({
           </div>
 
           <div style={timelineWrapStyle}>
-            <div style={styles.progressSummary}>
-              <span style={styles.progressBadge}>{timelineSummaryLabel}</span>
-              <span style={styles.progressRemaining}>{timelineRemainingLabel}</span>
-            </div>
-
             <input
               type="range"
               min={0}
@@ -348,12 +338,13 @@ export default function AudiobookPlayer({
                 )
               }
               disabled={!hasPlayableAudio}
-              style={styles.timeline}
+              style={isMobile ? { ...styles.timeline, ...styles.mobileTimeline } : styles.timeline}
+              className={isMobile ? "audiobook-mobile-timeline" : undefined}
             />
 
-            <div style={styles.timelineMeta}>
+            <div style={isMobile ? styles.mobileTimelineMeta : styles.timelineMeta}>
               <span>{formatClock(timelineValue)}</span>
-              <span>{activeChapterProgressPercent.toFixed(1)}%</span>
+              {!isMobile ? <span>{activeChapterProgressPercent.toFixed(1)}%</span> : null}
               <span>{formatClock(timelineMax)}</span>
             </div>
 
@@ -498,17 +489,19 @@ export default function AudiobookPlayer({
               disabled={!shouldRenderChapters}
               style={styles.mobileChapterLauncher(!shouldRenderChapters)}
             >
-              <div style={styles.mobileChapterLauncherCopy}>
-                <span style={styles.chapterEyebrow}>Chapters</span>
-                <span style={styles.mobileChapterLauncherTitle}>{mobileChapterButtonLabel}</span>
-              </div>
-              <div style={styles.mobileChapterLauncherMeta}>
-                <span style={styles.chapterCount}>
-                  {shouldRenderChapters ? `${chapterCount} items` : "Unavailable"}
-                </span>
-                <span style={styles.mobileChapterLauncherIconWrap}>
-                  <List size={18} />
-                </span>
+              <div style={styles.mobileChapterLauncherMain}>
+                <div style={styles.mobileChapterLauncherTopRow}>
+                  <span style={styles.chapterEyebrow}>Chapters</span>
+                  <span style={styles.chapterCount}>
+                    {shouldRenderChapters ? `${chapterCount} items` : "Unavailable"}
+                  </span>
+                </div>
+                <div style={styles.mobileChapterLauncherBottomRow}>
+                  <MobileChapterLauncherTitle text={mobileChapterButtonLabel} />
+                  <span style={styles.mobileChapterLauncherIconWrap}>
+                    <List size={18} />
+                  </span>
+                </div>
               </div>
             </button>
           ) : (
@@ -550,44 +543,56 @@ export default function AudiobookPlayer({
         </div>
       </div>
 
-      {isMobile && isMobileChapterPickerOpen ? (
-        <div style={styles.mobileChapterOverlay} onClick={() => setIsMobileChapterPickerOpen(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="audiobook-mobile-chapters-title"
-            style={styles.mobileChapterSheet}
-            onClick={(event) => event.stopPropagation()}
+      <AnimatePresence>
+        {isMobile && isMobileChapterPickerOpen ? (
+          <motion.div
+            style={styles.mobileChapterOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            onClick={() => setIsMobileChapterPickerOpen(false)}
           >
-            <div style={styles.mobileChapterSheetHeader}>
-              <div style={styles.mobileChapterSheetHeaderCopy}>
-                <div style={styles.eyebrow}>Chapter Selector</div>
-                <h4 id="audiobook-mobile-chapters-title" style={styles.mobileChapterSheetTitle}>
-                  {book.title}
-                </h4>
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="audiobook-mobile-chapters-title"
+              style={styles.mobileChapterSheet}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div style={styles.mobileChapterSheetHeader}>
+                <div style={styles.mobileChapterSheetHeaderCopy}>
+                  <div style={styles.mobileChapterSheetEyebrow}>Chapter Selector</div>
+                  <h4 id="audiobook-mobile-chapters-title" style={styles.mobileChapterSheetTitle}>
+                    {book.title}
+                  </h4>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsMobileChapterPickerOpen(false)}
+                  style={styles.mobileChapterCloseButton}
+                  aria-label="Close chapter list"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsMobileChapterPickerOpen(false)}
-                style={iconButtonStyle}
-                aria-label="Close chapter list"
-              >
-                <X size={18} />
-              </button>
-            </div>
+              <div style={styles.mobileChapterSheetMeta}>
+                <span>{shouldRenderChapters ? `${chapterCount} chapters` : "No chapters"}</span>
+                {activeChapter ? <span>Current: {activeChapter.title}</span> : null}
+              </div>
 
-            <div style={styles.mobileChapterSheetMeta}>
-              <span>{shouldRenderChapters ? `${chapterCount} chapters` : "No chapters"}</span>
-              {activeChapter ? <span>Current: {activeChapter.title}</span> : null}
-            </div>
+              {shouldRenderChapters ? (
+                <div style={styles.mobileChapterSheetList}>
+                  {chapters.map((chapter, index) => {
+                    const isActiveChapter = index === activeChapterIndex;
 
-            {shouldRenderChapters ? (
-              <div style={styles.mobileChapterSheetList}>
-                {chapters.map((chapter, index) => {
-                  const isActiveChapter = index === activeChapterIndex;
-
-                  return (
+                    return (
                     <button
                       key={chapter.id}
                       type="button"
@@ -595,24 +600,25 @@ export default function AudiobookPlayer({
                         onSeekTo(chapter.startSeconds);
                         setIsMobileChapterPickerOpen(false);
                       }}
-                      style={styles.chapterButton(isActiveChapter)}
+                      style={styles.mobileChapterSheetButton(isActiveChapter)}
                     >
-                      <span style={styles.chapterTitle}>{chapter.title}</span>
-                      <span style={styles.chapterTime(isActiveChapter)}>
+                      <span style={styles.mobileChapterSheetTitleText}>{chapter.title}</span>
+                      <span style={styles.mobileChapterSheetTime(isActiveChapter)}>
                         {formatClock(chapter.startSeconds)}
                       </span>
                     </button>
                   );
-                })}
-              </div>
-            ) : (
-              <div style={styles.chapterEmptyState}>
-                Chapter markers are not available in the player yet.
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+                  })}
+                </div>
+              ) : (
+                <div style={styles.mobileChapterEmptyState}>
+                  Chapter markers are not available in the player yet.
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {isDescriptionOpen ? (
         <div style={styles.descriptionModalOverlay} onClick={() => setIsDescriptionOpen(false)}>
@@ -625,17 +631,17 @@ export default function AudiobookPlayer({
           >
             <div style={styles.descriptionModalHeader}>
               <div style={styles.descriptionModalHeaderCopy}>
-                <div style={styles.eyebrow}>Audiobook Description</div>
+                <div style={styles.descriptionModalEyebrow}>Audiobook Description</div>
                 <h4 id="audiobook-description-title" style={styles.descriptionModalTitle}>
                   {book.title}
                 </h4>
-                {metadataLine ? <p style={styles.descriptionModalMeta}>{metadataLine}</p> : null}
+                {book.author ? <p style={styles.descriptionModalMeta}>{book.author}</p> : null}
               </div>
 
               <button
                 type="button"
                 onClick={() => setIsDescriptionOpen(false)}
-                style={styles.iconButton(false)}
+                style={styles.descriptionModalCloseButton}
                 aria-label="Close description"
               >
                 <X size={18} />
@@ -669,6 +675,146 @@ function FilledPauseIcon({ size = 45 }) {
   );
 }
 
+function AutoScrollingPlayerTitle({ text }) {
+  const viewportRef = useRef(null);
+  const textRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [scrollDistance, setScrollDistance] = useState(0);
+
+  useEffect(() => {
+    const viewportNode = viewportRef.current;
+    const textNode = textRef.current;
+
+    if (!viewportNode || !textNode) {
+      return undefined;
+    }
+
+    const updateOverflow = () => {
+      const nextDistance = Math.ceil(textNode.scrollWidth);
+      const nextOverflow = nextDistance - viewportNode.clientWidth > 6;
+      setIsOverflowing(nextOverflow);
+      setScrollDistance(nextOverflow ? nextDistance + 28 : 0);
+    };
+
+    updateOverflow();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateOverflow);
+      return () => window.removeEventListener("resize", updateOverflow);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateOverflow();
+    });
+
+    resizeObserver.observe(viewportNode);
+    resizeObserver.observe(textNode);
+
+    return () => resizeObserver.disconnect();
+  }, [text]);
+
+  if (!isOverflowing) {
+    return (
+      <div ref={viewportRef} style={styles.mobileArtworkTitleViewport}>
+        <span ref={textRef} style={styles.mobileArtworkTitleStatic}>
+          {text}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={viewportRef}
+      className="audiobook-title-marquee"
+      style={{
+        ...styles.mobileArtworkTitleViewport,
+        "--audiobook-title-distance": `-${scrollDistance}px`,
+        "--audiobook-title-duration": `${Math.max(8, Math.min(18, text.length * 0.38))}s`,
+      }}
+    >
+      <div className="audiobook-title-marquee-track" style={styles.mobileArtworkTitleTrack}>
+        <span ref={textRef} style={styles.mobileArtworkTitleText}>
+          {text}
+        </span>
+        <span aria-hidden="true" style={styles.mobileArtworkTitleText}>
+          {text}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MobileChapterLauncherTitle({ text }) {
+  const viewportRef = useRef(null);
+  const textRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [scrollDistance, setScrollDistance] = useState(0);
+
+  useEffect(() => {
+    const viewportNode = viewportRef.current;
+    const textNode = textRef.current;
+
+    if (!viewportNode || !textNode) {
+      return undefined;
+    }
+
+    const updateOverflow = () => {
+      const nextDistance = Math.ceil(textNode.scrollWidth);
+      const nextOverflow = nextDistance - viewportNode.clientWidth > 6;
+      setIsOverflowing(nextOverflow);
+      setScrollDistance(nextOverflow ? nextDistance + 24 : 0);
+    };
+
+    updateOverflow();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateOverflow);
+      return () => window.removeEventListener("resize", updateOverflow);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateOverflow();
+    });
+
+    resizeObserver.observe(viewportNode);
+    resizeObserver.observe(textNode);
+
+    return () => resizeObserver.disconnect();
+  }, [text]);
+
+  if (!isOverflowing) {
+    return (
+      <div ref={viewportRef} style={styles.mobileChapterLauncherViewport}>
+        <span ref={textRef} style={styles.mobileChapterLauncherStatic}>
+          {text}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={viewportRef}
+      className="audiobook-title-marquee"
+      style={{
+        ...styles.mobileChapterLauncherViewport,
+        "--audiobook-title-distance": `-${scrollDistance}px`,
+        "--audiobook-title-duration": `${Math.max(8, Math.min(18, text.length * 0.34))}s`,
+      }}
+    >
+      <div className="audiobook-title-marquee-track" style={styles.mobileChapterLauncherTrack}>
+        <span ref={textRef} style={styles.mobileChapterLauncherText}>
+          {text}
+        </span>
+        <span aria-hidden="true" style={styles.mobileChapterLauncherText}>
+          {text}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function formatClock(totalSeconds) {
   const safe = Math.max(0, Math.floor(totalSeconds || 0));
   const hours = Math.floor(safe / 3600);
@@ -694,10 +840,6 @@ function formatDurationCompact(totalSeconds) {
   }
 
   return `${hours}h ${minutes}m`;
-}
-
-function formatRemaining(totalSeconds) {
-  return formatDurationCompact(totalSeconds);
 }
 
 function buildMetadataLine(book, durationSeconds) {
@@ -738,27 +880,15 @@ const styles = {
     gap: "6px",
     minWidth: 0,
   },
-  mobilePlayerLabel: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "8px",
-    width: "fit-content",
-    color: "var(--app-text)",
-    fontSize: "13px",
-    fontWeight: 800,
-    lineHeight: 1,
-  },
-  mobilePlayerLabelIcon: {
-    width: "30px",
-    height: "30px",
-    borderRadius: "999px",
-    background: "#050505",
-    color: "#ffffff",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
+  mobileHeaderSpacer: {
+    width: "40px",
+    height: "40px",
     flexShrink: 0,
-    boxShadow: "0 10px 22px rgba(15,23,42,0.16)",
+  },
+  mobileHeaderActionGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
   },
   eyebrow: {
     fontSize: "11px",
@@ -824,17 +954,82 @@ const styles = {
     gap: "28px",
   },
   mobileCoverCard: {
-    width: "min(100%, 244px)",
+    width: "min(100%, 268px)",
     aspectRatio: "1 / 1",
     margin: "0 auto",
-    borderRadius: "20px",
+    borderRadius: "24px",
     overflow: "hidden",
     background: "var(--app-surface)",
-    boxShadow: "0 12px 28px rgba(15,23,42,0.12)",
+    boxShadow: "0 18px 46px rgba(15,23,42,0.14)",
     lineHeight: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+    zIndex: 1,
+  },
+  mobileHeroSection: {
+    position: "relative",
+    display: "grid",
+    gap: "12px",
+    paddingTop: "30px",
+    paddingBottom: "50px",
+  },
+  mobileCoverFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "25%",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(15,23,42,0.06) 100%)",
+    pointerEvents: "none",
+  },
+  mobileArtworkTitlePill: {
+    width: "min(100%, 268px)",
+    minWidth: 0,
+    margin: "0 auto",
+    borderRadius: "999px",
+    border: "1px solid rgba(15,23,42,0.08)",
+    background: "rgba(255,255,255,0.78)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    padding: "10px 14px",
+    position: "relative",
+    zIndex: 1,
+  },
+  mobileArtworkTitleViewport: {
+    minWidth: 0,
+    width: "100%",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+  mobileArtworkTitleStatic: {
+    display: "block",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--app-text)",
+    fontSize: "13px",
+    fontWeight: 700,
+    lineHeight: 1.1,
+    letterSpacing: "-0.01em",
+  },
+  mobileArtworkTitleTrack: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "28px",
+    minWidth: "max-content",
+  },
+  mobileArtworkTitleText: {
+    color: "var(--app-text)",
+    fontSize: "13px",
+    fontWeight: 700,
+    lineHeight: 1.1,
+    letterSpacing: "-0.01em",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   mobileCoverImage: {
     width: "100%",
@@ -888,24 +1083,26 @@ const styles = {
     position: "fixed",
     inset: 0,
     zIndex: 10001,
-    background: "rgba(2, 6, 23, 0.62)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    background: "rgba(248, 250, 252, 0.56)",
+    backdropFilter: "blur(22px) saturate(1.05)",
+    WebkitBackdropFilter: "blur(22px) saturate(1.05)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "24px",
+    padding: "20px 16px calc(20px + env(safe-area-inset-bottom, 0px))",
   },
   descriptionModal: {
-    width: "min(100%, 720px)",
-    maxHeight: "min(80vh, 720px)",
+    width: "min(100%, 460px)",
+    maxHeight: "min(78svh, 640px)",
     display: "grid",
-    gap: "16px",
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card)",
-    borderRadius: "22px",
-    padding: "20px",
-    boxShadow: "0 24px 60px rgba(2, 6, 23, 0.28)",
+    gap: "14px",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background:
+      "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.92) 100%)",
+    borderRadius: "24px",
+    padding: "18px",
+    boxShadow: "0 28px 80px rgba(2, 6, 23, 0.34)",
+    color: "#f8fafc",
   },
   descriptionModalHeader: {
     display: "flex",
@@ -915,21 +1112,41 @@ const styles = {
   },
   descriptionModalHeaderCopy: {
     display: "grid",
-    gap: "8px",
+    gap: "6px",
     minWidth: 0,
+  },
+  descriptionModalEyebrow: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "rgba(226, 232, 240, 0.72)",
   },
   descriptionModalTitle: {
     margin: 0,
-    fontSize: "24px",
-    lineHeight: 1.12,
+    fontSize: "22px",
+    lineHeight: 1.16,
     letterSpacing: "-0.03em",
-    color: "var(--app-text)",
+    color: "#f8fafc",
+  },
+  descriptionModalCloseButton: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "12px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f8fafc",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
   },
   descriptionModalMeta: {
     margin: 0,
     fontSize: "13px",
     lineHeight: 1.5,
-    color: "var(--app-text-muted)",
+    color: "rgba(226, 232, 240, 0.78)",
   },
   descriptionModalBody: {
     overflowY: "auto",
@@ -938,8 +1155,8 @@ const styles = {
   descriptionModalText: {
     margin: 0,
     fontSize: "14px",
-    lineHeight: 1.8,
-    color: "var(--app-text-soft)",
+    lineHeight: 1.75,
+    color: "rgba(248, 250, 252, 0.92)",
     whiteSpace: "pre-wrap",
   },
   timelineWrap: {
@@ -968,8 +1185,10 @@ const styles = {
   },
   timeline: {
     width: "100%",
-    accentColor: "#38bdf8",
     cursor: "pointer",
+  },
+  mobileTimeline: {
+    accentColor: "#050505",
   },
   audioHint: {
     fontSize: "12px",
@@ -981,6 +1200,14 @@ const styles = {
     gap: "10px",
     fontSize: "12px",
     color: "var(--app-text-muted)",
+  },
+  mobileTimelineMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "10px",
+    fontSize: "12px",
+    color: "var(--app-text-muted)",
+    fontVariantNumeric: "tabular-nums",
   },
   actionRow: {
     display: "flex",
@@ -1107,36 +1334,63 @@ const styles = {
     color: "var(--app-text-faint)",
   },
   mobileChapterLauncher: (disabled) => ({
+    marginTop: "25px",
     border: "1px solid var(--app-border-soft)",
     background: "var(--app-surface-soft)",
     borderRadius: "18px",
     padding: "16px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "14px",
+    display: "block",
     textAlign: "left",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.6 : 1,
   }),
-  mobileChapterLauncherCopy: {
+  mobileChapterLauncherMain: {
     display: "grid",
-    gap: "6px",
+    gap: "8px",
     minWidth: 0,
   },
-  mobileChapterLauncherTitle: {
+  mobileChapterLauncherTopRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    minWidth: 0,
+  },
+  mobileChapterLauncherBottomRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    minWidth: 0,
+  },
+  mobileChapterLauncherViewport: {
+    minWidth: 0,
+    flex: "1 1 auto",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+  mobileChapterLauncherStatic: {
+    display: "block",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: "15px",
+    fontWeight: 700,
+    lineHeight: 1.25,
+    color: "var(--app-text)",
+  },
+  mobileChapterLauncherTrack: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "24px",
+    minWidth: "max-content",
+  },
+  mobileChapterLauncherText: {
     fontSize: "15px",
     fontWeight: 700,
     lineHeight: 1.25,
     color: "var(--app-text)",
     whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  mobileChapterLauncherMeta: {
-    display: "grid",
-    gap: "8px",
-    justifyItems: "end",
     flexShrink: 0,
   },
   mobileChapterLauncherIconWrap: {
@@ -1154,21 +1408,26 @@ const styles = {
     position: "fixed",
     inset: 0,
     zIndex: 10002,
-    background: "rgba(2, 6, 23, 0.72)",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
+    background: "rgba(248, 250, 252, 0.56)",
+    backdropFilter: "blur(22px) saturate(1.05)",
+    WebkitBackdropFilter: "blur(22px) saturate(1.05)",
   },
   mobileChapterSheet: {
     position: "absolute",
-    inset: "10px",
+    left: "16px",
+    right: "16px",
+    bottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+    maxHeight: "min(76svh, 640px)",
     display: "grid",
     gridTemplateRows: "auto auto minmax(0, 1fr)",
     gap: "14px",
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background:
+      "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.92) 100%)",
     borderRadius: "24px",
-    padding: "16px",
-    boxShadow: "0 24px 60px rgba(2, 6, 23, 0.32)",
+    padding: "18px",
+    boxShadow: "0 28px 80px rgba(2, 6, 23, 0.34)",
+    color: "#f8fafc",
   },
   mobileChapterSheetHeader: {
     display: "flex",
@@ -1181,13 +1440,33 @@ const styles = {
     gap: "6px",
     minWidth: 0,
   },
+  mobileChapterSheetEyebrow: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "rgba(226, 232, 240, 0.72)",
+  },
   mobileChapterSheetTitle: {
     margin: 0,
-    fontSize: "22px",
+    fontSize: "18px",
     fontWeight: 700,
     lineHeight: 1.15,
     letterSpacing: "-0.03em",
-    color: "var(--app-text)",
+    color: "#f8fafc",
+  },
+  mobileChapterCloseButton: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "12px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f8fafc",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
   },
   mobileChapterSheetMeta: {
     display: "flex",
@@ -1195,13 +1474,54 @@ const styles = {
     gap: "12px",
     flexWrap: "wrap",
     fontSize: "12px",
-    color: "var(--app-text-muted)",
+    color: "rgba(226, 232, 240, 0.78)",
   },
   mobileChapterSheetList: {
     display: "grid",
     gap: "10px",
     overflowY: "auto",
     paddingRight: "4px",
+  },
+  mobileChapterSheetButton: (active) => ({
+    border: active
+      ? "1px solid rgba(255,255,255,0.18)"
+      : "1px solid rgba(255,255,255,0.08)",
+    background: active
+      ? "rgba(255,255,255,0.12)"
+      : "rgba(255,255,255,0.04)",
+    color: "#f8fafc",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: 600,
+    textAlign: "left",
+    transition: "background 160ms ease, border-color 160ms ease, color 160ms ease",
+  }),
+  mobileChapterSheetTitleText: {
+    minWidth: 0,
+    flex: "1 1 auto",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    lineHeight: 1.35,
+  },
+  mobileChapterSheetTime: (active) => ({
+    color: active ? "rgba(248, 250, 252, 0.92)" : "rgba(226, 232, 240, 0.72)",
+    flexShrink: 0,
+    paddingTop: "1px",
+  }),
+  mobileChapterEmptyState: {
+    border: "1px dashed rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(226, 232, 240, 0.78)",
+    borderRadius: "14px",
+    padding: "14px 12px",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
   chapterList: {
     display: "grid",

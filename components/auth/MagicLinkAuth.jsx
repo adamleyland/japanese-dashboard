@@ -232,7 +232,7 @@ export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = f
         aria-expanded={isOpen}
       >
         {!isMobile ? <span style={styles.triggerDot(signedIn, isLoading)} /> : null}
-        <UserCircle2 size={isMobile ? 20 : 16} strokeWidth={2} />
+        <UserCircle2 size={isMobile ? 22 : 16} strokeWidth={2} />
       </button>
 
       {isOpen && (

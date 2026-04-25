@@ -15,10 +15,15 @@ export default function CurrentlyReadingCard({
   onReadWithAudiobook,
 }) {
   const [coverHovered, setCoverHovered] = useState(false);
+  const cardStyle = {
+    ...styles.sideCard,
+    border: isMobile ? "var(--reading-mobile-top-card-border)" : styles.sideCard.border,
+    boxShadow: isMobile ? "var(--reading-mobile-top-card-shadow)" : styles.sideCard.boxShadow,
+  };
 
   if (!item && !loading) {
     return (
-      <div style={styles.sideCard}>
+      <div style={cardStyle}>
         <CardHeader styles={styles} icon={BookOpenText} iconColor="#3b82f6" label="Currently Reading" />
         <ReadingEmptyState
           label="No book is marked as currently reading yet. Your active title will be highlighted here."
@@ -39,7 +44,7 @@ export default function CurrentlyReadingCard({
   const audiobookButtonLabel = getAudiobookButtonLabel(audiobookStatus);
 
   return (
-    <div style={styles.sideCard}>
+    <div style={cardStyle}>
       <CardHeader
         styles={styles}
         icon={BookmarkCheck}
