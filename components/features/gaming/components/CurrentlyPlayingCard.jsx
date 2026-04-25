@@ -1,12 +1,11 @@
 "use client";
 
-import { Clock3, Gamepad2, Play, Sparkles } from "lucide-react";
+import { Gamepad2, Play, Sparkles } from "lucide-react";
 import GameArtworkImage from "@/components/features/gaming/components/GameArtworkImage";
 import { openGameLauncher } from "@/lib/gaming/launchers";
 import {
+  formatLastPlayedDate,
   formatPlaytimeCompact,
-  formatPlaytimeDetailed,
-  formatRelativeLastPlayed,
   getDeviceLabel,
   getSourceLabel,
   supportsTrackedPlaytime,
@@ -204,26 +203,9 @@ export default function CurrentlyPlayingCard({ styles, currentGame, loading, isM
               }
             />
             <StatCard
-              label="Recent"
-              value={
-                canShowTrackedPlaytime
-                  ? formatPlaytimeDetailed(currentGame.minutesPlayedRecent)
-                  : "No tracked time"
-              }
+              label="Last played"
+              value={formatLastPlayedDate(currentGame.lastPlayedAt)}
             />
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              color: "var(--app-text-muted)",
-              fontSize: "12px",
-            }}
-          >
-            <Clock3 size={14} />
-            <span>{formatRelativeLastPlayed(currentGame.lastPlayedAt)}</span>
           </div>
         </div>
       ) : null}
