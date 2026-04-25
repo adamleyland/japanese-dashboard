@@ -1877,10 +1877,7 @@ export default function ListeningTab({
             setTimerDurationSeconds={setTimerDurationSeconds}
             liveSessionDisplay={formatClock(
               Math.floor(clockMode === "timer" ? timerSeconds : stopwatchSeconds),
-            )
-              .split(":")
-              .slice(1)
-              .join(":")}
+            )}
           />
 
           <ListeningVisualization

@@ -53,8 +53,13 @@ export default function TimerStopwatch({
 
   const currentSeconds =
     clockMode === "timer" ? Math.max(0, timerDurationSeconds - timerSeconds) : stopwatchSeconds;
+  const flooredCurrentSeconds = Math.max(0, Math.floor(currentSeconds));
   const progressPercent = ((currentSeconds % 60) / 60) * 100;
   const totalMinutesPassed = Math.floor(currentSeconds / 60);
+  const displayMinutes = String(Math.floor((flooredCurrentSeconds % 3600) / 60)).padStart(2, "0");
+  const displaySeconds = String(flooredCurrentSeconds % 60).padStart(2, "0");
+  const desktopStopwatchHourCount = Math.max(0, Math.floor(flooredCurrentSeconds / 3600));
+  const desktopPrimaryTime = `${displayMinutes}:${displaySeconds}`;
 
   const { ringColor, trackColor } = useMemo(() => {
     if (totalMinutesPassed === 0) {
@@ -303,16 +308,43 @@ export default function TimerStopwatch({
               ...styles.timerRingValue,
               fontSize: isDesktop ? "42px" : "32px",
               lineHeight: 1,
+              display: "grid",
+              gap: isDesktop && clockMode === "stopwatch" && desktopStopwatchHourCount > 0 ? "12px" : "8px",
+              justifyItems: "center",
             }}
           >
-            {liveSessionDisplay}
+            {isDesktop && clockMode === "stopwatch" && desktopStopwatchHourCount > 0 ? (
+              <div
+                aria-label={`${desktopStopwatchHourCount} hour${desktopStopwatchHourCount === 1 ? "" : "s"} elapsed`}
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  justifyContent: "center",
+                  gap: "6px",
+                  maxWidth: "132px",
+                }}
+              >
+                {Array.from({ length: desktopStopwatchHourCount }).map((_, index) => (
+                  <span
+                    key={`stopwatch-hour-dot-${index + 1}`}
+                    style={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "999px",
+                      background: BRIGHT_BLUE,
+                      boxShadow: "0 0 0 3px rgba(99, 102, 241, 0.12)",
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
+            <div>{desktopPrimaryTime}</div>
             <div
               style={{
                 fontSize: isDesktop ? "12px" : "11px",
                 fontWeight: 600,
                 color: "var(--app-text-muted)",
                 opacity: 0.84,
-                marginTop: "8px",
                 letterSpacing: "0.08em",
               }}
             >
