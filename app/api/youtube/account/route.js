@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import {
+  clearLegacyGoogleProviderTokens,
   deleteStoredGoogleOAuthTokens,
   getStoredGoogleOAuthTokens,
   getValidGoogleAccessToken,
@@ -15,6 +16,13 @@ import { logYoutubeApiCall } from "@/lib/youtubeDiagnostics";
 const ACCOUNT_BUNDLE_CACHE_TTL_MS = 15 * 60 * 1000;
 const accountBundleCache = new Map();
 const inflightAccountBundleRequests = new Map();
+const OAUTH_COOKIE_REMOVAL_OPTIONS = {
+  path: "/",
+  maxAge: 0,
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+};
 
 function jsonError(status, code, message, source) {
   return NextResponse.json(
@@ -57,6 +65,60 @@ function writeCachedAccountBundle(userId, payload) {
 function clearCachedAccountBundle(userId) {
   accountBundleCache.delete(getCacheKey(userId));
   inflightAccountBundleRequests.delete(getCacheKey(userId));
+}
+
+function clearSupabasePkceVerifierCookies(cookieStore, response) {
+  const cookieNames = cookieStore
+    .getAll()
+    .map((cookie) => cookie?.name || "")
+    .filter((name) => name.endsWith("-code-verifier"));
+
+  cookieNames.forEach((cookieName) => {
+    response.cookies.set(cookieName, "", OAUTH_COOKIE_REMOVAL_OPTIONS);
+  });
+
+  return cookieNames;
+}
+
+async function readJsonBody(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+async function hardResetYoutubeConnection(userId, { reason = "hard-reset" } = {}) {
+  console.info("[YouTube OAuth] Hard reset start", {
+    userId,
+    reason,
+  });
+
+  const storedTokens = await getStoredGoogleOAuthTokens(userId);
+
+  if (storedTokens?.refresh_token) {
+    await revokeGoogleOAuthToken(storedTokens.refresh_token);
+  }
+
+  if (storedTokens?.access_token) {
+    await revokeGoogleOAuthToken(storedTokens.access_token);
+  }
+
+  await deleteStoredGoogleOAuthTokens(userId);
+  await clearLegacyGoogleProviderTokens(userId);
+  clearCachedAccountBundle(userId);
+
+  console.info("[YouTube OAuth] Hard reset complete", {
+    userId,
+    reason,
+    revokedRefreshToken: Boolean(storedTokens?.refresh_token),
+    revokedAccessToken: Boolean(storedTokens?.access_token),
+  });
+
+  return {
+    revokedRefreshToken: Boolean(storedTokens?.refresh_token),
+    revokedAccessToken: Boolean(storedTokens?.access_token),
+  };
 }
 
 function shouldBypassCache(reason) {
@@ -472,18 +534,9 @@ export async function DELETE() {
   }
 
   try {
-    const storedTokens = await getStoredGoogleOAuthTokens(user.id);
-
-    if (storedTokens?.refresh_token) {
-      await revokeGoogleOAuthToken(storedTokens.refresh_token);
-    }
-
-    if (storedTokens?.access_token) {
-      await revokeGoogleOAuthToken(storedTokens.access_token);
-    }
-
-    await deleteStoredGoogleOAuthTokens(user.id);
-    clearCachedAccountBundle(user.id);
+    await hardResetYoutubeConnection(user.id, {
+      reason: "disconnect",
+    });
 
     logYoutubeApiCall({
       phase: "success",
@@ -510,6 +563,63 @@ export async function DELETE() {
       500,
       "youtube_disconnect_failed",
       "Failed to disconnect stored YouTube authorization.",
+      "google",
+    );
+  }
+}
+
+export async function POST(request) {
+  const cookieStore = await cookies();
+  const { user, error } = await getAuthenticatedUser();
+
+  if (error || !user?.id) {
+    return jsonError(
+      401,
+      "supabase_session_missing",
+      "No active Supabase session was found for YouTube reset.",
+      "supabase",
+    );
+  }
+
+  const body = await readJsonBody(request);
+  const reason =
+    typeof body?.reason === "string" && body.reason.trim() ? body.reason.trim() : "hard-reset";
+
+  try {
+    const resetSummary = await hardResetYoutubeConnection(user.id, {
+      reason,
+    });
+    const response = NextResponse.json({
+      ok: true,
+      ...resetSummary,
+    });
+    const clearedPkceCookies = clearSupabasePkceVerifierCookies(cookieStore, response);
+
+    logYoutubeApiCall({
+      phase: "success",
+      endpoint: "/api/youtube/account",
+      reason,
+      caller: "youtubeAccountRoute.POST",
+      transport: "server",
+      status: 200,
+      details: {
+        userId: user.id,
+        clearedPkceCookieCount: clearedPkceCookies.length,
+      },
+    });
+
+    return response;
+  } catch (resetError) {
+    console.error("[YouTube OAuth] Hard reset failed", {
+      userId: user.id,
+      reason,
+      errorMessage: resetError?.message || String(resetError || ""),
+    });
+
+    return jsonError(
+      500,
+      "youtube_hard_reset_failed",
+      "Failed to fully clear YouTube authorization state.",
       "google",
     );
   }

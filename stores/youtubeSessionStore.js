@@ -16,7 +16,13 @@ import {
   normalizeSeededChannels,
 } from "@/lib/youtubeDefaults";
 import {
+  clearAuthCallbackUrlParams,
+  clearGoogleAuthIntent,
+  clearYoutubeAuthResult,
+  consumeYoutubeAuthResult,
+  GOOGLE_AUTH_INTENT_STORAGE_KEY,
   YOUTUBE_CONNECT_INTENT_STORAGE_KEY,
+  YOUTUBE_AUTH_RESULT_STORAGE_KEY,
   getSafeAuthUser,
   hasIdentityAlreadyExistsUrlError,
   hasLinkedGoogleIdentity,
@@ -43,6 +49,7 @@ const DAILY_QUEUE_STORAGE_KEY = "jp_daily_video_queue";
 const DISCOVER_CACHE_STORAGE_KEY = "jp_youtube_discover_cache_v1";
 const DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY = "jp_youtube_discover_quota_cooldown_v1";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
+const YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY = "jp_youtube_recent_video_ids_v1";
 const ACCOUNT_DATA_TTL_MS = 30 * 60 * 1000;
 const AUTO_BOOTSTRAP_DEDUPE_WINDOW_MS = 10 * 1000;
 const AUTO_BOOTSTRAP_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
@@ -98,6 +105,7 @@ function createDefaultState() {
     workspaceTab: null,
     lastSyncedAt: 0,
     lastError: "",
+    lastAuthMessage: "",
   };
 }
 
@@ -125,6 +133,48 @@ function removeStorageKey(storageKey) {
 function removeSessionStorageKey(storageKey) {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(storageKey);
+}
+
+function removeMatchingStorageKeys(storage, predicate) {
+  if (!storage) {
+    return [];
+  }
+
+  const removedKeys = [];
+  const storageKeys = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (key) {
+      storageKeys.push(key);
+    }
+  }
+
+  storageKeys.forEach((key) => {
+    if (!predicate(key)) {
+      return;
+    }
+
+    storage.removeItem(key);
+    removedKeys.push(key);
+  });
+
+  return removedKeys;
+}
+
+function clearSupabasePkceArtifacts() {
+  if (typeof window === "undefined") {
+    return {
+      localStorageKeys: [],
+      sessionStorageKeys: [],
+    };
+  }
+
+  const matcher = (key) => key.endsWith("-code-verifier");
+
+  return {
+    localStorageKeys: removeMatchingStorageKeys(window.localStorage, matcher),
+    sessionStorageKeys: removeMatchingStorageKeys(window.sessionStorage, matcher),
+  };
 }
 
 function normalizePlaybackState(playbackState) {
@@ -278,15 +328,21 @@ function hasAnyPersistedYoutubeStorage() {
     DISCOVER_CACHE_STORAGE_KEY,
     DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY,
     YOUTUBE_STATE_VERSION_STORAGE_KEY,
+    YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY,
   ].some((storageKey) => window.localStorage.getItem(storageKey) != null) ||
     window.sessionStorage.getItem(YOUTUBE_CONNECT_INTENT_STORAGE_KEY) != null ||
+    window.sessionStorage.getItem(GOOGLE_AUTH_INTENT_STORAGE_KEY) != null ||
+    window.sessionStorage.getItem(YOUTUBE_AUTH_RESULT_STORAGE_KEY) != null ||
     window.sessionStorage.getItem(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY) != null;
 }
 
 function clearPersistedYoutubeSession({ clearConnectIntent = false, reason = "unknown" } = {}) {
+  const clearedPkceArtifacts = clearSupabasePkceArtifacts();
   console.info("[YouTube][Mobile Storage] Clearing persisted YouTube state", {
     reason,
     clearConnectIntent,
+    clearedLocalPkceArtifacts: clearedPkceArtifacts.localStorageKeys,
+    clearedSessionPkceArtifacts: clearedPkceArtifacts.sessionStorageKeys,
   });
   removeStorageKey(YOUTUBE_SESSION_STORAGE_KEY);
   removeStorageKey(LEGACY_WATCH_STATE_STORAGE_KEY);
@@ -294,7 +350,10 @@ function clearPersistedYoutubeSession({ clearConnectIntent = false, reason = "un
   removeStorageKey(DISCOVER_CACHE_STORAGE_KEY);
   removeStorageKey(DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY);
   removeStorageKey(YOUTUBE_STATE_VERSION_STORAGE_KEY);
+  removeStorageKey(YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY);
   removeSessionStorageKey(YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY);
+  clearGoogleAuthIntent();
+  clearYoutubeAuthResult();
 
   if (clearConnectIntent) {
     clearYoutubeConnectIntent();
@@ -524,6 +583,10 @@ function getYoutubeStatusMessage(lastError) {
   return "Google sign-in worked, but YouTube data could not be loaded yet.";
 }
 
+function buildYoutubeStatusMessage(state) {
+  return state.lastAuthMessage || getYoutubeStatusMessage(state.lastError);
+}
+
 function hasFreshAccountData(currentState) {
   return Boolean(
     currentState.lastSyncedAt &&
@@ -583,6 +646,7 @@ export function YoutubeSessionProvider({ children }) {
   const lastAuthResumeCheckRef = useRef(0);
   const storageInvalidatedRef = useRef(false);
   const storageNeedsSupabaseRebuildRef = useRef(false);
+  const authResultHandledRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -700,6 +764,7 @@ export function YoutubeSessionProvider({ children }) {
       clearPersistentConnection = false,
       preserveConnectIntent = false,
       nextError,
+      nextAuthMessage = "",
       cause = "",
     } = {}) => {
       if (cause) {
@@ -731,6 +796,7 @@ export function YoutubeSessionProvider({ children }) {
           ? normalizeSeededChannels()
           : currentState.subscribedChannels,
         accountVideos: clearPersistentConnection ? [] : currentState.accountVideos,
+        lastAuthMessage: nextAuthMessage,
         lastError:
           nextError ??
           (clearPersistentConnection ? "reconnect-required" : currentState.lastError),
@@ -848,6 +914,7 @@ export function YoutubeSessionProvider({ children }) {
             ...currentState,
             connectionStatus: "connected",
             wasConnected: true,
+            lastAuthMessage: "",
             lastError: "quotaExceeded",
             accountProfile: snapshot.accountProfile || currentState.accountProfile,
             tokenMeta: snapshot.tokenMeta || currentState.tokenMeta,
@@ -913,6 +980,7 @@ export function YoutubeSessionProvider({ children }) {
                   : 0,
             },
             lastSyncedAt: Number(snapshot?.lastSyncedAt || Date.now()),
+            lastAuthMessage: "",
             lastError: "",
           };
         });
@@ -966,6 +1034,7 @@ export function YoutubeSessionProvider({ children }) {
               ...stateBeforeRecovery,
               connectionStatus: "connected",
               wasConnected: true,
+              lastAuthMessage: "",
               lastError: "reconnect-required",
             }));
           } else {
@@ -985,6 +1054,7 @@ export function YoutubeSessionProvider({ children }) {
           setState((currentState) => ({
             ...currentState,
             connectionStatus: currentState.wasConnected ? "connected" : "disconnected",
+            lastAuthMessage: "",
             lastError: "youtube-refresh-failed",
           }));
         }
@@ -1055,6 +1125,7 @@ export function YoutubeSessionProvider({ children }) {
                 ...currentState,
                 connectionStatus: "connected",
                 wasConnected: true,
+                lastAuthMessage: "",
                 lastError: "",
               },
         );
@@ -1114,6 +1185,7 @@ export function YoutubeSessionProvider({ children }) {
             : {
                 ...currentState,
                 connectionStatus: "restoring",
+                lastAuthMessage: "",
               },
         );
       }
@@ -1167,6 +1239,215 @@ export function YoutubeSessionProvider({ children }) {
     [authUserId, refreshYoutubeAccountData],
   );
 
+  const resetLocalYoutubeClientState = useCallback(
+    ({ reason = "unknown", statusMessage = "" } = {}) => {
+      console.info("[YouTube][Mobile Storage] Resetting local YouTube client state", {
+        reason,
+        statusMessage,
+      });
+      clearPersistedYoutubeSession({
+        clearConnectIntent: true,
+        reason,
+      });
+      clearAuthCallbackUrlParams();
+      autoBootstrapKeyRef.current = "";
+      resetBootstrapRuntime();
+      storageInvalidatedRef.current = true;
+      storageNeedsSupabaseRebuildRef.current = true;
+
+      setState((currentState) => ({
+        ...createDefaultState(),
+        hydrated: currentState.hydrated,
+        lastAuthMessage: statusMessage,
+      }));
+    },
+    [],
+  );
+
+  const requestYoutubeHardReset = useCallback(async ({
+    reason = "hard-reset",
+    caller = "YoutubeSessionProvider.requestYoutubeHardReset",
+  } = {}) => {
+    console.info("[YouTube OAuth] Hard reset request start", {
+      reason,
+      caller,
+      authUserId,
+    });
+
+    const response = await fetch("/api/youtube/account", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({ reason }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw createRequestError(
+        payload?.message || "Failed to clear previous YouTube authorization.",
+        response.status,
+        {
+          code: payload?.code || "youtube_hard_reset_failed",
+          source: payload?.source || "google",
+        },
+      );
+    }
+
+    console.info("[YouTube OAuth] Hard reset request complete", {
+      reason,
+      caller,
+      authUserId,
+      revokedRefreshToken: Boolean(payload?.revokedRefreshToken),
+      revokedAccessToken: Boolean(payload?.revokedAccessToken),
+    });
+
+    return payload;
+  }, [authUserId]);
+
+  const startFreshYoutubeOAuth = useCallback(async ({
+    caller = "YoutubeSessionProvider.startFreshYoutubeOAuth",
+    reason = "hard-reset",
+  } = {}) => {
+    rememberYoutubeConnectIntent();
+    clearYoutubeAuthResult();
+    const freshAuthState = await readFreshSupabaseAuthState({ forceRefresh: true });
+    const freshUser = freshAuthState.user;
+    const googleIdentitySummary = summarizeGoogleIdentities(freshUser);
+    const hasExistingGoogleIdentity = hasLinkedGoogleIdentity(freshUser);
+
+    console.info("[YouTube OAuth] Auth start", {
+      caller,
+      reason,
+      hasConnectIntent: hasYoutubeConnectIntent(),
+      authSession: summarizeSupabaseSession(freshAuthState.session),
+      hasAuthUser: Boolean(freshUser?.id),
+      hasExistingGoogleIdentity,
+      googleIdentitySummary,
+    });
+
+    try {
+      const user = freshUser || (await getSafeAuthUser());
+      const shouldRefreshExistingGoogleSession =
+        Boolean(user?.id) && hasLinkedGoogleIdentity(user);
+      const { error: authError } = shouldRefreshExistingGoogleSession
+        ? await signInWithGoogle()
+        : user?.id
+          ? await linkGoogleIdentity()
+          : await signInWithGoogle();
+
+      if (authError) {
+        if (isIdentityAlreadyExistsAuthError(authError)) {
+          const recoveryAuthState = await readFreshSupabaseAuthState({ forceRefresh: true });
+          const recoveredLinkedIdentity = hasLinkedGoogleIdentity(recoveryAuthState.user);
+          console.info("[YouTube OAuth] Existing Google identity detected during fresh auth", {
+            caller,
+            reason,
+            recoveredLinkedIdentity,
+            authSession: summarizeSupabaseSession(recoveryAuthState.session),
+            googleIdentitySummary: summarizeGoogleIdentities(recoveryAuthState.user),
+          });
+
+          if (recoveredLinkedIdentity) {
+            setState((currentState) => ({
+              ...currentState,
+              connectionStatus: currentState.wasConnected ? "connected" : "restoring",
+              wasConnected: true,
+              lastAuthMessage: "",
+              lastError: "",
+            }));
+            void runYoutubeBootstrap({
+              caller: `${caller}.identityAlreadyLinkedRecovery`,
+              forceRefresh: true,
+              manual: false,
+              preserveSelectedVideo: true,
+              reason: "identity-already-linked-recovery",
+            });
+            return true;
+          }
+        }
+
+        throw authError;
+      }
+
+      return true;
+    } catch (authError) {
+      clearYoutubeConnectIntent();
+      clearYoutubeAuthResult();
+      console.error("[YouTube OAuth] Unable to start fresh Google auth", authError);
+      setState((currentState) => ({
+        ...currentState,
+        connectionStatus: "disconnected",
+        lastAuthMessage:
+          authError?.message || "Unable to start Google sign-in for a fresh YouTube connection.",
+        lastError: "youtube-connect-failed",
+      }));
+      return false;
+    }
+  }, [runYoutubeBootstrap]);
+
+  const forceReconnectYoutube = useCallback(async ({
+    reason = "manual-force-reconnect",
+    caller = "YoutubeSessionProvider.forceReconnectYoutube",
+  } = {}) => {
+    console.info("[YouTube OAuth] Force reconnect requested", {
+      caller,
+      reason,
+      authUserId,
+      connectionStatus: stateRef.current.connectionStatus,
+      wasConnected: stateRef.current.wasConnected,
+    });
+
+    resetLocalYoutubeClientState({
+      reason: `${reason}:local-reset`,
+      statusMessage: "Starting a fresh Google connection for YouTube...",
+    });
+
+    const authState = await readFreshSupabaseAuthState({ forceRefresh: true });
+    const nextUserId = authState.user?.id || authUserId;
+
+    if (nextUserId && nextUserId !== authUserId) {
+      setAuthUserId(nextUserId);
+    }
+
+    if (!nextUserId) {
+      setState((currentState) => ({
+        ...currentState,
+        lastAuthMessage: "Sign in to the app before reconnecting YouTube.",
+        lastError: "youtube-connect-failed",
+      }));
+      return false;
+    }
+
+    try {
+      await requestYoutubeHardReset({
+        reason,
+        caller,
+      });
+    } catch (error) {
+      console.error("[YouTube OAuth] Hard reset request failed before reconnect", {
+        caller,
+        reason,
+        errorCode: error?.code || "",
+        errorMessage: error?.message || String(error || ""),
+      });
+      setState((currentState) => ({
+        ...currentState,
+        lastAuthMessage:
+          error?.message || "Could not clear the previous YouTube connection. Try again.",
+        lastError: "youtube-connect-failed",
+      }));
+      return false;
+    }
+
+    return startFreshYoutubeOAuth({
+      caller: `${caller}.oauth`,
+      reason,
+    });
+  }, [authUserId, requestYoutubeHardReset, resetLocalYoutubeClientState, startFreshYoutubeOAuth]);
+
   const connectYoutube = useCallback(async () => {
     if (connectPromiseRef.current) {
       return connectPromiseRef.current;
@@ -1176,6 +1457,7 @@ export function YoutubeSessionProvider({ children }) {
       setState((currentState) => ({
         ...currentState,
         connectionStatus: "connecting",
+        lastAuthMessage: "",
         lastError: "",
       }));
 
@@ -1192,82 +1474,17 @@ export function YoutubeSessionProvider({ children }) {
       }
 
       const errorCode = result?.error?.code || "";
-      const shouldStartOAuth = [
+      const shouldStartFreshOAuth = [
         "google_refresh_token_missing",
         "google_refresh_failed",
         "google_refresh_not_configured",
       ].includes(errorCode);
 
-      if (shouldStartOAuth) {
-        rememberYoutubeConnectIntent();
-        const freshAuthState = await readFreshSupabaseAuthState({ forceRefresh: true });
-        const freshUser = freshAuthState.user;
-        const googleIdentitySummary = summarizeGoogleIdentities(freshUser);
-        const hasExistingGoogleIdentity = hasLinkedGoogleIdentity(freshUser);
-
-        console.info("[YouTube] Starting Google OAuth after manual connect failure", {
-          errorCode,
-          hasConnectIntent: hasYoutubeConnectIntent(),
-          authSession: summarizeSupabaseSession(freshAuthState.session),
-          hasAuthUser: Boolean(freshUser?.id),
-          hasExistingGoogleIdentity,
-          googleIdentitySummary,
+      if (shouldStartFreshOAuth) {
+        return forceReconnectYoutube({
+          caller: "YoutubeSessionProvider.connectYoutube.forceReconnect",
+          reason: `manual-connect:${errorCode || "unknown"}`,
         });
-        markSessionDisconnected({
-          clearPersistentConnection: true,
-          preserveConnectIntent: true,
-          nextError: "reconnect-required",
-          cause: `${errorCode || "unknown"}-manual-connect`,
-        });
-
-        try {
-          const user = freshUser || (await getSafeAuthUser());
-          const shouldRefreshExistingGoogleSession =
-            Boolean(user?.id) && hasLinkedGoogleIdentity(user);
-          // If Google is already linked, starting a normal OAuth sign-in refreshes provider
-          // tokens without asking Supabase to attach the same identity again.
-          const { error: authError } = shouldRefreshExistingGoogleSession
-            ? await signInWithGoogle()
-            : user?.id
-              ? await linkGoogleIdentity()
-              : await signInWithGoogle();
-
-          if (authError) {
-            if (isIdentityAlreadyExistsAuthError(authError)) {
-              const recoveryAuthState = await readFreshSupabaseAuthState({ forceRefresh: true });
-              const recoveredLinkedIdentity = hasLinkedGoogleIdentity(recoveryAuthState.user);
-              console.info("[YouTube] Google identity already linked during connect", {
-                recoveredLinkedIdentity,
-                authSession: summarizeSupabaseSession(recoveryAuthState.session),
-                googleIdentitySummary: summarizeGoogleIdentities(recoveryAuthState.user),
-              });
-
-              if (recoveredLinkedIdentity) {
-                setState((currentState) => ({
-                  ...currentState,
-                  connectionStatus: currentState.wasConnected ? "connected" : "restoring",
-                  wasConnected: true,
-                  lastError: "",
-                }));
-                void runYoutubeBootstrap({
-                  caller: "YoutubeSessionProvider.connectYoutube.identityAlreadyLinkedRecovery",
-                  forceRefresh: true,
-                  manual: false,
-                  preserveSelectedVideo: true,
-                  reason: "identity-already-linked-recovery",
-                });
-                return true;
-              }
-            }
-
-            throw authError;
-          }
-
-          return true;
-        } catch (authError) {
-          clearYoutubeConnectIntent();
-          console.error("Unable to start Google OAuth for YouTube connect", authError);
-        }
       }
 
       console.error("[YouTube] Manual connect ended without a connected account", {
@@ -1278,6 +1495,7 @@ export function YoutubeSessionProvider({ children }) {
       setState((currentState) => ({
         ...currentState,
         connectionStatus: "disconnected",
+        lastAuthMessage: result?.error?.message || "",
         lastError: "youtube-connect-failed",
       }));
       return false;
@@ -1286,7 +1504,7 @@ export function YoutubeSessionProvider({ children }) {
     });
 
     return connectPromiseRef.current;
-  }, [markSessionDisconnected, runYoutubeBootstrap]);
+  }, [forceReconnectYoutube, runYoutubeBootstrap]);
 
   const disconnectYoutube = useCallback(async () => {
     try {
@@ -1298,70 +1516,16 @@ export function YoutubeSessionProvider({ children }) {
       console.error("Failed to disconnect stored YouTube authorization on the server", error);
     }
 
-    clearPersistedYoutubeSession();
-    clearYoutubeConnectIntent();
-    autoBootstrapKeyRef.current = "";
-    resetBootstrapRuntime();
-    setState((currentState) => ({
-      ...createDefaultState(),
-      hydrated: currentState.hydrated,
-    }));
-  }, []);
-
-  const resetYoutubeState = useCallback(async () => {
-    console.info("[YouTube][Mobile Storage] Manual YouTube state reset requested", {
-      authUserId,
-      connectionStatus: stateRef.current.connectionStatus,
-      wasConnected: stateRef.current.wasConnected,
+    resetLocalYoutubeClientState({
+      reason: "manual-disconnect",
+      statusMessage: "",
     });
-    clearPersistedYoutubeSession({
-      clearConnectIntent: true,
-      reason: "manual-reset-action",
-    });
-    autoBootstrapKeyRef.current = "";
-    resetBootstrapRuntime();
-    storageInvalidatedRef.current = true;
-    storageNeedsSupabaseRebuildRef.current = true;
+  }, [resetLocalYoutubeClientState]);
 
-    const authState = await readFreshSupabaseAuthState({ forceRefresh: true });
-    const nextUserId = authState.user?.id || authUserId;
-    const hasGoogleIdentity = hasLinkedGoogleIdentity(authState.user);
-    console.info("[YouTube][Mobile Supabase] Session recheck after YouTube reset", {
-      currentUserId: authUserId,
-      nextUserId,
-      authSession: summarizeSupabaseSession(authState.session),
-      hasGoogleIdentity,
-      googleIdentitySummary: summarizeGoogleIdentities(authState.user),
-      hasProviderToken: Boolean(authState.session?.provider_token),
-      hasProviderRefreshToken: Boolean(authState.session?.provider_refresh_token),
-    });
-
-    if (nextUserId && nextUserId !== authUserId) {
-      setAuthUserId(nextUserId);
-    }
-
-    setState((currentState) => ({
-      ...createDefaultState(),
-      hydrated: currentState.hydrated,
-      connectionStatus: hasGoogleIdentity ? "restoring" : "disconnected",
-      wasConnected: hasGoogleIdentity,
-      lastError: "",
-    }));
-
-    if (!nextUserId || !hasGoogleIdentity) {
-      return false;
-    }
-
-    const result = await runYoutubeBootstrap({
-      caller: "YoutubeSessionProvider.resetYoutubeState",
-      forceRefresh: true,
-      manual: false,
-      preserveSelectedVideo: false,
-      reason: "reset-youtube-state",
-    });
-
-    return Boolean(result?.ok);
-  }, [authUserId, runYoutubeBootstrap]);
+  const resetYoutubeState = useCallback(async () => forceReconnectYoutube({
+    caller: "YoutubeSessionProvider.resetYoutubeState",
+    reason: "reset-youtube-state",
+  }), [forceReconnectYoutube]);
 
   const generateYoutubeQueue = useCallback(
     async ({
@@ -1520,6 +1684,7 @@ export function YoutubeSessionProvider({ children }) {
           ...currentState,
           connectionStatus: currentState.wasConnected ? "connected" : "restoring",
           wasConnected: true,
+          lastAuthMessage: "",
           lastError: "",
         }));
       }
@@ -1638,9 +1803,51 @@ export function YoutubeSessionProvider({ children }) {
               : persistedSnapshot.workspaceTab
             : null,
         lastSyncedAt: Number(persistedSnapshot?.lastSyncedAt || 0),
+        lastAuthMessage: typeof persistedSnapshot?.lastAuthMessage === "string"
+          ? persistedSnapshot.lastAuthMessage
+          : "",
       };
     });
   }, []);
+
+  useEffect(() => {
+    if (!state.hydrated || authResultHandledRef.current) {
+      return;
+    }
+
+    authResultHandledRef.current = true;
+    const authResult = consumeYoutubeAuthResult();
+
+    if (!authResult) {
+      return;
+    }
+
+    console.info("[YouTube OAuth] Callback result received on client", {
+      tone: authResult.tone || "",
+      status: authResult.status || "",
+      code: authResult.code || "",
+      authErrorCode: authResult.authErrorCode || "",
+      hasConnectIntent: hasYoutubeConnectIntent(),
+    });
+
+    if (authResult.tone !== "error") {
+      setState((currentState) => ({
+        ...currentState,
+        lastAuthMessage: "",
+      }));
+      return;
+    }
+
+    resetLocalYoutubeClientState({
+      reason: `oauth-callback-error:${authResult.code || authResult.authErrorCode || "unknown"}`,
+      statusMessage: authResult.message || "Google auth could not be completed for YouTube.",
+    });
+    setState((currentState) => ({
+      ...currentState,
+      lastAuthMessage: authResult.message || "Google auth could not be completed for YouTube.",
+      lastError: "youtube-connect-failed",
+    }));
+  }, [resetLocalYoutubeClientState, state.hydrated]);
 
   useEffect(() => {
     if (!state.hydrated || !authResolved || !authUserId) {
@@ -1733,6 +1940,7 @@ export function YoutubeSessionProvider({ children }) {
           ...stateBeforeRecheck,
           connectionStatus: "restoring",
           wasConnected: true,
+          lastAuthMessage: "",
           lastError: "",
         }));
       }
@@ -1778,6 +1986,7 @@ export function YoutubeSessionProvider({ children }) {
     console.info("[YouTube] Connection state transition", {
       connectionStatus: state.connectionStatus,
       wasConnected: state.wasConnected,
+      lastAuthMessage: state.lastAuthMessage || "",
       lastError: state.lastError || "",
       hasAccountProfile: Boolean(state.accountProfile),
       accountVideoCount: state.accountVideos.length,
@@ -1786,6 +1995,7 @@ export function YoutubeSessionProvider({ children }) {
   }, [
     state.accountProfile,
     state.accountVideos.length,
+    state.lastAuthMessage,
     state.connectionStatus,
     state.lastError,
     state.selectedVideoId,
@@ -1876,6 +2086,7 @@ export function YoutubeSessionProvider({ children }) {
       playbackState: state.playbackState,
       workspaceTab: state.workspaceTab,
       lastSyncedAt: state.lastSyncedAt,
+      lastAuthMessage: state.lastAuthMessage,
     });
   }, [
     state.accountProfile,
@@ -1884,6 +2095,7 @@ export function YoutubeSessionProvider({ children }) {
     state.excludedChannelIds,
     state.hydrated,
     state.lastSyncedAt,
+    state.lastAuthMessage,
     state.playbackState,
     state.selectedVideoId,
     state.subscribedChannels,
@@ -1914,7 +2126,7 @@ export function YoutubeSessionProvider({ children }) {
 
   const youtubeConnected =
     state.connectionStatus === "connected" || state.connectionStatus === "restoring";
-  const youtubeStatusMessage = getYoutubeStatusMessage(state.lastError);
+  const youtubeStatusMessage = buildYoutubeStatusMessage(state);
 
   const approvedFeed = useMemo(() => {
     if (!youtubeConnected) {
@@ -2015,6 +2227,7 @@ export function YoutubeSessionProvider({ children }) {
       discoverLoading: state.discoverLoading,
       discoverVideos,
       ensureDiscoverVideos,
+      forceReconnectYoutube,
       generateYoutubeQueue,
       playbackList,
       playbackState: state.playbackState,
@@ -2041,6 +2254,7 @@ export function YoutubeSessionProvider({ children }) {
       discoverVideos,
       disconnectYoutube,
       ensureDiscoverVideos,
+      forceReconnectYoutube,
       generateYoutubeQueue,
       playbackList,
       queueIndex,

@@ -44,6 +44,7 @@ export default function ListeningWorkspace({
   selectedChannelAvatar,
   queueTotal,
   queueIndex,
+  forceReconnectYoutube,
   resetYoutubeState,
   skipCurrentVideo,
   workspaceTab,
@@ -780,20 +781,27 @@ export default function ListeningWorkspace({
                           <div style={styles.playerSub}>{youtubeStatusMessage}</div>
                         )}
 
-                        <button
-                          type="button"
-                          style={{
-                            ...styles.miniActionButton("grey"),
-                            justifySelf: "start",
-                          }}
-                          onClick={() => {
-                            void resetYoutubeState?.();
-                          }}
-                          aria-label="Reset YouTube state"
-                          title="Reset YouTube state"
-                        >
-                          Reset YouTube state
-                        </button>
+                        <div style={{ display: "grid", gap: "8px", justifyItems: "start" }}>
+                          <button
+                            type="button"
+                            style={{
+                              ...styles.miniActionButton("grey"),
+                              justifySelf: "start",
+                            }}
+                            onClick={() => {
+                              void (forceReconnectYoutube?.() || resetYoutubeState?.());
+                            }}
+                            aria-label="Force reconnect YouTube"
+                            title="Force reconnect YouTube"
+                          >
+                            Force reconnect YouTube
+                          </button>
+
+                          <div style={styles.playerSub}>
+                            Clears stale YouTube auth state first, then starts a fresh Google
+                            connection.
+                          </div>
+                        </div>
                       </div>
                     )}
 

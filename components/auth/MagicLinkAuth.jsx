@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link2, LogOut, Mail, Moon, Sun, UserCircle2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
+  clearAuthCallbackUrlParams,
   linkGoogleIdentity,
   normalizeAuthStatusFromUrl,
   signInWithGoogle,
+  storeYoutubeAuthResult,
 } from "@/lib/auth";
 import { useTheme } from "@/components/providers/ThemeProvider";
 
@@ -100,16 +102,14 @@ export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = f
     setStatusTone(nextStatus.tone);
     setStatusMessage(nextStatus.message);
     setIsOpen(true);
-
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete("auth_status");
-    nextUrl.searchParams.delete("auth_error");
-    nextUrl.searchParams.delete("auth_error_code");
-    nextUrl.searchParams.delete("auth_message");
-    nextUrl.searchParams.delete("error");
-    nextUrl.searchParams.delete("error_code");
-    nextUrl.searchParams.delete("error_description");
-    window.history.replaceState({}, "", nextUrl.toString());
+    storeYoutubeAuthResult({
+      tone: nextStatus.tone,
+      status: nextStatus.status || "",
+      code: nextStatus.code || "",
+      authErrorCode: nextStatus.authErrorCode || "",
+      message: nextStatus.message || "",
+    });
+    clearAuthCallbackUrlParams();
   }, []);
 
   const sendMagicLink = async () => {

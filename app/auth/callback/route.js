@@ -27,6 +27,28 @@ function redirectWithCookies(request, pendingCookies = [], params = {}) {
   return response;
 }
 
+function clearPkceVerifierCookies(cookieStore, pendingCookies = []) {
+  const pkceCookieNames = cookieStore
+    .getAll()
+    .map((cookie) => cookie?.name || "")
+    .filter((name) => name.endsWith("-code-verifier"));
+
+  pkceCookieNames.forEach((name) => {
+    const options = {
+      path: "/",
+      maxAge: 0,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    };
+
+    pendingCookies.push({ name, value: "", options });
+    cookieStore.set(name, "", options);
+  });
+
+  return pkceCookieNames;
+}
+
 function deriveGoogleProviderExpiry() {
   return new Date(Date.now() + 55 * 60 * 1000).toISOString();
 }
@@ -53,38 +75,48 @@ export async function GET(request) {
   const authError = requestUrl.searchParams.get("error");
   const authErrorCode = requestUrl.searchParams.get("error_code");
   const authErrorDescription = requestUrl.searchParams.get("error_description");
+  const cookieStore = await cookies();
+  const pendingCookies = [];
+
+  logAuthInfo("Callback", "Google auth callback received", {
+    hasCode: Boolean(code),
+    authError,
+    authErrorCode,
+  });
 
   if (authError) {
+    const clearedPkceCookies = clearPkceVerifierCookies(cookieStore, pendingCookies);
     logAuthError("Callback", "Supabase Google auth callback returned an error", null, {
       authError,
       authErrorCode,
       authErrorDescription,
+      clearedPkceCookieCount: clearedPkceCookies.length,
     });
 
     if (authErrorCode === "identity_already_exists") {
-      return redirectWithCookies(request, [], {
+      return redirectWithCookies(request, pendingCookies, {
         auth_status: "google_identity_already_linked",
         auth_message: "Google is already linked. Restoring YouTube now.",
         auth_error_code: authErrorCode,
       });
     }
 
-    return redirectWithCookies(request, [], {
+    return redirectWithCookies(request, pendingCookies, {
       auth_error: authError === "access_denied" ? "oauth_cancelled" : authError,
       auth_message: authErrorDescription || "Google auth could not be completed.",
+      auth_error_code: authErrorCode || "",
     });
   }
 
   if (!code) {
+    clearPkceVerifierCookies(cookieStore, pendingCookies);
     logAuthError("Callback", "Supabase Google auth callback is missing an auth code");
 
-    return redirectWithCookies(request, [], {
+    return redirectWithCookies(request, pendingCookies, {
       auth_error: "missing_code",
     });
   }
 
-  const cookieStore = await cookies();
-  const pendingCookies = [];
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -115,7 +147,12 @@ export async function GET(request) {
   const { data: exchangeData, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
+    const clearedPkceCookies = clearPkceVerifierCookies(cookieStore, pendingCookies);
     logAuthError("Callback", "Failed to exchange Supabase auth code for session", error);
+    logAuthInfo("Callback", "Cleared PKCE verifier cookies after exchange failure", {
+      clearedPkceCookieCount: clearedPkceCookies.length,
+      errorCode: error.code || "",
+    });
 
     return redirectWithCookies(request, pendingCookies, {
       auth_error: error.code || "oauth_exchange_failed",

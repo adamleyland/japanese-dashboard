@@ -220,6 +220,7 @@ export default function ListeningTab({
     discoverFilter,
     discoverLoading,
     discoverVideos,
+    forceReconnectYoutube,
     generateYoutubeQueue,
     playbackList,
     playbackState,
@@ -1791,6 +1792,7 @@ export default function ListeningTab({
         showDiscoverSubscribe={Boolean(selectedDiscoverVideo?.channelId)}
         queueTotal={queueTotal}
         queueIndex={queueIndex}
+        forceReconnectYoutube={forceReconnectYoutube}
         resetYoutubeState={resetYoutubeState}
         skipCurrentVideo={skipCurrentVideo}
         workspaceTab={workspaceTab}
