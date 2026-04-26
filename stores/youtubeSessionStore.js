@@ -1995,10 +1995,10 @@ export function YoutubeSessionProvider({ children }) {
   }, [
     state.accountProfile,
     state.accountVideos.length,
-    state.lastAuthMessage,
-    state.connectionStatus,
-    state.lastError,
-    state.selectedVideoId,
+    state.lastAuthMessage || "",
+    state.connectionStatus || "",
+    state.lastError || "",
+    state.selectedVideoId || "",
     state.wasConnected,
   ]);
 
