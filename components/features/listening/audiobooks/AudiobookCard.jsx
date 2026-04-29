@@ -71,7 +71,9 @@ const styles = {
     cursor: "pointer",
     textAlign: "left",
     minWidth: fullWidth ? "100%" : compact ? "190px" : "220px",
-    width: fullWidth ? "100%" : "auto",
+    width: fullWidth ? "100%" : compact ? "190px" : "220px",
+    maxWidth: fullWidth ? "100%" : compact ? "190px" : "220px",
+    flex: fullWidth ? "1 1 auto" : "0 0 auto",
     boxShadow:
       compact && fullWidth
         ? "0 16px 34px rgba(15,23,42,0.16)"

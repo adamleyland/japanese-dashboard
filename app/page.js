@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import { getSafeAuthUser } from "@/lib/auth";
 import { logAuthError, logAuthInfo, summarizeSupabaseSession } from "@/lib/authLogging";
@@ -46,6 +47,32 @@ const TRACKING_SOURCE_DEFAULTS = {
   gaming: { positive: "gaming", negative: "adjustment" },
 };
 const TRACKER_FOCUS_MODE_STORAGE_KEY = "jp_tracker_focus_mode";
+const MOBILE_HIDDEN_TAB_KEYS = new Set(["shadowing", "writing"]);
+const MOBILE_SWIPE_AXIS_LOCK_DISTANCE = 14;
+const MOBILE_SWIPE_DISTANCE_RATIO = 0.18;
+const MOBILE_SWIPE_VELOCITY_THRESHOLD = 540;
+const MOBILE_SWIPE_EDGE_RESISTANCE = 0.18;
+const MOBILE_SWIPE_TRANSITION = "left 280ms cubic-bezier(0.22, 1, 0.36, 1)";
+const MOBILE_SWIPE_REDUCED_TRANSITION = "left 120ms linear";
+const MOBILE_SWIPE_IGNORE_SELECTOR = [
+  "button",
+  "a",
+  "input",
+  "textarea",
+  "select",
+  "label",
+  "summary",
+  "audio",
+  "video",
+  "[role='button']",
+  "[role='link']",
+  "[role='slider']",
+  "[role='switch']",
+  "[role='tab']",
+  "[contenteditable='true']",
+  "[draggable='true']",
+  "[data-swipe-ignore='true']",
+].join(", ");
 
 function mergeTrackingTotals(baseTotals, pendingTotals) {
   return {
@@ -59,6 +86,18 @@ function mergeTrackingTotals(baseTotals, pendingTotals) {
 
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isMobileModuleTab(item) {
+  return !MOBILE_HIDDEN_TAB_KEYS.has(item.key);
+}
+
+function shouldIgnoreMobileSwipeTarget(target) {
+  return target instanceof Element && Boolean(target.closest(MOBILE_SWIPE_IGNORE_SELECTOR));
+}
+
+function applyMobileSwipeEdgeResistance(distance) {
+  return distance * MOBILE_SWIPE_EDGE_RESISTANCE;
 }
 
 export default function Home() {
@@ -96,6 +135,7 @@ export default function Home() {
     state: "idle",
     title: "",
   });
+  const prefersReducedMotion = useReducedMotion();
   const authUserId = authUser?.id || "";
   const listeningHoursRef = useRef(listeningHours);
   const shadowingHoursRef = useRef(shadowingHours);
@@ -105,6 +145,13 @@ export default function Home() {
   const trackingSourceRef = useRef("bootstrap-default");
   const trackingReadStrategyRef = useRef("unknown");
   const trackingReconcileRequestRef = useRef(0);
+  const mobileSwipeViewportRef = useRef(null);
+  const mobileSwipeTrackRef = useRef(null);
+  const mobileSwipeSessionRef = useRef(null);
+  const mobileSwipeOffsetRef = useRef(0);
+  const mobileSwipeAnimatingRef = useRef(false);
+  const mobileSwipeReleaseTimerRef = useRef(null);
+  const [mobileSwipeWidth, setMobileSwipeWidth] = useState(0);
   const gamingData = useGamingData({
     authUserId,
     authResolved: !authLoading,
@@ -123,6 +170,25 @@ export default function Home() {
     [estimatedReadingHours, listeningHours, gamingHours, shadowingHours],
   );
   const { totalMinutes: gamingTotalMinutes } = useGamingTotals(gamingData.games);
+  const mobileModuleTabs = useMemo(
+    () => MODULE_TABS.filter(isMobileModuleTab),
+    [],
+  );
+  const mobileSwipeTabIndex = useMemo(
+    () => mobileModuleTabs.findIndex((item) => item.key === tab),
+    [mobileModuleTabs, tab],
+  );
+  const currentMobileSwipeTab = mobileSwipeTabIndex >= 0 ? mobileModuleTabs[mobileSwipeTabIndex] : null;
+  const previousMobileSwipeTab =
+    mobileSwipeTabIndex > 0 ? mobileModuleTabs[mobileSwipeTabIndex - 1] : null;
+  const nextMobileSwipeTab =
+    mobileSwipeTabIndex >= 0 && mobileSwipeTabIndex < mobileModuleTabs.length - 1
+      ? mobileModuleTabs[mobileSwipeTabIndex + 1]
+      : null;
+  const mobileSwipeBaseOffset = mobileSwipeWidth > 0 ? -mobileSwipeWidth : 0;
+  const mobileSwipeTransitionValue = prefersReducedMotion
+    ? MOBILE_SWIPE_REDUCED_TRANSITION
+    : MOBILE_SWIPE_TRANSITION;
 
   useEffect(() => {
     listeningHoursRef.current = listeningHours;
@@ -781,6 +847,337 @@ export default function Home() {
     tab === "listening" ||
     Boolean(audiobookLaunchRequest) ||
     Boolean(audiobookPlaybackSnapshot.bookId && audiobookPlaybackSnapshot.isPlayerOpen);
+  const renderModuleContent = useCallback(
+    (tabKey) => {
+      if (tabKey === "listening") {
+        return (
+          <ListeningTab
+            styles={styles}
+            listeningHours={listeningHours}
+            adjustListeningHours={adjustListeningHours}
+            isMobile={isMobile}
+            isCompact={isCompact}
+            formatClock={formatClock}
+            authUserId={authUserId}
+            authResolved={!authLoading}
+            audiobooksData={audiobooksData}
+            audiobooksLoading={audiobooksLoading}
+            audiobooksError={audiobooksError}
+            onAudiobookPlaybackStateChange={handleAudiobookPlaybackStateChange}
+            audiobookLaunchRequest={audiobookLaunchRequest}
+            onAudiobookLaunchResult={handleAudiobookLaunchResult}
+          />
+        );
+      }
+
+      if (tabKey === "reading") {
+        return (
+          <ReadingTab
+            styles={styles}
+            wordsRead={wordsRead}
+            readingLibrary={readingLibrary}
+            lingqStats={lingqStats}
+            isMobile={isMobile}
+            isCompact={isCompact}
+            audiobookLaunchStatus={audiobookLaunchStatus}
+            onReadWithAudiobook={handleReadWithAudiobook}
+          />
+        );
+      }
+
+      if (tabKey === "shadowing") {
+        return (
+          <ShadowingWorkspace
+            styles={styles}
+            shadowingHours={shadowingHours}
+            setShadowingHours={updateShadowingHours}
+            isCompact={isCompact}
+          />
+        );
+      }
+
+      if (tabKey === "writing") {
+        return (
+          <WritingWorkspace
+            styles={styles}
+            wordsWritten={wordsWritten}
+            setWordsWritten={updateWordsWritten}
+            isCompact={isCompact}
+          />
+        );
+      }
+
+      if (tabKey === "gaming") {
+        return (
+          <GamingTab
+            styles={styles}
+            gamingHours={gamingHours}
+            gamingData={gamingData}
+            isMobile={isMobile}
+            isCompact={isCompact}
+          />
+        );
+      }
+
+      return null;
+    },
+    [
+      adjustListeningHours,
+      audiobookLaunchRequest,
+      audiobookLaunchStatus,
+      audiobooksData,
+      audiobooksError,
+      audiobooksLoading,
+      authLoading,
+      authUserId,
+      gamingData,
+      gamingHours,
+      handleAudiobookLaunchResult,
+      handleAudiobookPlaybackStateChange,
+      handleReadWithAudiobook,
+      isCompact,
+      isMobile,
+      lingqStats,
+      listeningHours,
+      readingLibrary,
+      shadowingHours,
+      updateShadowingHours,
+      updateWordsWritten,
+      wordsRead,
+      wordsWritten,
+    ],
+  );
+  const mobileSwipeListeningVisible = [
+    previousMobileSwipeTab?.key,
+    currentMobileSwipeTab?.key,
+    nextMobileSwipeTab?.key,
+  ].includes("listening");
+
+  const clearMobileSwipeReleaseTimer = useCallback(() => {
+    if (mobileSwipeReleaseTimerRef.current !== null) {
+      window.clearTimeout(mobileSwipeReleaseTimerRef.current);
+      mobileSwipeReleaseTimerRef.current = null;
+    }
+  }, []);
+
+  const setMobileSwipeTrackTransition = useCallback((transitionValue) => {
+    if (mobileSwipeTrackRef.current) {
+      mobileSwipeTrackRef.current.style.transition = transitionValue;
+    }
+  }, []);
+
+  const setMobileSwipeTrackOffset = useCallback((nextOffset) => {
+    mobileSwipeOffsetRef.current = nextOffset;
+
+    if (mobileSwipeTrackRef.current) {
+      mobileSwipeTrackRef.current.style.left = `${nextOffset}px`;
+    }
+  }, []);
+
+  const settleMobileSwipe = useCallback(
+    (targetOffset, nextTabKey = null) => {
+      if (!mobileSwipeTrackRef.current) {
+        return;
+      }
+
+      clearMobileSwipeReleaseTimer();
+      mobileSwipeAnimatingRef.current = true;
+      setMobileSwipeTrackTransition(mobileSwipeTransitionValue);
+
+      window.requestAnimationFrame(() => {
+        setMobileSwipeTrackOffset(targetOffset);
+      });
+
+      const transitionDurationMs = prefersReducedMotion ? 120 : 280;
+
+      mobileSwipeReleaseTimerRef.current = window.setTimeout(() => {
+        clearMobileSwipeReleaseTimer();
+        mobileSwipeAnimatingRef.current = false;
+        setMobileSwipeTrackTransition("none");
+
+        if (nextTabKey) {
+          setTab(nextTabKey);
+          return;
+        }
+
+        setMobileSwipeTrackOffset(mobileSwipeBaseOffset);
+      }, transitionDurationMs + 40);
+    },
+    [
+      clearMobileSwipeReleaseTimer,
+      mobileSwipeBaseOffset,
+      mobileSwipeTransitionValue,
+      prefersReducedMotion,
+      setMobileSwipeTrackOffset,
+      setMobileSwipeTrackTransition,
+    ],
+  );
+
+  const releaseMobileSwipePointer = useCallback((target, pointerId) => {
+    if (
+      target &&
+      typeof target.hasPointerCapture === "function" &&
+      target.hasPointerCapture(pointerId)
+    ) {
+      target.releasePointerCapture(pointerId);
+    }
+  }, []);
+
+  const handleMobileSwipePointerDown = useCallback(
+    (event) => {
+      if (!isMobile || mobileSwipeTabIndex < 0 || mobileSwipeWidth <= 0 || mobileSwipeAnimatingRef.current) {
+        return;
+      }
+
+      if (event.pointerType === "mouse" || shouldIgnoreMobileSwipeTarget(event.target)) {
+        return;
+      }
+
+      mobileSwipeSessionRef.current = {
+        axis: null,
+        lastTime: performance.now(),
+        lastX: event.clientX,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        velocityX: 0,
+      };
+
+      clearMobileSwipeReleaseTimer();
+      setMobileSwipeTrackTransition("none");
+    },
+    [
+      clearMobileSwipeReleaseTimer,
+      isMobile,
+      mobileSwipeTabIndex,
+      mobileSwipeWidth,
+      setMobileSwipeTrackTransition,
+    ],
+  );
+
+  const handleMobileSwipePointerMove = useCallback(
+    (event) => {
+      const session = mobileSwipeSessionRef.current;
+
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const deltaX = event.clientX - session.startX;
+      const deltaY = event.clientY - session.startY;
+
+      if (session.axis === null) {
+        if (
+          Math.abs(deltaX) < MOBILE_SWIPE_AXIS_LOCK_DISTANCE &&
+          Math.abs(deltaY) < MOBILE_SWIPE_AXIS_LOCK_DISTANCE
+        ) {
+          return;
+        }
+
+        if (Math.abs(deltaY) > Math.abs(deltaX) * 1.15) {
+          session.axis = "y";
+          return;
+        }
+
+        if (Math.abs(deltaX) > Math.abs(deltaY) * 1.15) {
+          session.axis = "x";
+
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        } else {
+          return;
+        }
+      }
+
+      if (session.axis !== "x") {
+        return;
+      }
+
+      event.preventDefault();
+
+      const now = performance.now();
+      const elapsed = now - session.lastTime;
+
+      if (elapsed > 0) {
+        session.velocityX = ((event.clientX - session.lastX) / elapsed) * 1000;
+      }
+
+      session.lastX = event.clientX;
+      session.lastTime = now;
+
+      const minOffset = nextMobileSwipeTab ? -mobileSwipeWidth * 2 : mobileSwipeBaseOffset;
+      const maxOffset = previousMobileSwipeTab ? 0 : mobileSwipeBaseOffset;
+      let nextOffset = mobileSwipeBaseOffset + deltaX;
+
+      if (nextOffset > maxOffset) {
+        nextOffset = maxOffset + applyMobileSwipeEdgeResistance(nextOffset - maxOffset);
+      }
+
+      if (nextOffset < minOffset) {
+        nextOffset = minOffset - applyMobileSwipeEdgeResistance(minOffset - nextOffset);
+      }
+
+      setMobileSwipeTrackOffset(nextOffset);
+    },
+    [
+      mobileSwipeBaseOffset,
+      mobileSwipeWidth,
+      nextMobileSwipeTab,
+      previousMobileSwipeTab,
+      setMobileSwipeTrackOffset,
+    ],
+  );
+
+  const handleMobileSwipePointerEnd = useCallback(
+    (event) => {
+      const session = mobileSwipeSessionRef.current;
+
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      releaseMobileSwipePointer(event.currentTarget, event.pointerId);
+
+      if (session.axis === "x") {
+        event.preventDefault();
+
+        const offsetFromCenter = mobileSwipeOffsetRef.current - mobileSwipeBaseOffset;
+        const distanceThreshold = mobileSwipeWidth * MOBILE_SWIPE_DISTANCE_RATIO;
+        let nextTabKey = null;
+        let targetOffset = mobileSwipeBaseOffset;
+
+        if (
+          offsetFromCenter > 0 &&
+          previousMobileSwipeTab &&
+          (offsetFromCenter >= distanceThreshold || session.velocityX >= MOBILE_SWIPE_VELOCITY_THRESHOLD)
+        ) {
+          nextTabKey = previousMobileSwipeTab.key;
+          targetOffset = 0;
+        } else if (
+          offsetFromCenter < 0 &&
+          nextMobileSwipeTab &&
+          (Math.abs(offsetFromCenter) >= distanceThreshold ||
+            session.velocityX <= -MOBILE_SWIPE_VELOCITY_THRESHOLD)
+        ) {
+          nextTabKey = nextMobileSwipeTab.key;
+          targetOffset = -mobileSwipeWidth * 2;
+        }
+
+        settleMobileSwipe(targetOffset, nextTabKey);
+      }
+
+      mobileSwipeSessionRef.current = null;
+    },
+    [
+      mobileSwipeBaseOffset,
+      mobileSwipeWidth,
+      nextMobileSwipeTab,
+      previousMobileSwipeTab,
+      releaseMobileSwipePointer,
+      settleMobileSwipe,
+    ],
+  );
 
   useEffect(() => {
     const onResize = () => {
@@ -792,6 +1189,62 @@ export default function Home() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!isMobile || !mobileSwipeViewportRef.current) {
+      return undefined;
+    }
+
+    const viewportNode = mobileSwipeViewportRef.current;
+    const updateWidth = () => {
+      const nextWidth = viewportNode.getBoundingClientRect().width;
+      setMobileSwipeWidth((currentWidth) =>
+        Math.abs(currentWidth - nextWidth) > 0.5 ? nextWidth : currentWidth,
+      );
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === "function") {
+      const resizeObserver = new ResizeObserver(() => {
+        updateWidth();
+      });
+
+      resizeObserver.observe(viewportNode);
+      return () => resizeObserver.disconnect();
+    }
+
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || mobileSwipeWidth <= 0 || mobileSwipeTabIndex < 0) {
+      return;
+    }
+
+    mobileSwipeAnimatingRef.current = false;
+    mobileSwipeSessionRef.current = null;
+    clearMobileSwipeReleaseTimer();
+    setMobileSwipeTrackTransition("none");
+    setMobileSwipeTrackOffset(mobileSwipeBaseOffset);
+  }, [
+    clearMobileSwipeReleaseTimer,
+    isMobile,
+    mobileSwipeBaseOffset,
+    mobileSwipeTabIndex,
+    mobileSwipeWidth,
+    setMobileSwipeTrackOffset,
+    setMobileSwipeTrackTransition,
+    tab,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearMobileSwipeReleaseTimer();
+    },
+    [clearMobileSwipeReleaseTimer],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -1071,62 +1524,55 @@ export default function Home() {
         )}
 
         <section style={styles.contentWrap}>
-          {shouldKeepListeningTabMounted && (
-            <div style={{ display: tab === "listening" ? "block" : "none" }}>
-              <ListeningTab
-                styles={styles}
-                listeningHours={listeningHours}
-                adjustListeningHours={adjustListeningHours}
-                isMobile={isMobile}
-                isCompact={isCompact}
-                formatClock={formatClock}
-                authUserId={authUserId}
-                authResolved={!authLoading}
-                audiobooksData={audiobooksData}
-                audiobooksLoading={audiobooksLoading}
-                audiobooksError={audiobooksError}
-                onAudiobookPlaybackStateChange={handleAudiobookPlaybackStateChange}
-                audiobookLaunchRequest={audiobookLaunchRequest}
-                onAudiobookLaunchResult={handleAudiobookLaunchResult}
-              />
-            </div>
-          )}
-          {tab === "reading" && (
-            <ReadingTab
-              styles={styles}
-              wordsRead={wordsRead}
-              readingLibrary={readingLibrary}
-              lingqStats={lingqStats}
-              isMobile={isMobile}
-              isCompact={isCompact}
-              audiobookLaunchStatus={audiobookLaunchStatus}
-              onReadWithAudiobook={handleReadWithAudiobook}
-            />
-          )}
-          {tab === "shadowing" && (
-            <ShadowingWorkspace
-              styles={styles}
-              shadowingHours={shadowingHours}
-              setShadowingHours={updateShadowingHours}
-              isCompact={isCompact}
-            />
-          )}
-          {tab === "writing" && (
-            <WritingWorkspace
-              styles={styles}
-              wordsWritten={wordsWritten}
-              setWordsWritten={updateWordsWritten}
-              isCompact={isCompact}
-            />
-          )}
-          {tab === "gaming" && (
-            <GamingTab
-              styles={styles}
-              gamingHours={gamingHours}
-              gamingData={gamingData}
-              isMobile={isMobile}
-              isCompact={isCompact}
-            />
+          {isMobile && currentMobileSwipeTab ? (
+            <>
+              <div
+                ref={mobileSwipeViewportRef}
+                style={styles.mobileSwipeViewport}
+                onPointerCancel={handleMobileSwipePointerEnd}
+                onPointerDown={handleMobileSwipePointerDown}
+                onPointerMove={handleMobileSwipePointerMove}
+                onPointerUp={handleMobileSwipePointerEnd}
+              >
+                {mobileSwipeWidth > 0 ? (
+                  <div
+                    ref={mobileSwipeTrackRef}
+                    style={styles.mobileSwipeTrack(mobileSwipeWidth, mobileSwipeBaseOffset)}
+                  >
+                    {[previousMobileSwipeTab, currentMobileSwipeTab, nextMobileSwipeTab].map((tabItem, index) => (
+                      <div
+                        key={tabItem?.key || `mobile-swipe-slot-${index}`}
+                        aria-hidden={tabItem?.key !== tab}
+                        style={styles.mobileSwipePanel(
+                          mobileSwipeWidth,
+                          tabItem?.key === tab,
+                        )}
+                      >
+                        {tabItem ? renderModuleContent(tabItem.key) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  renderModuleContent(currentMobileSwipeTab.key)
+                )}
+              </div>
+
+              {shouldKeepListeningTabMounted && !mobileSwipeListeningVisible ? (
+                <div style={styles.hiddenKeepAlive}>{renderModuleContent("listening")}</div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {shouldKeepListeningTabMounted && (
+                <div style={{ display: tab === "listening" ? "block" : "none" }}>
+                  {renderModuleContent("listening")}
+                </div>
+              )}
+              {tab === "reading" && renderModuleContent("reading")}
+              {tab === "shadowing" && renderModuleContent("shadowing")}
+              {tab === "writing" && renderModuleContent("writing")}
+              {tab === "gaming" && renderModuleContent("gaming")}
+            </>
           )}
         </section>
       </div>
@@ -1822,6 +2268,32 @@ const styles = {
     textOverflow: "ellipsis",
   },
   contentWrap: { minWidth: 0, width: "100%" },
+  mobileSwipeViewport: {
+    width: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    position: "relative",
+    touchAction: "pan-y",
+  },
+  mobileSwipeTrack: (width, baseOffset) => ({
+    display: "flex",
+    alignItems: "flex-start",
+    width: width > 0 ? `${width * 3}px` : "300%",
+    minWidth: 0,
+    position: "relative",
+    left: width > 0 ? `${baseOffset}px` : "0px",
+    transition: "none",
+    willChange: "left",
+  }),
+  mobileSwipePanel: (width, active) => ({
+    flex: width > 0 ? `0 0 ${width}px` : "0 0 100%",
+    width: width > 0 ? `${width}px` : "100%",
+    minWidth: 0,
+    pointerEvents: active ? "auto" : "none",
+  }),
+  hiddenKeepAlive: {
+    display: "none",
+  },
   moduleNavTrack: {
     display: "flex",
     gap: "6px",
