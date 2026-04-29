@@ -929,6 +929,28 @@ export default function ListeningTab({
     [generateYoutubeQueue, isPlayerCurrentlyPlaying, setSelectedVideoId],
   );
 
+  const refreshYoutubeQueue = useCallback(async () => {
+    const shouldPlay = isPlayerCurrentlyPlaying();
+    const currentVideoIds = playbackListRef.current.map((video) => video.id).filter(Boolean);
+
+    playbackIntentRef.current = shouldPlay;
+    pendingSelectionPlaybackRef.current = { shouldPlay };
+
+    const result = await generateYoutubeQueue({
+      reason: "manual_queue_refresh",
+      currentVideoIds,
+      recentVideoIds: readRecentYoutubeVideoIds(),
+    });
+
+    const refreshedQueue = Array.isArray(result?.snapshot?.accountVideos)
+      ? result.snapshot.accountVideos
+      : playbackListRef.current;
+
+    if (!result?.ok || !refreshedQueue[0]?.id) {
+      pendingSelectionPlaybackRef.current = null;
+    }
+  }, [generateYoutubeQueue, isPlayerCurrentlyPlaying]);
+
   useEffect(() => {
     const previousWorkspaceSource = previousWorkspaceSourceRef.current;
     previousWorkspaceSourceRef.current = workspaceSource;
@@ -1795,6 +1817,7 @@ export default function ListeningTab({
         forceReconnectYoutube={forceReconnectYoutube}
         resetYoutubeState={resetYoutubeState}
         skipCurrentVideo={skipCurrentVideo}
+        onRefreshQueue={refreshYoutubeQueue}
         workspaceTab={workspaceTab}
         setWorkspaceTab={setWorkspaceTab}
         youtubeVideoProgress={youtubeVideoProgress}

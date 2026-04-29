@@ -41,6 +41,7 @@ export default function AudiobookPlayer({
   durationSeconds,
   hasPlayableAudio,
   isMobile = false,
+  desktopVariant = "default",
   isPlaying,
   playbackState,
   progressPercent,
@@ -49,6 +50,7 @@ export default function AudiobookPlayer({
   onSeekTo,
   onSkipBy,
   onTogglePlayback,
+  savingProgress = false,
 }) {
   const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
   const [isMobileChapterPickerOpen, setIsMobileChapterPickerOpen] = useState(false);
@@ -88,6 +90,7 @@ export default function AudiobookPlayer({
   const timelineMax = Math.max(0, activeChapterDuration || durationSeconds);
   const timelineValue = Math.max(0, Math.min(timelineMax, activeChapterProgressSeconds));
   const metadataLine = buildMetadataLine(book, durationSeconds);
+  const isDesktopModal = !isMobile && desktopVariant === "modal";
   const shellStyle = isMobile
     ? {
         ...styles.shell,
@@ -101,6 +104,11 @@ export default function AudiobookPlayer({
         alignContent: "start",
         boxSizing: "border-box",
       }
+    : isDesktopModal
+      ? {
+          ...styles.shell,
+          ...styles.desktopModalShell,
+        }
     : styles.shell;
   const playerHeaderStyle = isMobile
     ? {
@@ -110,13 +118,33 @@ export default function AudiobookPlayer({
         gap: "12px",
         flexWrap: "nowrap",
       }
+    : isDesktopModal
+      ? {
+          ...styles.playerHeader,
+          ...styles.desktopModalHeader,
+        }
     : styles.playerHeader;
+  const headerActionsStyle = isDesktopModal
+    ? {
+        ...styles.headerActions,
+        ...styles.desktopModalHeaderActions,
+      }
+    : {
+        ...styles.headerActions,
+        alignSelf: "flex-start",
+        marginLeft: isMobile ? 0 : "auto",
+      };
   const titleStyle = isMobile
     ? {
         ...styles.title,
         fontSize: "20px",
         lineHeight: 1.15,
       }
+    : isDesktopModal
+      ? {
+          ...styles.title,
+          ...styles.desktopModalTitle,
+        }
     : styles.title;
   const metaStyle = isMobile
     ? {
@@ -124,6 +152,11 @@ export default function AudiobookPlayer({
         fontSize: "12px",
         lineHeight: 1.5,
       }
+    : isDesktopModal
+      ? {
+          ...styles.meta,
+          ...styles.desktopModalMeta,
+        }
     : styles.meta;
   const iconButtonStyle = isMobile
     ? {
@@ -132,23 +165,56 @@ export default function AudiobookPlayer({
         height: "42px",
         borderRadius: "12px",
       }
+    : isDesktopModal
+      ? {
+          ...styles.iconButton(false),
+        ...styles.desktopModalIconButton,
+        }
     : styles.iconButton(false);
+  const plainDesktopIconButtonStyle = styles.desktopModalPlainIconButton(false);
+  const desktopChapterTriggerButtonStyle = styles.desktopModalPlainIconButton(!shouldRenderChapters);
   const playerGridStyle = isMobile
     ? {
         ...styles.playerGrid,
         gridTemplateColumns: "1fr",
         gap: "22px",
       }
+    : isDesktopModal
+      ? {
+          ...styles.playerGrid,
+          ...styles.desktopModalPlayerGrid,
+        }
     : styles.playerGrid;
-  const coverWrapStyle = styles.coverWrap;
+  const coverWrapStyle = isDesktopModal
+    ? {
+        ...styles.coverWrap,
+        ...styles.desktopModalCoverWrap,
+      }
+    : styles.coverWrap;
+  const coverStyle = isDesktopModal
+    ? {
+        ...styles.cover(book.coverGradient),
+        ...styles.desktopModalCover,
+      }
+    : styles.cover(book.coverGradient);
   const controlsColumnStyle = isMobile
     ? {
         ...styles.controlsColumn,
         gap: "14px",
       }
+    : isDesktopModal
+      ? {
+          ...styles.controlsColumn,
+          ...styles.desktopModalControlsColumn,
+        }
     : styles.controlsColumn;
   const infoBlockStyle = isMobile
     ? undefined
+    : isDesktopModal
+      ? {
+          ...styles.infoBlock,
+          ...styles.desktopModalInfoBlock,
+        }
     : styles.infoBlock;
   const timelineWrapStyle = isMobile
     ? {
@@ -158,6 +224,11 @@ export default function AudiobookPlayer({
         background: "transparent",
         gap: "8px",
       }
+    : isDesktopModal
+      ? {
+          ...styles.timelineWrap,
+          ...styles.desktopModalTimelineWrap,
+        }
     : styles.timelineWrap;
   const actionRowStyle = isMobile
     ? {
@@ -166,12 +237,21 @@ export default function AudiobookPlayer({
         flexWrap: "nowrap",
         justifyContent: "space-between",
       }
+    : isDesktopModal
+      ? {
+          ...styles.actionRow,
+          ...styles.desktopModalActionRow,
+        }
     : styles.actionRow;
   const primaryButtonStyle = isMobile
     ? styles.mobilePrimaryControlButton(!hasPlayableAudio)
+    : isDesktopModal
+      ? styles.desktopModalPrimaryButton(!hasPlayableAudio)
     : styles.primaryButton(!hasPlayableAudio);
   const jumpControlButtonStyle = isMobile
     ? styles.mobileInlineControlButton(!hasPlayableAudio)
+    : isDesktopModal
+      ? styles.desktopModalSecondaryControlButton(!hasPlayableAudio)
     : {
         ...styles.secondaryIconControlButton(!hasPlayableAudio, false),
         flex: "1 1 0",
@@ -184,13 +264,75 @@ export default function AudiobookPlayer({
         ...styles.chapterBlock,
         padding: "12px",
       }
+    : isDesktopModal
+      ? {
+          ...styles.chapterBlock,
+          ...styles.desktopModalChapterBlock,
+        }
     : styles.chapterBlock;
   const chapterListStyle = isMobile
     ? {
         ...styles.chapterList,
         maxHeight: "min(220px, 32svh)",
       }
+    : isDesktopModal
+      ? {
+          ...styles.chapterList,
+          ...styles.desktopModalChapterList,
+        }
     : styles.chapterList;
+  const progressSummaryStyle = isDesktopModal
+    ? {
+        ...styles.progressSummary,
+        ...styles.desktopModalProgressSummary,
+      }
+    : styles.progressSummary;
+  const progressBadgeStyle = isDesktopModal
+    ? {
+        ...styles.progressBadge,
+        ...styles.desktopModalProgressBadge,
+      }
+    : styles.progressBadge;
+  const progressRemainingStyle = isDesktopModal
+    ? {
+        ...styles.progressRemaining,
+        ...styles.desktopModalProgressRemaining,
+      }
+    : styles.progressRemaining;
+  const descriptionButtonStyle = isDesktopModal
+    ? {
+        ...styles.descriptionPillButton,
+        ...styles.desktopModalDescriptionPillButton,
+      }
+    : styles.descriptionPillButton;
+  const overallProgressBarStyle = isDesktopModal
+    ? {
+        ...styles.overallProgressBar,
+        ...styles.desktopModalOverallProgressBar,
+      }
+    : styles.overallProgressBar;
+  const timelineStyle = isMobile
+    ? { ...styles.timeline, ...styles.mobileTimeline }
+    : isDesktopModal
+      ? {
+          ...styles.timeline,
+          ...styles.desktopModalTimeline,
+        }
+      : styles.timeline;
+  const timelineMetaStyle = isMobile
+    ? styles.mobileTimelineMeta
+    : isDesktopModal
+      ? {
+          ...styles.timelineMeta,
+          ...styles.desktopModalTimelineMeta,
+        }
+      : styles.timelineMeta;
+  const audioHintStyle = isDesktopModal
+    ? {
+        ...styles.audioHint,
+        ...styles.desktopModalAudioHint,
+      }
+    : styles.audioHint;
   const mobileChapterButtonLabel = activeChapter?.title || "Browse chapters";
   const previousChapter =
     activeChapterIndex > 0 && activeChapterIndex < chapterCount ? chapters[activeChapterIndex - 1] : null;
@@ -236,34 +378,63 @@ export default function AudiobookPlayer({
               <div style={styles.mobileHeaderSpacer} />
             )}
           </>
+        ) : isDesktopModal ? (
+          <button
+            type="button"
+            onClick={onClosePlayer}
+            style={plainDesktopIconButtonStyle}
+            aria-label="Close player"
+            title="Close player"
+          >
+            <X size={22} />
+          </button>
         ) : (
           <div style={styles.headerLabelWrap}>
-            <div style={styles.eyebrow}>Audiobook Player</div>
+            <div
+              style={
+                isDesktopModal
+                  ? {
+                      ...styles.eyebrow,
+                      ...styles.desktopModalEyebrow,
+                    }
+                  : styles.eyebrow
+              }
+            >
+              Audiobook Player
+            </div>
           </div>
         )}
 
-        <div
-          style={{
-            ...styles.headerActions,
-            alignSelf: "flex-start",
-            marginLeft: isMobile ? 0 : "auto",
-          }}
-        >
+        <div style={headerActionsStyle}>
           <div style={styles.mobileHeaderActionGroup}>
-            {isMobile && hasDescription ? (
+            {isDesktopModal && shouldRenderChapters ? (
+              <button
+                type="button"
+                onClick={() => setIsMobileChapterPickerOpen(true)}
+                disabled={!shouldRenderChapters}
+                style={desktopChapterTriggerButtonStyle}
+                aria-label="Open chapter list"
+                title="Open chapter list"
+              >
+                <List size={20} />
+              </button>
+            ) : null}
+            {(isMobile || isDesktopModal) && hasDescription ? (
               <button
                 type="button"
                 onClick={() => setIsDescriptionOpen(true)}
-                style={iconButtonStyle}
+                style={isDesktopModal ? plainDesktopIconButtonStyle : iconButtonStyle}
                 aria-label="About this book"
                 title="About this book"
               >
-                <CircleHelp size={18} />
+                <CircleHelp size={isDesktopModal ? 20 : 18} />
               </button>
             ) : null}
-            <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
-              <X size={18} />
-            </button>
+            {isDesktopModal ? null : (
+              <button type="button" onClick={onClosePlayer} style={iconButtonStyle} aria-label="Close player">
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -289,7 +460,7 @@ export default function AudiobookPlayer({
           </div>
         ) : (
           <div style={coverWrapStyle}>
-            <div style={styles.cover(book.coverGradient)}>
+            <div style={coverStyle}>
               <img
                 key={`${book.id}-${coverUrl}`}
                 src={coverUrl}
@@ -307,12 +478,21 @@ export default function AudiobookPlayer({
           {!isMobile ? (
             <div style={infoBlockStyle}>
               <h3 style={titleStyle}>{book.title}</h3>
-              <p style={metaStyle}>{buildMetadataLine(book, durationSeconds)}</p>
-              {hasDescription ? (
+              {isDesktopModal ? (
+                activeChapter ? (
+                  <div style={styles.desktopModalNowPlayingMeta}>
+                    <span style={styles.desktopModalNowPlayingLabel}>Chapter</span>
+                    <span style={styles.desktopModalNowPlayingValue}>{activeChapter.title}</span>
+                  </div>
+                ) : null
+              ) : (
+                <p style={metaStyle}>{buildMetadataLine(book, durationSeconds)}</p>
+              )}
+              {!isDesktopModal && hasDescription ? (
                 <button
                   type="button"
                   onClick={() => setIsDescriptionOpen(true)}
-                  style={styles.descriptionPillButton}
+                  style={descriptionButtonStyle}
                 >
                   Read description
                 </button>
@@ -320,9 +500,19 @@ export default function AudiobookPlayer({
             </div>
           ) : null}
 
-          <div style={styles.overallProgressBar} aria-label={`Overall book progress ${progressPercent.toFixed(0)}%`}>
+          <div style={overallProgressBarStyle} aria-label={`Overall book progress ${progressPercent.toFixed(0)}%`}>
             <div style={styles.overallProgressFill(progressPercent, book.accentColor)} />
           </div>
+
+          {!isMobile ? (
+            <div style={progressSummaryStyle}>
+              <span style={progressBadgeStyle}>{progressPercent.toFixed(0)}% complete</span>
+              <span style={progressRemainingStyle}>
+                {formatClock(currentProgressSeconds)} / {formatClock(durationSeconds)}
+                {savingProgress ? " · Saving progress" : ""}
+              </span>
+            </div>
+          ) : null}
 
           <div style={timelineWrapStyle}>
             <input
@@ -338,18 +528,18 @@ export default function AudiobookPlayer({
                 )
               }
               disabled={!hasPlayableAudio}
-              style={isMobile ? { ...styles.timeline, ...styles.mobileTimeline } : styles.timeline}
+              style={timelineStyle}
               className={isMobile ? "audiobook-mobile-timeline" : undefined}
             />
 
-            <div style={isMobile ? styles.mobileTimelineMeta : styles.timelineMeta}>
+            <div style={timelineMetaStyle}>
               <span>{formatClock(timelineValue)}</span>
               {!isMobile ? <span>{activeChapterProgressPercent.toFixed(1)}%</span> : null}
               <span>{formatClock(timelineMax)}</span>
             </div>
 
             {!hasPlayableAudio && (
-              <div style={styles.audioHint}>Audio source unavailable for this audiobook.</div>
+              <div style={audioHintStyle}>Audio source unavailable for this audiobook.</div>
             )}
           </div>
 
@@ -411,70 +601,143 @@ export default function AudiobookPlayer({
               </button>
             </div>
           ) : (
-            <div style={styles.controlsStack}>
+            <div style={isDesktopModal ? styles.desktopModalControlsStack : styles.controlsStack}>
               <div style={actionRowStyle}>
-                <button
-                  type="button"
-                  onClick={() => onSkipBy(-10)}
-                  disabled={!hasPlayableAudio}
-                  style={jumpControlButtonStyle}
-                  aria-label="Skip back 10 seconds"
-                  title="Skip back 10 seconds"
-                >
-                  <RotateCcw size={16} />
-                  -10 sec
-                </button>
+                {isDesktopModal ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSkipToPreviousChapter}
+                      disabled={!hasPlayableAudio || !canSkipToPreviousChapter}
+                      style={styles.desktopModalControlIconButton(!hasPlayableAudio || !canSkipToPreviousChapter)}
+                      aria-label="Go to previous chapter"
+                      title="Go to previous chapter"
+                    >
+                      <SkipBack size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSkipBy(-10)}
+                      disabled={!hasPlayableAudio}
+                      style={styles.desktopModalControlIconButton(!hasPlayableAudio)}
+                      aria-label="Skip back 10 seconds"
+                      title="Skip back 10 seconds"
+                    >
+                      <RotateCcw size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onTogglePlayback}
+                      disabled={!hasPlayableAudio}
+                      style={primaryButtonStyle}
+                      aria-label={playing ? "Pause audiobook" : "Play audiobook"}
+                      title={playing ? "Pause audiobook" : "Play audiobook"}
+                    >
+                      {playing ? <FilledPauseIcon size={35} /> : <FilledPlayIcon size={35} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSkipBy(10)}
+                      disabled={!hasPlayableAudio}
+                      style={styles.desktopModalControlIconButton(!hasPlayableAudio)}
+                      aria-label="Skip forward 10 seconds"
+                      title="Skip forward 10 seconds"
+                    >
+                      <RotateCw size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSkipToNextChapter}
+                      disabled={!hasPlayableAudio || !canSkipToNextChapter}
+                      style={styles.desktopModalControlIconButton(!hasPlayableAudio || !canSkipToNextChapter)}
+                      aria-label="Go to next chapter"
+                      title="Go to next chapter"
+                    >
+                      <SkipForward size={22} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onSkipBy(-10)}
+                      disabled={!hasPlayableAudio}
+                      style={jumpControlButtonStyle}
+                      aria-label="Skip back 10 seconds"
+                      title="Skip back 10 seconds"
+                    >
+                      <RotateCcw size={16} />
+                      -10 sec
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={onTogglePlayback}
-                  disabled={!hasPlayableAudio}
-                  style={primaryButtonStyle}
-                  aria-label={playing ? "Pause audiobook" : "Play audiobook"}
-                  title={playing ? "Pause audiobook" : "Play audiobook"}
-                >
-                  {playing ? <Pause size={18} /> : <Play size={18} />}
-                  {playing ? "Pause" : "Play"}
-                </button>
+                    <button
+                      type="button"
+                      onClick={onTogglePlayback}
+                      disabled={!hasPlayableAudio}
+                      style={primaryButtonStyle}
+                      aria-label={playing ? "Pause audiobook" : "Play audiobook"}
+                      title={playing ? "Pause audiobook" : "Play audiobook"}
+                    >
+                      {playing ? <Pause size={18} /> : <Play size={18} />}
+                      {playing ? "Pause" : "Play"}
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => onSkipBy(10)}
-                  disabled={!hasPlayableAudio}
-                  style={jumpControlButtonStyle}
-                  aria-label="Skip forward 10 seconds"
-                  title="Skip forward 10 seconds"
-                >
-                  <RotateCw size={16} />
-                  +10 sec
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => onSkipBy(10)}
+                      disabled={!hasPlayableAudio}
+                      style={jumpControlButtonStyle}
+                      aria-label="Skip forward 10 seconds"
+                      title="Skip forward 10 seconds"
+                    >
+                      <RotateCw size={16} />
+                      +10 sec
+                    </button>
+                  </>
+                )}
               </div>
 
-              <div style={styles.chapterActionRow(false)}>
-                <button
-                  type="button"
-                  onClick={handleSkipToPreviousChapter}
-                  disabled={!hasPlayableAudio || !canSkipToPreviousChapter}
-                  style={styles.chapterNavButton(!hasPlayableAudio || !canSkipToPreviousChapter, false)}
-                  aria-label="Go to previous chapter"
-                  title="Go to previous chapter"
-                >
-                  <SkipBack size={16} />
-                  Previous chapter
-                </button>
+              {isDesktopModal ? null : (
+                <div style={styles.chapterActionRow(false)}>
+                  <button
+                    type="button"
+                    onClick={handleSkipToPreviousChapter}
+                    disabled={!hasPlayableAudio || !canSkipToPreviousChapter}
+                    style={
+                      isDesktopModal
+                        ? {
+                            ...styles.chapterNavButton(!hasPlayableAudio || !canSkipToPreviousChapter, false),
+                            ...styles.desktopModalChapterNavButton(!hasPlayableAudio || !canSkipToPreviousChapter),
+                          }
+                        : styles.chapterNavButton(!hasPlayableAudio || !canSkipToPreviousChapter, false)
+                    }
+                    aria-label="Go to previous chapter"
+                    title="Go to previous chapter"
+                  >
+                    <SkipBack size={16} />
+                    Previous chapter
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleSkipToNextChapter}
-                  disabled={!hasPlayableAudio || !canSkipToNextChapter}
-                  style={styles.chapterNavButton(!hasPlayableAudio || !canSkipToNextChapter, false)}
-                  aria-label="Go to next chapter"
-                  title="Go to next chapter"
-                >
-                  Next chapter
-                  <SkipForward size={16} />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={handleSkipToNextChapter}
+                    disabled={!hasPlayableAudio || !canSkipToNextChapter}
+                    style={
+                      isDesktopModal
+                        ? {
+                            ...styles.chapterNavButton(!hasPlayableAudio || !canSkipToNextChapter, false),
+                            ...styles.desktopModalChapterNavButton(!hasPlayableAudio || !canSkipToNextChapter),
+                          }
+                        : styles.chapterNavButton(!hasPlayableAudio || !canSkipToNextChapter, false)
+                    }
+                    aria-label="Go to next chapter"
+                    title="Go to next chapter"
+                  >
+                    Next chapter
+                    <SkipForward size={16} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -504,7 +767,7 @@ export default function AudiobookPlayer({
                 </div>
               </div>
             </button>
-          ) : (
+          ) : isDesktopModal ? null : (
             <div style={chapterBlockStyle}>
               <div style={styles.chapterHeader}>
                 <div style={styles.chapterEyebrow}>Chapters</div>
@@ -523,10 +786,26 @@ export default function AudiobookPlayer({
                         key={chapter.id}
                         type="button"
                         onClick={() => onSeekTo(chapter.startSeconds)}
-                        style={styles.chapterButton(isActiveChapter)}
+                        style={
+                          isDesktopModal
+                            ? {
+                                ...styles.chapterButton(isActiveChapter),
+                                ...styles.desktopModalChapterButton(isActiveChapter),
+                              }
+                            : styles.chapterButton(isActiveChapter)
+                        }
                       >
                         <span style={styles.chapterTitle}>{chapter.title}</span>
-                        <span style={styles.chapterTime(isActiveChapter)}>
+                        <span
+                          style={
+                            isDesktopModal
+                              ? {
+                                  ...styles.chapterTime(isActiveChapter),
+                                  ...styles.desktopModalChapterTime(isActiveChapter),
+                                }
+                              : styles.chapterTime(isActiveChapter)
+                          }
+                        >
                           {formatClock(chapter.startSeconds)}
                         </span>
                       </button>
@@ -534,7 +813,16 @@ export default function AudiobookPlayer({
                   })}
                 </div>
               ) : (
-                <div style={styles.chapterEmptyState}>
+                <div
+                  style={
+                    isDesktopModal
+                      ? {
+                          ...styles.chapterEmptyState,
+                          ...styles.desktopModalChapterEmptyState,
+                        }
+                      : styles.chapterEmptyState
+                  }
+                >
                   Chapter markers are not available in the player yet.
                 </div>
               )}
@@ -544,9 +832,9 @@ export default function AudiobookPlayer({
       </div>
 
       <AnimatePresence>
-        {isMobile && isMobileChapterPickerOpen ? (
+        {(isMobile || isDesktopModal) && isMobileChapterPickerOpen ? (
           <motion.div
-            style={styles.mobileChapterOverlay}
+            style={isDesktopModal ? styles.desktopChapterOverlay : styles.mobileChapterOverlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -556,18 +844,21 @@ export default function AudiobookPlayer({
             <motion.div
               role="dialog"
               aria-modal="true"
-              aria-labelledby="audiobook-mobile-chapters-title"
-              style={styles.mobileChapterSheet}
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
+              aria-labelledby={isDesktopModal ? "audiobook-desktop-chapters-title" : "audiobook-mobile-chapters-title"}
+              style={isDesktopModal ? styles.desktopChapterSheet : styles.mobileChapterSheet}
+              initial={isDesktopModal ? { y: 16, opacity: 0, scale: 0.98 } : { y: "100%" }}
+              animate={isDesktopModal ? { y: 0, opacity: 1, scale: 1 } : { y: 0 }}
+              exit={isDesktopModal ? { y: 16, opacity: 0, scale: 0.98 } : { y: "100%" }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               onClick={(event) => event.stopPropagation()}
             >
-              <div style={styles.mobileChapterSheetHeader}>
-                <div style={styles.mobileChapterSheetHeaderCopy}>
-                  <div style={styles.mobileChapterSheetEyebrow}>Chapter Selector</div>
-                  <h4 id="audiobook-mobile-chapters-title" style={styles.mobileChapterSheetTitle}>
+              <div style={isDesktopModal ? styles.desktopChapterSheetHeader : styles.mobileChapterSheetHeader}>
+                <div style={isDesktopModal ? styles.desktopChapterSheetHeaderCopy : styles.mobileChapterSheetHeaderCopy}>
+                  <div style={isDesktopModal ? styles.desktopChapterSheetEyebrow : styles.mobileChapterSheetEyebrow}>Chapter Selector</div>
+                  <h4
+                    id={isDesktopModal ? "audiobook-desktop-chapters-title" : "audiobook-mobile-chapters-title"}
+                    style={isDesktopModal ? styles.desktopChapterSheetTitle : styles.mobileChapterSheetTitle}
+                  >
                     {book.title}
                   </h4>
                 </div>
@@ -575,43 +866,43 @@ export default function AudiobookPlayer({
                 <button
                   type="button"
                   onClick={() => setIsMobileChapterPickerOpen(false)}
-                  style={styles.mobileChapterCloseButton}
+                  style={isDesktopModal ? styles.desktopChapterCloseButton : styles.mobileChapterCloseButton}
                   aria-label="Close chapter list"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <div style={styles.mobileChapterSheetMeta}>
+              <div style={isDesktopModal ? styles.desktopChapterSheetMeta : styles.mobileChapterSheetMeta}>
                 <span>{shouldRenderChapters ? `${chapterCount} chapters` : "No chapters"}</span>
                 {activeChapter ? <span>Current: {activeChapter.title}</span> : null}
               </div>
 
               {shouldRenderChapters ? (
-                <div style={styles.mobileChapterSheetList}>
+                <div style={isDesktopModal ? styles.desktopChapterSheetList : styles.mobileChapterSheetList}>
                   {chapters.map((chapter, index) => {
                     const isActiveChapter = index === activeChapterIndex;
 
                     return (
-                    <button
-                      key={chapter.id}
-                      type="button"
-                      onClick={() => {
-                        onSeekTo(chapter.startSeconds);
-                        setIsMobileChapterPickerOpen(false);
-                      }}
-                      style={styles.mobileChapterSheetButton(isActiveChapter)}
-                    >
-                      <span style={styles.mobileChapterSheetTitleText}>{chapter.title}</span>
-                      <span style={styles.mobileChapterSheetTime(isActiveChapter)}>
-                        {formatClock(chapter.startSeconds)}
-                      </span>
-                    </button>
-                  );
+                      <button
+                        key={chapter.id}
+                        type="button"
+                        onClick={() => {
+                          onSeekTo(chapter.startSeconds);
+                          setIsMobileChapterPickerOpen(false);
+                        }}
+                        style={isDesktopModal ? styles.desktopChapterSheetButton(isActiveChapter) : styles.mobileChapterSheetButton(isActiveChapter)}
+                      >
+                        <span style={styles.mobileChapterSheetTitleText}>{chapter.title}</span>
+                        <span style={isDesktopModal ? styles.desktopChapterSheetTime(isActiveChapter) : styles.mobileChapterSheetTime(isActiveChapter)}>
+                          {formatClock(chapter.startSeconds)}
+                        </span>
+                      </button>
+                    );
                   })}
                 </div>
               ) : (
-                <div style={styles.mobileChapterEmptyState}>
+                <div style={isDesktopModal ? styles.desktopChapterEmptyState : styles.mobileChapterEmptyState}>
                   Chapter markers are not available in the player yet.
                 </div>
               )}
@@ -862,12 +1153,26 @@ const styles = {
     padding: "20px",
     boxShadow: "0 18px 40px rgba(15,23,42,0.08)",
   },
+  desktopModalShell: {
+    gap: "24px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.92) 100%)",
+    borderRadius: "30px",
+    padding: "28px 28px 70px 28px",
+    boxShadow: "0 32px 90px rgba(2, 6, 23, 0.42)",
+    color: "#f8fafc",
+  },
   playerHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: "12px",
     flexWrap: "wrap",
+  },
+  desktopModalHeader: {
+    alignItems: "center",
+    gap: "16px",
+    justifyContent: "space-between",
   },
   headerCopy: {
     minWidth: 0,
@@ -897,6 +1202,9 @@ const styles = {
     textTransform: "uppercase",
     color: "var(--app-text-muted)",
   },
+  desktopModalEyebrow: {
+    color: "rgba(226,232,240,0.68)",
+  },
   title: {
     margin: 0,
     fontSize: "26px",
@@ -905,11 +1213,19 @@ const styles = {
     letterSpacing: "-0.04em",
     color: "var(--app-text)",
   },
+  desktopModalTitle: {
+    fontSize: "32px",
+    lineHeight: 1.02,
+    color: "#f8fafc",
+  },
   meta: {
     margin: 0,
     fontSize: "13px",
     lineHeight: 1.5,
     color: "var(--app-text-soft)",
+  },
+  desktopModalMeta: {
+    color: "rgba(226,232,240,0.74)",
   },
   descriptionPillButton: {
     border: "1px solid var(--app-border)",
@@ -927,11 +1243,21 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
   },
+  desktopModalDescriptionPillButton: {
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f8fafc",
+    boxShadow: "none",
+  },
   headerActions: {
     display: "inline-flex",
     alignItems: "center",
     gap: "10px",
     flexShrink: 0,
+  },
+  desktopModalHeaderActions: {
+    marginLeft: "auto",
+    alignSelf: "center",
   },
   iconButton: (disabled) => ({
     width: "40px",
@@ -948,10 +1274,39 @@ const styles = {
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
     flexShrink: 0,
   }),
+  desktopModalIconButton: {
+    border: "none",
+    background: "transparent",
+    color: "#f8fafc",
+    boxShadow: "none",
+    width: "38px",
+    height: "38px",
+    borderRadius: "999px",
+  },
+  desktopModalPlainIconButton: (disabled) => ({
+    border: "none",
+    background: "transparent",
+    color: "#f8fafc",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "38px",
+    height: "38px",
+    padding: 0,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.38 : 0.92,
+    flexShrink: 0,
+  }),
   playerGrid: {
     display: "grid",
     gridTemplateColumns: "244px minmax(0, 1fr)",
     gap: "28px",
+  },
+  desktopModalPlayerGrid: {
+    gridTemplateColumns: "minmax(250px, 300px) minmax(320px, 420px)",
+    gap: "85px",
+    alignItems: "start",
+    justifyContent: "center",
   },
   mobileCoverCard: {
     width: "min(100%, 268px)",
@@ -1041,6 +1396,12 @@ const styles = {
   coverWrap: {
     width: "244px",
   },
+  desktopModalCoverWrap: {
+    width: "100%",
+    maxWidth: "300px",
+    padding: "6px",
+    boxSizing: "border-box",
+  },
   cover: (coverGradient) => ({
     position: "relative",
     borderRadius: "20px",
@@ -1049,6 +1410,11 @@ const styles = {
     aspectRatio: "1 / 1",
     boxShadow: "0 12px 28px rgba(15,23,42,0.12)",
   }),
+  desktopModalCover: {
+    borderRadius: "28px",
+    border: "none",
+    boxShadow: "0 24px 60px rgba(2, 6, 23, 0.28)",
+  },
   coverImage: {
     width: "100%",
     height: "100%",
@@ -1060,12 +1426,22 @@ const styles = {
     gap: "18px",
     alignContent: "start",
   },
+  desktopModalControlsColumn: {
+    gap: "18px",
+    width: "100%",
+    maxWidth: "420px",
+    justifySelf: "start",
+  },
   overallProgressBar: {
     height: "6px",
     borderRadius: "999px",
     background: "var(--app-progress-track)",
     border: "1px solid var(--app-border-soft)",
     overflow: "hidden",
+  },
+  desktopModalOverallProgressBar: {
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.12)",
   },
   overallProgressFill: (progressPercent, accentColor) => ({
     width: `${Math.max(0, Math.min(100, progressPercent || 0))}%`,
@@ -1078,6 +1454,10 @@ const styles = {
     gap: "10px",
     alignContent: "start",
     paddingTop: "2px",
+  },
+  desktopModalInfoBlock: {
+    gap: "12px",
+    paddingTop: 0,
   },
   descriptionModalOverlay: {
     position: "fixed",
@@ -1167,6 +1547,12 @@ const styles = {
     borderRadius: "18px",
     padding: "16px 18px",
   },
+  desktopModalTimelineWrap: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    gap: "8px",
+  },
   progressSummary: {
     display: "flex",
     justifyContent: "space-between",
@@ -1179,9 +1565,18 @@ const styles = {
     fontWeight: 700,
     color: "var(--app-text)",
   },
+  desktopModalProgressSummary: {
+    color: "rgba(226,232,240,0.82)",
+  },
+  desktopModalProgressBadge: {
+    color: "#f8fafc",
+  },
   progressRemaining: {
     fontSize: "12px",
     color: "var(--app-text-muted)",
+  },
+  desktopModalProgressRemaining: {
+    color: "rgba(226,232,240,0.68)",
   },
   timeline: {
     width: "100%",
@@ -1194,12 +1589,21 @@ const styles = {
     fontSize: "12px",
     color: "var(--app-text-faint)",
   },
+  desktopModalAudioHint: {
+    color: "rgba(226,232,240,0.62)",
+  },
   timelineMeta: {
     display: "flex",
     justifyContent: "space-between",
     gap: "10px",
     fontSize: "12px",
     color: "var(--app-text-muted)",
+  },
+  desktopModalTimeline: {
+    accentColor: "#f8fafc",
+  },
+  desktopModalTimelineMeta: {
+    color: "rgba(226,232,240,0.68)",
   },
   mobileTimelineMeta: {
     display: "flex",
@@ -1216,9 +1620,17 @@ const styles = {
     justifyContent: "center",
     flexWrap: "nowrap",
   },
+  desktopModalActionRow: {
+    justifyContent: "center",
+    gap: "28px",
+  },
   controlsStack: {
     display: "grid",
     gap: "12px",
+  },
+  desktopModalControlsStack: {
+    display: "grid",
+    gap: "14px",
   },
   primaryButton: (disabled) => ({
     border: "1px solid var(--app-border)",
@@ -1235,6 +1647,22 @@ const styles = {
     opacity: disabled ? 0.5 : 1,
     fontSize: "13px",
     fontWeight: 700,
+  }),
+  desktopModalPrimaryButton: (disabled) => ({
+    background: "#f8fafc",
+    color: "#0f172a",
+    borderRadius: "999px",
+    border: "none",
+    padding: 0,
+    width: "84px",
+    height: "84px",
+    minWidth: 0,
+    justifyContent: "center",
+    display: "inline-flex",
+    alignItems: "center",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    boxShadow: "0 14px 30px rgba(2, 6, 23, 0.22)",
   }),
   mobilePrimaryControlButton: (disabled) => ({
     border: "none",
@@ -1284,6 +1712,35 @@ const styles = {
     fontSize: "12px",
     fontWeight: 700,
   }),
+  desktopModalSecondaryControlButton: (disabled) => ({
+    border: "none",
+    background: "transparent",
+    color: "#f8fafc",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    width: "38px",
+    height: "38px",
+    padding: 0,
+    boxShadow: "none",
+    flexShrink: 0,
+  }),
+  desktopModalControlIconButton: (disabled) => ({
+    border: "none",
+    background: "transparent",
+    color: "#f8fafc",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "38px",
+    height: "38px",
+    padding: 0,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.35 : 0.92,
+    flexShrink: 0,
+  }),
   chapterActionRow: (mobile) => ({
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -1307,6 +1764,13 @@ const styles = {
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
     width: "100%",
   }),
+  desktopModalChapterNavButton: (disabled) => ({
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f8fafc",
+    boxShadow: "none",
+    opacity: disabled ? 0.5 : 1,
+  }),
   chapterBlock: {
     display: "grid",
     gap: "12px",
@@ -1314,6 +1778,13 @@ const styles = {
     background: "var(--app-surface-soft)",
     borderRadius: "18px",
     padding: "16px 18px",
+  },
+  desktopModalChapterBlock: {
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.05)",
+  },
+  desktopModalChapterList: {
+    maxHeight: "260px",
   },
   chapterHeader: {
     display: "flex",
@@ -1539,6 +2010,11 @@ const styles = {
     fontSize: "13px",
     lineHeight: 1.5,
   },
+  desktopModalChapterEmptyState: {
+    border: "1px dashed rgba(255,255,255,0.16)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(226,232,240,0.68)",
+  },
   chapterButton: (active) => ({
     border: active ? "1px solid var(--app-selected-border)" : "1px solid var(--app-border-soft)",
     background: active ? "var(--app-selected-surface)" : "var(--app-surface)",
@@ -1555,6 +2031,11 @@ const styles = {
     textAlign: "left",
     transition: "background 160ms ease, border-color 160ms ease, color 160ms ease",
   }),
+  desktopModalChapterButton: (active) => ({
+    border: active ? "1px solid rgba(248,250,252,0.9)" : "1px solid rgba(255,255,255,0.08)",
+    background: active ? "#f8fafc" : "rgba(255,255,255,0.04)",
+    color: active ? "#0f172a" : "#f8fafc",
+  }),
   chapterTitle: {
     minWidth: 0,
     overflow: "hidden",
@@ -1565,4 +2046,142 @@ const styles = {
     color: active ? "rgba(248, 250, 252, 0.82)" : "var(--app-text-muted)",
     flexShrink: 0,
   }),
+  desktopModalChapterTime: (active) => ({
+    color: active ? "rgba(15,23,42,0.72)" : "rgba(226,232,240,0.64)",
+  }),
+  desktopModalNowPlayingMeta: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: "8px",
+    textAlign: "left",
+    color: "rgba(226,232,240,0.68)",
+    flexWrap: "nowrap",
+    minWidth: 0,
+  },
+  desktopModalNowPlayingLabel: {
+    fontSize: "10px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    flexShrink: 0,
+  },
+  desktopModalNowPlayingValue: {
+    fontSize: "13px",
+    lineHeight: 1.4,
+    color: "#f8fafc",
+    maxWidth: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  desktopChapterOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 10002,
+    background: "rgba(2, 6, 23, 0.22)",
+    backdropFilter: "blur(6px)",
+    WebkitBackdropFilter: "blur(6px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "24px",
+  },
+  desktopChapterSheet: {
+    width: "min(100%, 520px)",
+    maxHeight: "min(70vh, 620px)",
+    display: "grid",
+    gridTemplateRows: "auto auto minmax(0, 1fr)",
+    gap: "14px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(15,23,42,0.94) 100%)",
+    borderRadius: "24px",
+    padding: "20px",
+    boxShadow: "0 30px 80px rgba(2, 6, 23, 0.4)",
+    color: "#f8fafc",
+  },
+  desktopChapterSheetHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "14px",
+  },
+  desktopChapterSheetHeaderCopy: {
+    display: "grid",
+    gap: "6px",
+    minWidth: 0,
+  },
+  desktopChapterSheetEyebrow: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "rgba(226, 232, 240, 0.68)",
+  },
+  desktopChapterSheetTitle: {
+    margin: 0,
+    fontSize: "20px",
+    fontWeight: 700,
+    lineHeight: 1.15,
+    letterSpacing: "-0.03em",
+    color: "#f8fafc",
+  },
+  desktopChapterCloseButton: {
+    border: "none",
+    background: "transparent",
+    color: "#f8fafc",
+    width: "38px",
+    height: "38px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+    padding: 0,
+  },
+  desktopChapterSheetMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+    fontSize: "12px",
+    color: "rgba(226, 232, 240, 0.74)",
+  },
+  desktopChapterSheetList: {
+    display: "grid",
+    gap: "10px",
+    overflowY: "auto",
+    paddingRight: "4px",
+  },
+  desktopChapterSheetButton: (active) => ({
+    border: active ? "1px solid rgba(255,255,255,0.18)" : "1px solid rgba(255,255,255,0.08)",
+    background: active ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.04)",
+    color: "#f8fafc",
+    borderRadius: "14px",
+    padding: "12px 14px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: 600,
+    textAlign: "left",
+    transition: "background 160ms ease, border-color 160ms ease, color 160ms ease",
+  }),
+  desktopChapterSheetTime: (active) => ({
+    color: active ? "rgba(248, 250, 252, 0.92)" : "rgba(226, 232, 240, 0.72)",
+    flexShrink: 0,
+    paddingTop: "1px",
+  }),
+  desktopChapterEmptyState: {
+    border: "1px dashed rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(226, 232, 240, 0.78)",
+    borderRadius: "14px",
+    padding: "14px 12px",
+    fontSize: "13px",
+    lineHeight: 1.5,
+  },
 };

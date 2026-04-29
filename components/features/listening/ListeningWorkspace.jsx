@@ -17,6 +17,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Ear,
+  RefreshCcw,
 } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
 import ListeningSourceToggle from "@/components/features/listening/ListeningSourceToggle";
@@ -47,6 +48,7 @@ export default function ListeningWorkspace({
   forceReconnectYoutube,
   resetYoutubeState,
   skipCurrentVideo,
+  onRefreshQueue,
   workspaceTab,
   setWorkspaceTab,
   youtubeVideoProgress = 0,
@@ -340,6 +342,24 @@ export default function ListeningWorkspace({
       >
         <LampDesk size={isMobile ? 18 : 12} />
         {!isMobile ? (focusMode ? "Exit Focus" : "Deep Focus") : null}
+      </button>
+      <button
+        type="button"
+        style={{
+          ...styles.miniActionButton("grey"),
+          minWidth: isMobile ? "56px" : "auto",
+          minHeight: isMobile ? "52px" : undefined,
+          justifyContent: "center",
+          padding: isMobile ? "0 16px" : styles.miniActionButton("grey").padding,
+          borderRadius: isMobile ? "14px" : styles.miniActionButton("grey").borderRadius,
+          flex: isMobile ? "1 1 0" : "0 0 auto",
+        }}
+        onClick={onRefreshQueue}
+        aria-label="Refresh queue"
+        title="Refresh queue"
+      >
+        <RefreshCcw size={isMobile ? 18 : 12} />
+        {!isMobile ? "Refresh queue" : null}
       </button>
     </div>
   );

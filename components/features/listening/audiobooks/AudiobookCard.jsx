@@ -1,15 +1,23 @@
 "use client";
 
-export default function AudiobookCard({ book, onSelect, compact = false, fullWidth = false }) {
+export default function AudiobookCard({
+  book,
+  onSelect,
+  compact = false,
+  fullWidth = false,
+  isMobile = false,
+}) {
   const progressPercent = Math.max(0, Math.min(100, book.progressPercent || 0));
   const useBareArtwork = compact && fullWidth;
   const isOverlayCard = compact && fullWidth;
+  const showArtworkTitle = !useBareArtwork && isMobile;
+  const showArtworkOverlay = showArtworkTitle;
 
   return (
     <button type="button" onClick={() => onSelect(book)} style={styles.card(compact, fullWidth)}>
-      <div style={styles.cover(book.coverImage, book.coverGradient, useBareArtwork)}>
-        {!useBareArtwork ? <div style={styles.coverGlow(book.accentColor)} /> : null}
-        {!useBareArtwork ? (
+      <div style={styles.cover(book.coverImage, book.coverGradient, useBareArtwork, showArtworkOverlay)}>
+        {showArtworkOverlay ? <div style={styles.coverGlow(book.accentColor)} /> : null}
+        {showArtworkTitle ? (
           <div style={styles.coverTextWrap}>
             <span style={styles.coverEyebrow}>Audiobook</span>
             <span style={styles.coverTitle}>{book.title}</span>
@@ -69,22 +77,22 @@ const styles = {
         ? "0 16px 34px rgba(15,23,42,0.16)"
         : "0 12px 28px rgba(15,23,42,0.08)",
   }),
-  cover: (coverImage, coverGradient, useBareArtwork) => ({
+  cover: (coverImage, coverGradient, useBareArtwork, showArtworkOverlay) => ({
     position: "relative",
     aspectRatio: "1 / 1",
     borderRadius: "16px",
     overflow: "hidden",
     background: coverGradient,
     backgroundImage: coverImage
-      ? useBareArtwork
+      ? useBareArtwork || !showArtworkOverlay
         ? `url("${coverImage}")`
         : `linear-gradient(180deg, rgba(15,23,42,0.08) 0%, rgba(15,23,42,0.28) 52%, rgba(15,23,42,0.8) 100%), url("${coverImage}")`
       : undefined,
     backgroundSize: "cover",
     backgroundPosition: "center",
-    padding: useBareArtwork ? 0 : "14px",
+    padding: showArtworkOverlay ? "14px" : 0,
     display: "flex",
-    alignItems: useBareArtwork ? "stretch" : "flex-end",
+    alignItems: showArtworkOverlay ? "flex-end" : "stretch",
   }),
   coverGlow: () => ({
     position: "absolute",

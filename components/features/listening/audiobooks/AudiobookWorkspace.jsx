@@ -64,6 +64,18 @@ export default function AudiobookWorkspace({
     showMobileMiniPlayer && isMiniChapterPickerOpen,
   );
   const showMobileLibraryOverlay = Boolean(isMobile && isLibraryOpen && hasMounted);
+  const showDesktopPlayerModal = Boolean(!isMobile && isPlayerOpen && currentBook && hasMounted);
+
+  const dismissDesktopPlayer = () => {
+    setIsPlayerOpen(false);
+    setIsPlayerMinimized(false);
+  };
+
+  const closeMobilePlayer = () => {
+    closePlayer();
+    setIsPlayerOpen(false);
+    setIsPlayerMinimized(false);
+  };
 
   useEffect(() => {
     if (!audiobookLaunchRequest?.id) {
@@ -98,7 +110,7 @@ export default function AudiobookWorkspace({
       audiobookLaunchHandledRef.current = audiobookLaunchRequest.id;
       loadBook(matchedBook, "loaded", "reading-current-book");
       setIsPlayerOpen(true);
-      setIsPlayerMinimized(true);
+      setIsPlayerMinimized(isMobile);
       onAudiobookLaunchResult?.({
         ok: true,
         requestId: audiobookLaunchRequest.id,
@@ -112,13 +124,19 @@ export default function AudiobookWorkspace({
     audiobookLaunchRequest,
     audiobooksLoading,
     books,
+    isMobile,
     loadBook,
     onAudiobookLaunchResult,
   ]);
 
   useEffect(() => {
     if (
-      (!showMobilePlayerOverlay && !showMobileLibraryOverlay && !showMobileMiniChapterPicker) ||
+      (
+        !showMobilePlayerOverlay &&
+        !showMobileLibraryOverlay &&
+        !showMobileMiniChapterPicker &&
+        !showDesktopPlayerModal
+      ) ||
       typeof document === "undefined"
     ) {
       return undefined;
@@ -150,7 +168,27 @@ export default function AudiobookWorkspace({
       document.body.style.width = previousBodyWidth;
       window.scrollTo(0, scrollY);
     };
-  }, [showMobileLibraryOverlay, showMobileMiniChapterPicker, showMobilePlayerOverlay]);
+  }, [
+    showDesktopPlayerModal,
+    showMobileLibraryOverlay,
+    showMobileMiniChapterPicker,
+    showMobilePlayerOverlay,
+  ]);
+
+  useEffect(() => {
+    if (!showDesktopPlayerModal || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        dismissDesktopPlayer();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showDesktopPlayerModal]);
 
   useEffect(() => {
     const nextSnapshot = {
@@ -211,64 +249,96 @@ export default function AudiobookWorkspace({
 
   return (
     <div style={styles.shell}>
-      {isPlayerOpen && currentBook && !isMobile ? (
-        <AudiobookPlayer
-          activeChapterIndex={activeChapterIndex}
-          book={currentBook}
-          chapters={chapters}
-          currentProgressSeconds={currentProgressSeconds}
-          durationSeconds={durationSeconds}
-          hasPlayableAudio={hasPlayableAudio}
+      <AudiobookCurrentlyListening
+        book={currentlyListeningBook}
+        isMobile={isMobile}
+        libraryCount={books.length}
+        onOpenLibrary={isMobile ? () => setIsLibraryOpen(true) : null}
+        onOpenPlayer={() => {
+          selectCurrentlyListening(isPlaying ? "playing" : "loaded");
+          setIsPlayerOpen(true);
+          setIsPlayerMinimized(false);
+        }}
+        onPlayNow={() => {
+          selectCurrentlyListening("playing");
+          setIsPlayerOpen(true);
+          setIsPlayerMinimized(false);
+        }}
+      />
+      {isMobile ? null : (
+        <AudiobookLibrary
+          books={books}
           isMobile={isMobile}
-          isPlaying={isPlaying}
-          playbackState={playbackState}
-          progressPercent={progressPercent}
-          onPlayFromStart={playFromStart}
-          onClosePlayer={() => {
-            closePlayer();
-            setIsPlayerOpen(false);
-            setIsPlayerMinimized(false);
-          }}
-          savingProgress={savingProgress}
-          onSeekTo={seekTo}
-          onSkipBy={skipBy}
-          onTogglePlayback={togglePlayback}
+          onSelect={(book) => loadBook(book, "loaded", "library")}
+          hint={
+            usingFetchedBooks
+              ? "Browse your audiobook library"
+              : audiobooksLoading
+                ? "Loading your audiobook shelf"
+                : audiobooksError
+                  ? "Showing fallback audiobooks for now"
+                  : undefined
+          }
         />
-      ) : (
-        <>
-          <AudiobookCurrentlyListening
-            book={currentlyListeningBook}
-            isMobile={isMobile}
-            libraryCount={books.length}
-            onOpenLibrary={isMobile ? () => setIsLibraryOpen(true) : null}
-            onOpenPlayer={() => {
-              selectCurrentlyListening("loaded");
-              setIsPlayerOpen(true);
-              setIsPlayerMinimized(false);
-            }}
-            onPlayNow={() => {
-              selectCurrentlyListening("playing");
-              setIsPlayerOpen(true);
-              setIsPlayerMinimized(false);
-            }}
-          />
-          {isMobile ? null : (
-            <AudiobookLibrary
-              books={books}
-              onSelect={(book) => loadBook(book, "loaded", "library")}
-              hint={
-                usingFetchedBooks
-                  ? "Browse your audiobook library"
-                  : audiobooksLoading
-                    ? "Loading your audiobook shelf"
-                    : audiobooksError
-                      ? "Showing fallback audiobooks for now"
-                      : undefined
-              }
-            />
-          )}
-        </>
       )}
+
+      {hasMounted &&
+        createPortal(
+          <AnimatePresence>
+            {showDesktopPlayerModal ? (
+              <motion.div
+                style={styles.desktopPlayerOverlay}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <motion.div
+                  style={styles.desktopPlayerBackdrop}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={dismissDesktopPlayer}
+                />
+                <div style={styles.desktopPlayerViewport}>
+                  <motion.div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={currentBook?.title ? `${currentBook.title} player` : "Audiobook player"}
+                    style={styles.desktopPlayerPanel}
+                    initial={{ y: 96, opacity: 0, scale: 0.98 }}
+                    animate={{ y: 0, opacity: 1, scale: 1 }}
+                    exit={{ y: 96, opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <AudiobookPlayer
+                      activeChapterIndex={activeChapterIndex}
+                      book={currentBook}
+                      chapters={chapters}
+                      currentProgressSeconds={currentProgressSeconds}
+                      durationSeconds={durationSeconds}
+                      hasPlayableAudio={hasPlayableAudio}
+                      isMobile={isMobile}
+                      isPlaying={isPlaying}
+                      playbackState={playbackState}
+                      progressPercent={progressPercent}
+                      onPlayFromStart={playFromStart}
+                      onClosePlayer={dismissDesktopPlayer}
+                      savingProgress={savingProgress}
+                      onSeekTo={seekTo}
+                      onSkipBy={skipBy}
+                      onTogglePlayback={togglePlayback}
+                      desktopVariant="modal"
+                    />
+                  </motion.div>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>,
+          document.body,
+        )}
 
       {hasMounted &&
         createPortal(
@@ -287,11 +357,7 @@ export default function AudiobookWorkspace({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  onClick={() => {
-                    closePlayer();
-                    setIsPlayerOpen(false);
-                    setIsPlayerMinimized(false);
-                  }}
+                  onClick={closeMobilePlayer}
                 />
                 <motion.div
                   style={styles.mobilePlayerSheet}
@@ -312,11 +378,7 @@ export default function AudiobookWorkspace({
                     playbackState={playbackState}
                     progressPercent={progressPercent}
                     onPlayFromStart={playFromStart}
-                    onClosePlayer={() => {
-                      closePlayer();
-                      setIsPlayerOpen(false);
-                      setIsPlayerMinimized(false);
-                    }}
+                    onClosePlayer={closeMobilePlayer}
                     onMinimizePlayer={() => setIsPlayerMinimized(true)}
                     savingProgress={savingProgress}
                     onSeekTo={seekTo}
@@ -341,9 +403,7 @@ export default function AudiobookWorkspace({
             playbackState={playbackState}
             progressPercent={progressPercent}
             onClose={() => {
-              closePlayer();
-              setIsPlayerOpen(false);
-              setIsPlayerMinimized(false);
+              closeMobilePlayer();
               setIsMiniChapterPickerOpen(false);
             }}
             onExpand={() => setIsPlayerMinimized(false)}
@@ -393,6 +453,7 @@ export default function AudiobookWorkspace({
 
               <AudiobookLibrary
                 books={books}
+                isMobile={isMobile}
                 onSelect={(book) => {
                   loadBook(book, "loaded", "library");
                   setIsLibraryOpen(false);
@@ -712,6 +773,36 @@ const styles = {
   shell: {
     display: "grid",
     gap: "18px",
+  },
+  desktopPlayerOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 10000,
+  },
+  desktopPlayerBackdrop: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(2, 6, 23, 0.7)",
+    backdropFilter: "blur(16px) saturate(1.02)",
+    WebkitBackdropFilter: "blur(16px) saturate(1.02)",
+  },
+  desktopPlayerViewport: {
+    position: "relative",
+    zIndex: 1,
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "32px",
+    boxSizing: "border-box",
+  },
+  desktopPlayerPanel: {
+    width: "min(100%, 980px)",
+    maxHeight: "min(88vh, 920px)",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    borderRadius: "32px",
   },
   mobilePlayerOverlay: {
     position: "fixed",
