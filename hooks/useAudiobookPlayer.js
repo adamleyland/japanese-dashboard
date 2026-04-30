@@ -656,6 +656,10 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     () => new Set(availableBooks.map((book) => book.id)),
     [availableBooks],
   );
+  const availableBookIdList = useMemo(
+    () => availableBooks.map((book) => book.id),
+    [availableBooks],
+  );
   const resolvedCurrentBookId = availableBookIds.has(currentBookId) ? currentBookId : null;
   const resolvedLastOpenedBookId = availableBookIds.has(lastOpenedBookId) ? lastOpenedBookId : null;
 
@@ -687,9 +691,11 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
   const currentBook = resolvedCurrentBookId
     ? books.find((book) => book.id === resolvedCurrentBookId) || null
     : null;
-
-  const currentProgressSeconds = currentBook?.progressSeconds || 0;
-  const durationSeconds = currentBook?.durationSeconds || 0;
+  const currentBookIdValue = currentBook?.id || null;
+  const currentBookProgressSeconds = currentBook?.progressSeconds || 0;
+  const currentBookDurationSeconds = currentBook?.durationSeconds || 0;
+  const currentProgressSeconds = currentBookProgressSeconds;
+  const durationSeconds = currentBookDurationSeconds;
   const progressPercent = currentBook?.progressPercent || 0;
 
   const currentlyListeningBook = activeBook
@@ -1106,7 +1112,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
           markCurrent,
           force,
         });
-        if (markCurrent) {
+        if (markCurrent && markedCurrentBookIdRef.current !== audiobookId) {
           await clearOtherCurrentAudiobooks(userId, audiobookId);
           markedCurrentBookIdRef.current = audiobookId;
           setServerCurrentBookId(audiobookId);
@@ -1159,7 +1165,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     const hydrateProgress = async () => {
       try {
-        const rows = await fetchUserAudiobookProgress(userId);
+        const rows = await fetchUserAudiobookProgress(userId, availableBookIdList);
         if (cancelled) {
           return;
         }
@@ -1253,7 +1259,11 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
         });
       } catch (error) {
         if (!cancelled) {
-          console.error("Failed to restore audiobook progress", error);
+          console.error("Failed to restore audiobook progress", {
+            userId,
+            availableAudiobookIds: availableBookIdList,
+            error: serializeError(error),
+          });
         }
       }
     };
@@ -1263,7 +1273,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     return () => {
       cancelled = true;
     };
-  }, [availableBookIds, userId]);
+    }, [availableBookIdList, availableBookIds, userId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1722,7 +1732,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
   useEffect(() => {
     const activeBook = currentBookRef.current;
-    if (!userId || !activeBook) {
+    if (!userId || !currentBookIdValue || !activeBook) {
       return;
     }
 
@@ -1733,10 +1743,10 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
       markCurrent: true,
       force: true,
     });
-  }, [currentBook?.id, persistProgress, userId]);
+  }, [currentBookIdValue, persistProgress, userId]);
 
   useEffect(() => {
-    if (!userId || playbackState !== "playing" || !currentBook) {
+    if (!userId || playbackState !== "playing" || !currentBookIdValue) {
       return;
     }
 
@@ -1762,21 +1772,28 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
     }, 15000);
 
     return () => window.clearInterval(timer);
-  }, [currentBook, persistProgress, playbackState, userId]);
+  }, [currentBookIdValue, persistProgress, playbackState, userId]);
 
   useEffect(() => {
-    if (!userId || playbackState === "playing" || !currentBook) {
+    if (!userId || playbackState === "playing" || !currentBookIdValue) {
       return;
     }
 
     void persistProgress({
-      audiobookId: currentBook.id,
-      progressSeconds: currentBook.progressSeconds,
-      durationSeconds: currentBook.durationSeconds,
+      audiobookId: currentBookIdValue,
+      progressSeconds: currentBookProgressSeconds,
+      durationSeconds: currentBookDurationSeconds,
       markCurrent: true,
       force: true,
     });
-  }, [currentBook, persistProgress, playbackState, userId]);
+  }, [
+    currentBookDurationSeconds,
+    currentBookIdValue,
+    currentBookProgressSeconds,
+    persistProgress,
+    playbackState,
+    userId,
+  ]);
 
   useEffect(
     () => () => {

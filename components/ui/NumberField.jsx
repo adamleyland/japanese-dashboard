@@ -33,14 +33,18 @@ const styles = {
   inputLabel: {
     fontSize: "11px",
     fontWeight: 700,
-    color: "#64748b",
+    color: "var(--app-text-muted)",
     textTransform: "uppercase",
+    letterSpacing: "0.08em",
   },
   input: (mobileOptimized) => ({
     padding: "10px",
-    borderRadius: "10px",
-    border: "1px solid rgba(0,0,0,0.1)",
-    background: "#fff",
+    borderRadius: "12px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface-strong)",
+    color: "var(--app-text)",
     fontSize: mobileOptimized ? "16px" : "14px",
+    boxSizing: "border-box",
+    outline: "none",
   }),
 };

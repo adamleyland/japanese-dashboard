@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutDashboard } from "lucide-react";
+import { useWebHaptics } from "web-haptics/react";
 import NavigationBar from "@/components/layout/NavigationBar";
 import CalendarPopover from "@/components/layout/CalendarPopover";
 
@@ -19,6 +20,7 @@ export default function TopNav({
 }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const calendarRef = useRef(null);
+  const triggerMobileNavHaptic = useMobileNavHaptics(isMobile);
   const mobileModuleTabs = moduleTabs.filter(
     (item) => item.key !== "shadowing" && item.key !== "writing",
   );
@@ -71,7 +73,13 @@ export default function TopNav({
             <div key={item.key} style={styles.mobileNavItemWrap}>
               <button
                 type="button"
-                onClick={() => onChange(item.key)}
+                onClick={() => {
+                  if (!isActive) {
+                    triggerMobileNavHaptic();
+                  }
+
+                  onChange(item.key);
+                }}
                 style={styles.moduleNavButton(isActive, true)}
                 aria-pressed={isActive}
                 aria-label={item.label}
@@ -133,6 +141,40 @@ export default function TopNav({
       <div style={styles.topNavRight}>{authControl}</div>
     </section>
   );
+}
+
+function useMobileNavHaptics(isMobile) {
+  const { trigger, isSupported } = useWebHaptics();
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(pointer: coarse)");
+    const updateMatch = () => {
+      setIsCoarsePointer(mediaQuery.matches);
+    };
+
+    updateMatch();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updateMatch);
+      return () => mediaQuery.removeEventListener("change", updateMatch);
+    }
+
+    mediaQuery.addListener(updateMatch);
+    return () => mediaQuery.removeListener(updateMatch);
+  }, []);
+
+  return useCallback(() => {
+    if (!isMobile || !isCoarsePointer || !isSupported) {
+      return;
+    }
+
+    void trigger("selection");
+  }, [isCoarsePointer, isMobile, isSupported, trigger]);
 }
 
 function formatTodayLabel(isCompact) {

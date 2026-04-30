@@ -13,7 +13,7 @@ import {
 import { fetchYouTubeAccountBundle } from "@/lib/youtubeServer";
 import { logYoutubeApiCall } from "@/lib/youtubeDiagnostics";
 
-const ACCOUNT_BUNDLE_CACHE_TTL_MS = 15 * 60 * 1000;
+const ACCOUNT_BUNDLE_CACHE_TTL_MS = 5 * 60 * 1000;
 const accountBundleCache = new Map();
 const inflightAccountBundleRequests = new Map();
 const OAUTH_COOKIE_REMOVAL_OPTIONS = {

@@ -3,6 +3,27 @@ import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+const AUDIOBOOK_SELECT_COLUMNS = [
+  "id",
+  "slug",
+  "title",
+  "author",
+  "narrator",
+  "description",
+  "cover_url",
+  "cover_source",
+  "audio_url",
+  "duration_seconds",
+  "language",
+  "source",
+  "created_at",
+  "updated_at",
+  "publisher",
+  "series",
+  "part",
+  "published_date",
+  "source_filename",
+].join(", ");
 
 function toSafeNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -36,7 +57,10 @@ export async function GET() {
     const supabase = getSupabaseAdminClient();
     const [{ data: audiobooks, error: audiobooksError }, { data: chapters, error: chaptersError }] =
       await Promise.all([
-        supabase.from("audiobooks").select("*").order("title", { ascending: true }),
+        supabase
+          .from("audiobooks")
+          .select(AUDIOBOOK_SELECT_COLUMNS)
+          .order("title", { ascending: true }),
         supabase
           .from("audiobook_chapters")
           .select("id, audiobook_id, chapter_index, title, start_seconds, end_seconds")

@@ -15,6 +15,18 @@ import {
 import { supabase } from "@/lib/supabase";
 
 const CAROUSEL_INTERVAL = 15000;
+const DICTIONARY_SEARCH_SELECT_COLUMNS = [
+  "id",
+  "term",
+  "reading",
+  "kanji",
+  "meaning",
+  "pos",
+  "jlpt_level",
+  "audio_url",
+  "is_common",
+  "tags",
+].join(",");
 
 export function PillSliderToggle({
   value,
@@ -241,7 +253,7 @@ export default function DictionaryCarousel({ styles: sharedStyles }) {
         return;
       }
 
-      let query = supabase.from("words").select("*, examples (*)");
+      let query = supabase.from("words").select(DICTIONARY_SEARCH_SELECT_COLUMNS);
 
       if (dictionaryInputMode === "ja") {
         query = query.or(

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
 import { getSafeAuthUser } from "@/lib/auth";
@@ -52,6 +52,9 @@ const MOBILE_SWIPE_AXIS_LOCK_DISTANCE = 14;
 const MOBILE_SWIPE_DISTANCE_RATIO = 0.18;
 const MOBILE_SWIPE_VELOCITY_THRESHOLD = 540;
 const MOBILE_SWIPE_EDGE_RESISTANCE = 0.18;
+const MOBILE_SWIPE_PANEL_SIDE_PADDING = 16;
+const MOBILE_SWIPE_PANEL_GAP = 12;
+const MOBILE_SWIPE_PANEL_VERTICAL_PADDING = 0;
 const MOBILE_SWIPE_TRANSITION = "left 280ms cubic-bezier(0.22, 1, 0.36, 1)";
 const MOBILE_SWIPE_REDUCED_TRANSITION = "left 120ms linear";
 const MOBILE_SWIPE_IGNORE_SELECTOR = [
@@ -73,6 +76,10 @@ const MOBILE_SWIPE_IGNORE_SELECTOR = [
   "[draggable='true']",
   "[data-swipe-ignore='true']",
 ].join(", ");
+
+function getMobileBottomInset(hasPinnedTracker) {
+  return hasPinnedTracker ? 236 : 136;
+}
 
 function mergeTrackingTotals(baseTotals, pendingTotals) {
   return {
@@ -102,6 +109,9 @@ function applyMobileSwipeEdgeResistance(distance) {
 
 export default function Home() {
   const [tab, setTab] = useState("listening");
+  const [mobileSwipeCenterTabKey, setMobileSwipeCenterTabKey] = useState(
+    () => MODULE_TABS.find(isMobileModuleTab)?.key || MODULE_TABS[0]?.key || "listening",
+  );
   const [listeningHours, setListeningHours] = useState(1030);
   const [shadowingHours, setShadowingHours] = useState(180);
   const [gamingHours, setGamingHours] = useState(280);
@@ -145,11 +155,14 @@ export default function Home() {
   const trackingSourceRef = useRef("bootstrap-default");
   const trackingReadStrategyRef = useRef("unknown");
   const trackingReconcileRequestRef = useRef(0);
+  const applyTrackingTotalsSnapshotRef = useRef(null);
+  const reconcileTrackingStateFromServerRef = useRef(null);
   const mobileSwipeViewportRef = useRef(null);
   const mobileSwipeTrackRef = useRef(null);
   const mobileSwipeSessionRef = useRef(null);
   const mobileSwipeOffsetRef = useRef(0);
   const mobileSwipeAnimatingRef = useRef(false);
+  const mobileSwipePendingRecenterRef = useRef(false);
   const mobileSwipeReleaseTimerRef = useRef(null);
   const [mobileSwipeWidth, setMobileSwipeWidth] = useState(0);
   const gamingData = useGamingData({
@@ -174,21 +187,36 @@ export default function Home() {
     () => MODULE_TABS.filter(isMobileModuleTab),
     [],
   );
-  const mobileSwipeTabIndex = useMemo(
-    () => mobileModuleTabs.findIndex((item) => item.key === tab),
+  const mobileSwipeIsSwipeableTab = useMemo(
+    () => mobileModuleTabs.some((item) => item.key === tab),
     [mobileModuleTabs, tab],
   );
-  const currentMobileSwipeTab = mobileSwipeTabIndex >= 0 ? mobileModuleTabs[mobileSwipeTabIndex] : null;
+  const mobileSwipeCenterIndex = useMemo(
+    () => mobileModuleTabs.findIndex((item) => item.key === mobileSwipeCenterTabKey),
+    [mobileModuleTabs, mobileSwipeCenterTabKey],
+  );
+  const currentMobileSwipeTab =
+    mobileSwipeCenterIndex >= 0 ? mobileModuleTabs[mobileSwipeCenterIndex] : null;
   const previousMobileSwipeTab =
-    mobileSwipeTabIndex > 0 ? mobileModuleTabs[mobileSwipeTabIndex - 1] : null;
+    mobileSwipeCenterIndex > 0 ? mobileModuleTabs[mobileSwipeCenterIndex - 1] : null;
   const nextMobileSwipeTab =
-    mobileSwipeTabIndex >= 0 && mobileSwipeTabIndex < mobileModuleTabs.length - 1
-      ? mobileModuleTabs[mobileSwipeTabIndex + 1]
+    mobileSwipeCenterIndex >= 0 && mobileSwipeCenterIndex < mobileModuleTabs.length - 1
+      ? mobileModuleTabs[mobileSwipeCenterIndex + 1]
       : null;
-  const mobileSwipeBaseOffset = mobileSwipeWidth > 0 ? -mobileSwipeWidth : 0;
+  const mobileSwipeBaseOffset =
+    mobileSwipeWidth > 0 ? -(mobileSwipeWidth + MOBILE_SWIPE_PANEL_GAP) : 0;
   const mobileSwipeTransitionValue = prefersReducedMotion
     ? MOBILE_SWIPE_REDUCED_TRANSITION
     : MOBILE_SWIPE_TRANSITION;
+  const mobileBottomInset = isMobile ? getMobileBottomInset(showDashboard) : 0;
+
+  useLayoutEffect(() => {
+    if (!isMobile || !mobileSwipeIsSwipeableTab || mobileSwipeAnimatingRef.current) {
+      return;
+    }
+
+    setMobileSwipeCenterTabKey((currentKey) => (currentKey === tab ? currentKey : tab));
+  }, [isMobile, mobileSwipeIsSwipeableTab, tab]);
 
   useEffect(() => {
     listeningHoursRef.current = listeningHours;
@@ -566,6 +594,14 @@ export default function Home() {
     [applyTrackingTotalsSnapshot, authUserId],
   );
 
+  useEffect(() => {
+    applyTrackingTotalsSnapshotRef.current = applyTrackingTotalsSnapshot;
+  }, [applyTrackingTotalsSnapshot]);
+
+  useEffect(() => {
+    reconcileTrackingStateFromServerRef.current = reconcileTrackingStateFromServer;
+  }, [reconcileTrackingStateFromServer]);
+
   const persistMetricDelta = useCallback(
     async ({ metric, delta, metadata = {}, previousValue, nextValue, ref, setValue }) => {
       if (!delta) {
@@ -892,6 +928,8 @@ export default function Home() {
             shadowingHours={shadowingHours}
             setShadowingHours={updateShadowingHours}
             isCompact={isCompact}
+            isMobile={isMobile}
+            authUserId={authUserId}
           />
         );
       }
@@ -952,6 +990,14 @@ export default function Home() {
     currentMobileSwipeTab?.key,
     nextMobileSwipeTab?.key,
   ].includes("listening");
+  const mobileSwipeSlots = useMemo(
+    () => [
+      { key: "previous", tabItem: previousMobileSwipeTab },
+      { key: "current", tabItem: currentMobileSwipeTab },
+      { key: "next", tabItem: nextMobileSwipeTab },
+    ],
+    [currentMobileSwipeTab, nextMobileSwipeTab, previousMobileSwipeTab],
+  );
 
   const clearMobileSwipeReleaseTimer = useCallback(() => {
     if (mobileSwipeReleaseTimerRef.current !== null) {
@@ -973,6 +1019,15 @@ export default function Home() {
       mobileSwipeTrackRef.current.style.left = `${nextOffset}px`;
     }
   }, []);
+
+  useLayoutEffect(() => {
+    if (!isMobile || !mobileSwipePendingRecenterRef.current) {
+      return;
+    }
+
+    setMobileSwipeTrackOffset(mobileSwipeBaseOffset);
+    mobileSwipePendingRecenterRef.current = false;
+  }, [isMobile, mobileSwipeBaseOffset, mobileSwipeCenterTabKey, setMobileSwipeTrackOffset]);
 
   const settleMobileSwipe = useCallback(
     (targetOffset, nextTabKey = null) => {
@@ -996,6 +1051,10 @@ export default function Home() {
         setMobileSwipeTrackTransition("none");
 
         if (nextTabKey) {
+          // Commit the new center first, then recenter in a layout effect so
+          // the old section never snaps back into the middle before paint.
+          mobileSwipePendingRecenterRef.current = true;
+          setMobileSwipeCenterTabKey(nextTabKey);
           setTab(nextTabKey);
           return;
         }
@@ -1025,7 +1084,13 @@ export default function Home() {
 
   const handleMobileSwipePointerDown = useCallback(
     (event) => {
-      if (!isMobile || mobileSwipeTabIndex < 0 || mobileSwipeWidth <= 0 || mobileSwipeAnimatingRef.current) {
+      if (
+        !isMobile ||
+        !mobileSwipeIsSwipeableTab ||
+        mobileSwipeCenterIndex < 0 ||
+        mobileSwipeWidth <= 0 ||
+        mobileSwipeAnimatingRef.current
+      ) {
         return;
       }
 
@@ -1049,7 +1114,8 @@ export default function Home() {
     [
       clearMobileSwipeReleaseTimer,
       isMobile,
-      mobileSwipeTabIndex,
+      mobileSwipeCenterIndex,
+      mobileSwipeIsSwipeableTab,
       mobileSwipeWidth,
       setMobileSwipeTrackTransition,
     ],
@@ -1106,7 +1172,9 @@ export default function Home() {
       session.lastX = event.clientX;
       session.lastTime = now;
 
-      const minOffset = nextMobileSwipeTab ? -mobileSwipeWidth * 2 : mobileSwipeBaseOffset;
+      const minOffset = nextMobileSwipeTab
+        ? -(mobileSwipeWidth * 2 + MOBILE_SWIPE_PANEL_GAP * 2)
+        : mobileSwipeBaseOffset;
       const maxOffset = previousMobileSwipeTab ? 0 : mobileSwipeBaseOffset;
       let nextOffset = mobileSwipeBaseOffset + deltaX;
 
@@ -1161,7 +1229,7 @@ export default function Home() {
             session.velocityX <= -MOBILE_SWIPE_VELOCITY_THRESHOLD)
         ) {
           nextTabKey = nextMobileSwipeTab.key;
-          targetOffset = -mobileSwipeWidth * 2;
+          targetOffset = -(mobileSwipeWidth * 2 + MOBILE_SWIPE_PANEL_GAP * 2);
         }
 
         settleMobileSwipe(targetOffset, nextTabKey);
@@ -1219,11 +1287,12 @@ export default function Home() {
   }, [isMobile]);
 
   useEffect(() => {
-    if (!isMobile || mobileSwipeWidth <= 0 || mobileSwipeTabIndex < 0) {
+    if (!isMobile || mobileSwipeWidth <= 0 || mobileSwipeCenterIndex < 0) {
       return;
     }
 
     mobileSwipeAnimatingRef.current = false;
+    mobileSwipePendingRecenterRef.current = false;
     mobileSwipeSessionRef.current = null;
     clearMobileSwipeReleaseTimer();
     setMobileSwipeTrackTransition("none");
@@ -1232,11 +1301,10 @@ export default function Home() {
     clearMobileSwipeReleaseTimer,
     isMobile,
     mobileSwipeBaseOffset,
-    mobileSwipeTabIndex,
+    mobileSwipeCenterIndex,
     mobileSwipeWidth,
     setMobileSwipeTrackOffset,
     setMobileSwipeTrackTransition,
-    tab,
   ]);
 
   useEffect(
@@ -1338,7 +1406,7 @@ export default function Home() {
       if (!authUserId) {
         const pendingTotals = getPendingTrackingTotals("");
         trackingReadStrategyRef.current = "local-pending";
-        applyTrackingTotalsSnapshot(pendingTotals, {
+        applyTrackingTotalsSnapshotRef.current?.(pendingTotals, {
           reason: "initial-load-no-auth",
           source: "local-pending",
           pendingTotals,
@@ -1347,7 +1415,7 @@ export default function Home() {
       }
 
       setTrackingHydrated(false);
-      await reconcileTrackingStateFromServer("initial-load-authenticated");
+      await reconcileTrackingStateFromServerRef.current?.("initial-load-authenticated");
       if (cancelled) {
         return;
       }
@@ -1358,7 +1426,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [applyTrackingTotalsSnapshot, authLoading, authUserId, reconcileTrackingStateFromServer]);
+  }, [authLoading, authUserId]);
 
   useEffect(() => {
     if (authLoading) {
@@ -1374,7 +1442,7 @@ export default function Home() {
       }
 
       if (authUserId && result.flushedCount > 0) {
-        await reconcileTrackingStateFromServer("pending-flush");
+        await reconcileTrackingStateFromServerRef.current?.("pending-flush");
       }
     };
 
@@ -1404,7 +1472,7 @@ export default function Home() {
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [authLoading, authUserId, reconcileTrackingStateFromServer, trackingHydrated]);
+  }, [authLoading, authUserId, trackingHydrated]);
 
   useEffect(() => {
     if (authLoading || !trackingHydrated) {
@@ -1523,8 +1591,10 @@ export default function Home() {
           </section>
         )}
 
-        <section style={styles.contentWrap}>
-          {isMobile && currentMobileSwipeTab ? (
+        <section
+          style={isMobile ? styles.contentWrapMobile(mobileBottomInset) : styles.contentWrap}
+        >
+          {isMobile && mobileSwipeIsSwipeableTab && currentMobileSwipeTab ? (
             <>
               <div
                 ref={mobileSwipeViewportRef}
@@ -1539,16 +1609,21 @@ export default function Home() {
                     ref={mobileSwipeTrackRef}
                     style={styles.mobileSwipeTrack(mobileSwipeWidth, mobileSwipeBaseOffset)}
                   >
-                    {[previousMobileSwipeTab, currentMobileSwipeTab, nextMobileSwipeTab].map((tabItem, index) => (
+                    {mobileSwipeSlots.map(({ key, tabItem }) => (
                       <div
-                        key={tabItem?.key || `mobile-swipe-slot-${index}`}
-                        aria-hidden={tabItem?.key !== tab}
+                        key={`mobile-swipe-slot-${key}`}
+                        aria-hidden={tabItem?.key !== currentMobileSwipeTab.key}
                         style={styles.mobileSwipePanel(
                           mobileSwipeWidth,
-                          tabItem?.key === tab,
+                          tabItem?.key === currentMobileSwipeTab.key,
+                          mobileBottomInset,
                         )}
                       >
-                        {tabItem ? renderModuleContent(tabItem.key) : null}
+                        {tabItem ? (
+                          <div key={tabItem.key}>
+                            {renderModuleContent(tabItem.key)}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -2268,28 +2343,49 @@ const styles = {
     textOverflow: "ellipsis",
   },
   contentWrap: { minWidth: 0, width: "100%" },
-  mobileSwipeViewport: {
-    width: "100%",
+  contentWrapMobile: (bottomInset) => ({
     minWidth: 0,
-    overflow: "hidden",
+    width: "100%",
+    marginBottom: `-${bottomInset}px`,
+  }),
+  mobileSwipeViewport: {
+    width: `calc(100% + ${MOBILE_SWIPE_PANEL_SIDE_PADDING * 2}px)`,
+    minWidth: 0,
+    overflowX: "hidden",
+    overflowY: "visible",
     position: "relative",
     touchAction: "pan-y",
+    marginLeft: `-${MOBILE_SWIPE_PANEL_SIDE_PADDING}px`,
+    marginRight: `-${MOBILE_SWIPE_PANEL_SIDE_PADDING}px`,
+    background: "transparent",
+    boxSizing: "border-box",
   },
   mobileSwipeTrack: (width, baseOffset) => ({
     display: "flex",
     alignItems: "flex-start",
-    width: width > 0 ? `${width * 3}px` : "300%",
+    gap: `${MOBILE_SWIPE_PANEL_GAP}px`,
+    width:
+      width > 0
+        ? `${width * 3 + MOBILE_SWIPE_PANEL_GAP * 2}px`
+        : `calc(300% + ${MOBILE_SWIPE_PANEL_GAP * 2}px)`,
     minWidth: 0,
     position: "relative",
     left: width > 0 ? `${baseOffset}px` : "0px",
     transition: "none",
     willChange: "left",
   }),
-  mobileSwipePanel: (width, active) => ({
+  mobileSwipePanel: (width, active, bottomInset) => ({
     flex: width > 0 ? `0 0 ${width}px` : "0 0 100%",
     width: width > 0 ? `${width}px` : "100%",
     minWidth: 0,
+    boxSizing: "border-box",
+    paddingLeft: `${MOBILE_SWIPE_PANEL_SIDE_PADDING}px`,
+    paddingRight: `${MOBILE_SWIPE_PANEL_SIDE_PADDING}px`,
+    paddingTop: `${MOBILE_SWIPE_PANEL_VERTICAL_PADDING}px`,
+    paddingBottom: `${bottomInset + MOBILE_SWIPE_PANEL_VERTICAL_PADDING}px`,
+    background: "transparent",
     pointerEvents: active ? "auto" : "none",
+    overflow: "visible",
   }),
   hiddenKeepAlive: {
     display: "none",

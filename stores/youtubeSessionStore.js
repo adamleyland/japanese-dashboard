@@ -50,7 +50,7 @@ const DISCOVER_CACHE_STORAGE_KEY = "jp_youtube_discover_cache_v1";
 const DISCOVER_QUOTA_COOLDOWN_STORAGE_KEY = "jp_youtube_discover_quota_cooldown_v1";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
 const YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY = "jp_youtube_recent_video_ids_v1";
-const ACCOUNT_DATA_TTL_MS = 30 * 60 * 1000;
+const ACCOUNT_DATA_TTL_MS = 5 * 60 * 1000;
 const AUTO_BOOTSTRAP_DEDUPE_WINDOW_MS = 10 * 1000;
 const AUTO_BOOTSTRAP_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
 const AUTH_RESUME_CHECK_COOLDOWN_MS = 60 * 1000;
@@ -1909,10 +1909,19 @@ export function YoutubeSessionProvider({ children }) {
       }
 
       lastAuthResumeCheckRef.current = now;
-      const authState = await readFreshSupabaseAuthState();
-      const nextUserId = authState.user?.id || "";
       const currentState = stateRef.current;
       const hasConnectIntent = hasYoutubeConnectIntent();
+
+      if (!hasConnectIntent && hasFreshAccountData(currentState)) {
+        console.info("[YouTube] Skipping auth resume check while cached account data is still fresh", {
+          triggerReason,
+          lastSyncedAt: currentState.lastSyncedAt,
+        });
+        return;
+      }
+
+      const authState = await readFreshSupabaseAuthState();
+      const nextUserId = authState.user?.id || "";
 
       console.info("[YouTube] Auth resume diagnostics", {
         triggerReason,
