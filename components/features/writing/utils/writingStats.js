@@ -1,5 +1,5 @@
 const WORDS_PER_CHARACTER = 0.5;
-const WORDS_PER_MINUTE = 30;
+const WORDS_PER_MINUTE = 75;
 
 export function countWritingCharacters(value = "") {
   return String(value).replace(/\s+/g, "").length;
