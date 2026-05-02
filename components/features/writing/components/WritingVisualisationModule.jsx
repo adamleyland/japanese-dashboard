@@ -53,10 +53,7 @@ export default function WritingVisualisationModule({ styles, isMobile = false, s
       <div style={localStyles.chartCard}>
         <div style={localStyles.chartHeader}>
           <div style={localStyles.chartTitle}>Last 7 days</div>
-          <div style={localStyles.chartSub}>
-            {formatWritingCount(summary.todayEstimatedWords)} words today,{" "}
-            {formatWritingCount(summary.weekEstimatedWords)} words this week
-          </div>
+          <div style={localStyles.chartSub}>{formatWritingCount(summary.weekEstimatedWords)} words this week</div>
         </div>
 
         <div style={localStyles.barGrid(isMobile)}>

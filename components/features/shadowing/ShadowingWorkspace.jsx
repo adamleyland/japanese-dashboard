@@ -238,6 +238,7 @@ export default function ShadowingWorkspace({
   const audioRef = useRef(null);
   const vocabularyAudioRef = useRef(null);
   const fileInputRef = useRef(null);
+  const skipNextGoalPersistRef = useRef(false);
   const playbackRef = useRef({
     phase: "idle",
     timeoutId: null,
@@ -1051,6 +1052,7 @@ export default function ShadowingWorkspace({
     setSelectedDeckId(readStoredDeckId(authUserId));
     setVocabularyOpen(readStoredBoolean(SHADOWING_STORAGE_KEYS.vocabularyOpen, authUserId, false));
     setGoalHours(readStoredGoal(authUserId));
+    setGoalHydrated(false);
     setTotalReps(readStoredTotalReps(authUserId));
     setDeckCardsById({});
     setDeckCardsLoadedById({});
@@ -1142,6 +1144,7 @@ export default function ShadowingWorkspace({
 
   useEffect(() => {
     if (!authUserId) {
+      skipNextGoalPersistRef.current = false;
       setGoalHydrated(true);
       return;
     }
@@ -1155,7 +1158,10 @@ export default function ShadowingWorkspace({
       }
 
       if (profileGoal) {
+        skipNextGoalPersistRef.current = true;
         setGoalHours(profileGoal);
+      } else {
+        skipNextGoalPersistRef.current = false;
       }
 
       setGoalHydrated(true);
@@ -1168,6 +1174,11 @@ export default function ShadowingWorkspace({
 
   useEffect(() => {
     if (!goalHydrated || !authUserId) {
+      return;
+    }
+
+    if (skipNextGoalPersistRef.current) {
+      skipNextGoalPersistRef.current = false;
       return;
     }
 

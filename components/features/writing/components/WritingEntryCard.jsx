@@ -28,8 +28,8 @@ const localStyles = {
   card: (active) => ({
     width: "100%",
     textAlign: "left",
-    padding: "14px",
-    borderRadius: "18px",
+    padding: "10px 12px",
+    borderRadius: "16px",
     border: active
       ? "1px solid rgba(16,185,129,0.22)"
       : "1px solid var(--app-border-soft)",
@@ -37,19 +37,19 @@ const localStyles = {
       ? "linear-gradient(180deg, rgba(16,185,129,0.12) 0%, var(--app-surface-elevated) 100%)"
       : "var(--app-surface-elevated)",
     display: "grid",
-    gap: "10px",
+    gap: "6px",
     cursor: "pointer",
     minWidth: 0,
-    boxShadow: active ? "0 14px 28px rgba(5,150,105,0.12)" : "none",
+    boxShadow: active ? "0 10px 20px rgba(5,150,105,0.1)" : "none",
   }),
   topRow: {
     display: "flex",
     justifyContent: "space-between",
-    gap: "12px",
+    gap: "10px",
     alignItems: "flex-start",
   },
   title: {
-    fontSize: "15px",
+    fontSize: "14px",
     fontWeight: 700,
     color: "var(--app-text)",
     whiteSpace: "nowrap",
@@ -57,16 +57,16 @@ const localStyles = {
     textOverflow: "ellipsis",
   },
   date: {
-    marginTop: "4px",
-    fontSize: "12px",
+    marginTop: "2px",
+    fontSize: "11px",
     color: "var(--app-text-muted)",
   },
   preview: {
-    fontSize: "13px",
+    fontSize: "12px",
     color: "var(--app-text-soft)",
-    lineHeight: 1.55,
+    lineHeight: 1.45,
     display: "-webkit-box",
-    WebkitLineClamp: 3,
+    WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
   },

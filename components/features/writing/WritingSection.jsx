@@ -14,6 +14,7 @@ import {
 import {
   createWritingEntryId,
   deleteWritingEntry,
+  readWritingEntry,
   readWritingEntries,
   persistWritingEntry,
   removeWritingEntry,
@@ -23,6 +24,7 @@ import {
 export default function WritingSection({
   styles,
   setWordsWritten,
+  onWritingTotalsRefresh,
   isCompact = false,
   isMobile = false,
   authUserId = "",
@@ -113,7 +115,7 @@ export default function WritingSection({
   );
 
   const handleSelectEntry = useCallback(
-    (entry) => {
+    async (entry) => {
       if (entry.id === selectedEntryId) {
         setSelectedEntryId(null);
         setEntryBody("");
@@ -123,9 +125,25 @@ export default function WritingSection({
 
       setSelectedEntryId(entry.id);
       setEntryBody(entry.body || "");
+
+      if (entry.body) {
+        setStatusMessage("Loaded entry into the editor.");
+        return;
+      }
+
+      setStatusMessage("Loading entry...");
+
+      const { entry: fullEntry, error } = await readWritingEntry(entry.id, authUserId);
+      if (error || !fullEntry) {
+        setStatusMessage(error?.message || "Failed to load writing entry.");
+        return;
+      }
+
+      setEntries((currentEntries) => upsertWritingEntry(currentEntries, fullEntry));
+      setEntryBody(fullEntry.body || "");
       setStatusMessage("Loaded entry into the editor.");
     },
-    [selectedEntryId],
+    [authUserId, selectedEntryId],
   );
 
   const handleNewEntry = useCallback(() => {
@@ -181,6 +199,7 @@ export default function WritingSection({
     setEntries(nextEntries);
     setSelectedEntryId(persistedEntry.id);
     setStatusMessage(existingEntry ? "Entry updated." : "Entry saved.");
+    onWritingTotalsRefresh?.();
 
     if (metricDelta) {
       setWordsWritten?.(
@@ -192,7 +211,7 @@ export default function WritingSection({
         },
       );
     }
-  }, [authUserId, entries, entryBody, selectedEntryId, setWordsWritten]);
+  }, [authUserId, entries, entryBody, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
 
   const handleDeleteEntry = useCallback(async () => {
     if (!selectedEntry) {
@@ -220,6 +239,7 @@ export default function WritingSection({
     setSelectedEntryId(null);
     setEntryBody("");
     setStatusMessage("Entry deleted.");
+    onWritingTotalsRefresh?.();
 
     if (selectedEntry.estimatedWords) {
       setWordsWritten?.(
@@ -231,7 +251,7 @@ export default function WritingSection({
         },
       );
     }
-  }, [authUserId, selectedEntry, setWordsWritten]);
+  }, [authUserId, onWritingTotalsRefresh, selectedEntry, setWordsWritten]);
 
   return (
     <div

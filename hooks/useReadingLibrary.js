@@ -13,9 +13,13 @@ import {
 } from "@/lib/reading/normalizers";
 
 export default function useReadingLibrary(options = {}) {
-  const { authResolved = true, tableName = DEFAULT_READING_LIBRARY_TABLE } = options;
+  const {
+    authResolved = true,
+    enabled = true,
+    tableName = DEFAULT_READING_LIBRARY_TABLE,
+  } = options;
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(enabled && authResolved));
   const [error, setError] = useState(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [statusUpdatingIds, setStatusUpdatingIds] = useState({});
@@ -98,6 +102,10 @@ export default function useReadingLibrary(options = {}) {
   );
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     if (!authResolved) {
       return;
     }
@@ -133,11 +141,11 @@ export default function useReadingLibrary(options = {}) {
     return () => {
       isActive = false;
     };
-  }, [authResolved, refreshToken, tableName]);
+  }, [authResolved, enabled, refreshToken, tableName]);
 
   return {
     items,
-    loading,
+    loading: enabled ? loading : false,
     error,
     refresh,
     updateStatus,

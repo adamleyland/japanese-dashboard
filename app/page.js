@@ -29,6 +29,7 @@ import useGamingData from "@/hooks/useGamingData";
 import useGamingTotals from "@/hooks/useGamingTotals";
 import useReadingLibrary from "@/hooks/useReadingLibrary";
 import useLingQStats from "@/hooks/useLingQStats";
+import useWritingTotals from "@/hooks/useWritingTotals";
 import { estimateWritingHours } from "@/components/features/writing/utils/writingStats";
 
 
@@ -134,7 +135,7 @@ export default function Home() {
   const [trackingHydrated, setTrackingHydrated] = useState(false);
   const [audiobooksData, setAudiobooksData] = useState([]);
   const [audiobooksError, setAudiobooksError] = useState(null);
-  const [audiobooksLoading, setAudiobooksLoading] = useState(true);
+  const [audiobooksLoading, setAudiobooksLoading] = useState(false);
   const [audiobookPlaybackSnapshot, setAudiobookPlaybackSnapshot] = useState({
     bookId: null,
     isPlaying: false,
@@ -165,12 +166,18 @@ export default function Home() {
   const mobileSwipeAnimatingRef = useRef(false);
   const mobileSwipePendingRecenterRef = useRef(false);
   const mobileSwipeReleaseTimerRef = useRef(null);
+  const audiobooksRequestedRef = useRef(false);
   const [mobileSwipeWidth, setMobileSwipeWidth] = useState(0);
   const gamingData = useGamingData({
     authUserId,
     authResolved: !authLoading,
   });
   const readingLibrary = useReadingLibrary({
+    authUserId,
+    authResolved: !authLoading,
+    enabled: tab === "reading",
+  });
+  const writingTotals = useWritingTotals({
     authUserId,
     authResolved: !authLoading,
   });
@@ -373,6 +380,50 @@ export default function Home() {
     gamingTotalMinutes,
   ]);
 
+  const resolveWritingMetricSource = useCallback(() => {
+    const rawResult = {
+      totalWords: writingTotals.totalWords,
+      loading: writingTotals.loading,
+      error: writingTotals.error,
+    };
+
+    console.info("[Dashboard Totals] Raw writing source loader result", rawResult);
+
+    if (isFiniteNumber(writingTotals.totalWords)) {
+      return {
+        value: writingTotals.totalWords,
+        source: "writing-entries",
+        reason: "computed-from-writing-entries",
+        rawResult,
+      };
+    }
+
+    if (writingTotals.loading) {
+      return {
+        value: wordsWrittenRef.current,
+        source: "retain-current",
+        reason: "writing-entries-loading",
+        rawResult,
+      };
+    }
+
+    if (writingTotals.error) {
+      return {
+        value: wordsWrittenRef.current,
+        source: "retain-current",
+        reason: `writing-entries-error:${writingTotals.error}`,
+        rawResult,
+      };
+    }
+
+    return {
+      value: 0,
+      source: "default-zero",
+      reason: "writing-entries-missing",
+      rawResult,
+    };
+  }, [writingTotals.error, writingTotals.loading, writingTotals.totalWords]);
+
   const applyResolvedMetricValue = useCallback((metric, nextValue, sourceDetails = {}) => {
     const metricRefs = {
       reading: wordsReadRef,
@@ -446,11 +497,18 @@ export default function Home() {
             source,
             reason: "using-tracking-gaming-total-without-auth",
           };
+      const writingResolution = authUserId
+        ? resolveWritingMetricSource()
+        : {
+            value: normalizedTotals.writing,
+            source,
+            reason: "using-tracking-writing-total-without-auth",
+          };
       const finalTotals = {
         listening: normalizedTotals.listening,
         reading: readingResolution.value,
         shadowing: normalizedTotals.shadowing,
-        writing: normalizedTotals.writing,
+        writing: writingResolution.value,
         gaming: gamingResolution.value,
       };
       const previousListening = listeningHoursRef.current;
@@ -476,6 +534,7 @@ export default function Home() {
         source,
         trackingTotals: normalizedTotals,
         readingResolution,
+        writingResolution,
         gamingResolution,
         finalTotals,
       });
@@ -491,6 +550,13 @@ export default function Home() {
         console.warn("[Dashboard Totals] Gaming defaulted to zero", {
           reason: gamingResolution.reason,
           rawResult: gamingResolution.rawResult,
+        });
+      }
+
+      if (writingResolution.source === "default-zero") {
+        console.warn("[Dashboard Totals] Writing defaulted to zero", {
+          reason: writingResolution.reason,
+          rawResult: writingResolution.rawResult,
         });
       }
 
@@ -518,7 +584,7 @@ export default function Home() {
       setWordsWritten(finalTotals.writing);
       setTrackingHydrated(true);
     },
-    [authUserId, resolveGamingMetricSource, resolveReadingMetricSource],
+    [authUserId, resolveGamingMetricSource, resolveReadingMetricSource, resolveWritingMetricSource],
   );
 
   const reconcileTrackingStateFromServer = useCallback(
@@ -950,6 +1016,7 @@ export default function Home() {
             key={authUserId || "guest-writing"}
             styles={styles}
             setWordsWritten={updateWordsWritten}
+            onWritingTotalsRefresh={writingTotals.refresh}
             isCompact={isCompact}
             isMobile={isMobile}
             authUserId={authUserId}
@@ -993,6 +1060,7 @@ export default function Home() {
       shadowingHours,
       updateShadowingHours,
       updateWordsWritten,
+      writingTotals.refresh,
       wordsRead,
     ],
   );
@@ -1378,7 +1446,12 @@ export default function Home() {
   }, [authUser]);
 
   useEffect(() => {
+    if (!shouldKeepListeningTabMounted || audiobooksRequestedRef.current) {
+      return;
+    }
+
     const fetchAudiobooks = async () => {
+      audiobooksRequestedRef.current = true;
       setAudiobooksLoading(true);
       try {
         const response = await fetch("/api/audiobooks", {
@@ -1403,8 +1476,8 @@ export default function Home() {
       }
     };
 
-    fetchAudiobooks();
-  }, []);
+    void fetchAudiobooks();
+  }, [shouldKeepListeningTabMounted]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1519,6 +1592,23 @@ export default function Home() {
     lingqStats.totalWordsRead,
     resolveReadingMetricSource,
     trackingHydrated,
+  ]);
+
+  useEffect(() => {
+    if (authLoading || !trackingHydrated) {
+      return;
+    }
+
+    const writingResolution = resolveWritingMetricSource();
+    applyResolvedMetricValue("writing", writingResolution.value, writingResolution);
+  }, [
+    applyResolvedMetricValue,
+    authLoading,
+    resolveWritingMetricSource,
+    trackingHydrated,
+    writingTotals.error,
+    writingTotals.loading,
+    writingTotals.totalWords,
   ]);
 
   return (

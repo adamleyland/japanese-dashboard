@@ -2,7 +2,19 @@ import { supabase } from "@/lib/supabase";
 
 const WRITING_TABLE = "writing_entries";
 const WRITING_CACHE_STORAGE_KEY = "jp_writing_entries_cache_v1";
-const WRITING_SELECT_COLUMNS = [
+const WRITING_LIST_SELECT_COLUMNS = [
+  "id",
+  "user_id",
+  "title",
+  "preview",
+  "character_count",
+  "estimated_words",
+  "estimated_minutes",
+  "entry_local_date",
+  "created_at",
+  "updated_at",
+].join(", ");
+const WRITING_ENTRY_SELECT_COLUMNS = [
   "id",
   "user_id",
   "title",
@@ -124,14 +136,14 @@ export async function readWritingEntries(userId = "") {
     };
   }
 
+  const cachedEntries = readCachedWritingEntries(userId);
   const { data, error } = await supabase
     .from(WRITING_TABLE)
-    .select(WRITING_SELECT_COLUMNS)
+    .select(WRITING_LIST_SELECT_COLUMNS)
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
 
   if (error) {
-    const cachedEntries = readCachedWritingEntries(userId);
     return {
       entries: cachedEntries,
       fromCache: cachedEntries.length > 0,
@@ -139,12 +151,48 @@ export async function readWritingEntries(userId = "") {
     };
   }
 
-  const entries = normalizeWritingEntries(data || []);
+  const cachedEntriesById = new Map(cachedEntries.map((entry) => [entry.id, entry]));
+  const entries = normalizeWritingEntries(data || []).map((entry) => ({
+    ...entry,
+    body: cachedEntriesById.get(entry.id)?.body || "",
+  }));
   writeCachedWritingEntries(entries, userId);
 
   return {
     entries,
     fromCache: false,
+    error: null,
+  };
+}
+
+export async function readWritingEntry(entryId, userId = "") {
+  if (!userId || !entryId) {
+    return {
+      entry: null,
+      error: new Error("Sign in to load writing entries."),
+    };
+  }
+
+  const { data, error } = await supabase
+    .from(WRITING_TABLE)
+    .select(WRITING_ENTRY_SELECT_COLUMNS)
+    .eq("id", entryId)
+    .eq("user_id", userId)
+    .single();
+
+  if (error) {
+    return {
+      entry: null,
+      error,
+    };
+  }
+
+  const normalizedEntry = normalizeWritingEntry(data);
+  const nextEntries = upsertWritingEntry(readCachedWritingEntries(userId), normalizedEntry);
+  writeCachedWritingEntries(nextEntries, userId);
+
+  return {
+    entry: normalizedEntry,
     error: null,
   };
 }
@@ -164,7 +212,7 @@ export async function persistWritingEntry(entry, userId = "", mode = "insert") {
       ? baseQuery.update(payload).eq("id", payload.id).eq("user_id", userId)
       : baseQuery.insert(payload);
 
-  const { data, error } = await query.select(WRITING_SELECT_COLUMNS).single();
+  const { data, error } = await query.select(WRITING_ENTRY_SELECT_COLUMNS).single();
 
   if (error) {
     return {

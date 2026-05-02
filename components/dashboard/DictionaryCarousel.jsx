@@ -201,6 +201,7 @@ export default function DictionaryCarousel({ styles: sharedStyles }) {
   const startTimeRef = useRef(0);
   const modeRef = useRef(mode);
   const carouselLengthRef = useRef(carouselEntries.length);
+  const searchCacheRef = useRef(new Map());
 
   const playAudio = (url) => {
     if (!url) return;
@@ -248,8 +249,19 @@ export default function DictionaryCarousel({ styles: sharedStyles }) {
 
   useEffect(() => {
     const search = async () => {
+      if (mode !== "dictionary") {
+        return;
+      }
+
       if (!dictionaryValue.trim()) {
         setSearchResults([]);
+        return;
+      }
+
+      const cacheKey = `${dictionaryInputMode}:${dictionaryValue.trim().toLowerCase()}`;
+      const cachedResults = searchCacheRef.current.get(cacheKey);
+      if (cachedResults) {
+        setSearchResults(cachedResults);
         return;
       }
 
@@ -281,12 +293,13 @@ export default function DictionaryCarousel({ styles: sharedStyles }) {
         .slice(0, 10)
         .map(({ entry }) => entry);
 
+      searchCacheRef.current.set(cacheKey, ranked);
       setSearchResults(ranked);
     };
 
     const timer = setTimeout(search, 300);
     return () => clearTimeout(timer);
-  }, [dictionaryValue, dictionaryInputMode]);
+  }, [dictionaryInputMode, dictionaryValue, mode]);
 
   const toggleCarousel = useCallback(async (word) => {
     const existing = carouselEntries.find((e) => e.id === word.id);

@@ -138,13 +138,15 @@ const localStyles = {
   }),
   listBody: {
     minHeight: 0,
+    height: "100%",
     overflowY: "auto",
     paddingRight: "4px",
     overscrollBehavior: "contain",
+    scrollbarWidth: "thin",
   },
   entryStack: {
     display: "grid",
-    gap: "10px",
+    gap: "8px",
   },
   emptyState: {
     borderRadius: "20px",
