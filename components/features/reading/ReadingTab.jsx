@@ -238,7 +238,7 @@ export default function ReadingTab({
           loading={readingLibrary.loading}
           isMobile={isMobile}
           audiobookStatus={currentBookAudiobookStatus}
-          onReadWithAudiobook={isMobile && onReadWithAudiobook ? handleReadWithAudiobook : null}
+          onReadWithAudiobook={onReadWithAudiobook ? handleReadWithAudiobook : null}
         />
       ) : null}
 
@@ -272,7 +272,7 @@ export default function ReadingTab({
             loading={readingLibrary.loading}
             isMobile={isMobile}
             audiobookStatus={currentBookAudiobookStatus}
-            onReadWithAudiobook={isMobile && onReadWithAudiobook ? handleReadWithAudiobook : null}
+            onReadWithAudiobook={onReadWithAudiobook ? handleReadWithAudiobook : null}
           />
         ) : null}
         <ReadingProgressCard

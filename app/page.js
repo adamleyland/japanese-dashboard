@@ -699,7 +699,7 @@ export default function Home() {
       const success = await persistEvent(metric, Math.abs(delta), {
         ...metadata,
         userId: authUserId || null,
-        kind: metadata.kind || "adjustment",
+        kind: metadata.kind || (delta > 0 ? "session" : "adjustment"),
         source: metadata.source || (delta > 0 ? sourceDefaults.positive : sourceDefaults.negative),
       });
 

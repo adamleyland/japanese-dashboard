@@ -3,7 +3,7 @@ import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-const AUDIOBOOK_SELECT_COLUMNS = [
+const AUDIOBOOK_BASE_SELECT_COLUMNS = [
   "id",
   "slug",
   "title",
@@ -22,16 +22,46 @@ const AUDIOBOOK_SELECT_COLUMNS = [
   "series",
   "part",
   "published_date",
-  "source_filename",
 ].join(", ");
+const AUDIOBOOK_CHAPTER_SELECT_COLUMNS = [
+  "chapters:audiobook_chapters(",
+  "id, audiobook_id, chapter_index, title, start_seconds, end_seconds",
+  ")",
+].join("");
+const AUDIOBOOK_SELECT_COLUMNS = [
+  AUDIOBOOK_BASE_SELECT_COLUMNS,
+  "source_filename",
+  AUDIOBOOK_CHAPTER_SELECT_COLUMNS,
+].join(", ");
+const AUDIOBOOK_SELECT_COLUMNS_WITHOUT_SOURCE_FILENAME = [
+  AUDIOBOOK_BASE_SELECT_COLUMNS,
+  AUDIOBOOK_CHAPTER_SELECT_COLUMNS,
+].join(", ");
+
+function isMissingSourceFilenameColumnError(error) {
+  const errorCode = String(error?.code || "");
+  const errorMessage = String(error?.message || "");
+  return (
+    errorCode === "42703" ||
+    errorCode === "PGRST204" ||
+    errorMessage.includes("source_filename")
+  );
+}
 
 export async function GET() {
   try {
     const supabase = getSupabaseAdminClient();
-    const { data: audiobooks, error: audiobooksError } = await supabase
+    let { data: audiobooks, error: audiobooksError } = await supabase
       .from("audiobooks")
       .select(AUDIOBOOK_SELECT_COLUMNS)
       .order("title", { ascending: true });
+
+    if (audiobooksError && isMissingSourceFilenameColumnError(audiobooksError)) {
+      ({ data: audiobooks, error: audiobooksError } = await supabase
+        .from("audiobooks")
+        .select(AUDIOBOOK_SELECT_COLUMNS_WITHOUT_SOURCE_FILENAME)
+        .order("title", { ascending: true }));
+    }
 
     if (audiobooksError) {
       return NextResponse.json(

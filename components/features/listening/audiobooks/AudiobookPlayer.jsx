@@ -172,7 +172,6 @@ export default function AudiobookPlayer({
         }
     : styles.iconButton(false);
   const plainDesktopIconButtonStyle = styles.desktopModalPlainIconButton(false);
-  const desktopChapterTriggerButtonStyle = styles.desktopModalPlainIconButton(!shouldRenderChapters);
   const playerGridStyle = isMobile
     ? {
         ...styles.playerGrid,
@@ -407,12 +406,11 @@ export default function AudiobookPlayer({
 
         <div style={headerActionsStyle}>
           <div style={styles.mobileHeaderActionGroup}>
-            {isDesktopModal && shouldRenderChapters ? (
+            {isDesktopModal ? (
               <button
                 type="button"
                 onClick={() => setIsMobileChapterPickerOpen(true)}
-                disabled={!shouldRenderChapters}
-                style={desktopChapterTriggerButtonStyle}
+                style={styles.desktopModalPlainIconButton(false)}
                 aria-label="Open chapter list"
                 title="Open chapter list"
               >
