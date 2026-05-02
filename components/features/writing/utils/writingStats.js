@@ -1,12 +1,82 @@
-const WORDS_PER_CHARACTER = 0.5;
 const WORDS_PER_MINUTE = 75;
+const JAPANESE_WORD_SEGMENTER =
+  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter("ja-JP", { granularity: "word" })
+    : null;
+const HIRAGANA_ONLY_PATTERN = /^[\u3041-\u3096\u30fc]+$/;
+const ATTACHED_HIRAGANA_TOKENS = new Set([
+  "が",
+  "を",
+  "に",
+  "へ",
+  "と",
+  "で",
+  "は",
+  "も",
+  "の",
+  "ね",
+  "よ",
+  "な",
+  "か",
+  "や",
+  "わ",
+  "し",
+  "て",
+  "た",
+  "だ",
+  "い",
+  "ご",
+  "てい",
+  "てる",
+  "いる",
+  "ます",
+  "です",
+  "ない",
+  "たい",
+  "だった",
+  "でした",
+  "られる",
+  "れる",
+  "せる",
+  "させる",
+  "ござい",
+]);
 
 export function countWritingCharacters(value = "") {
   return String(value).replace(/\s+/g, "").length;
 }
 
-export function estimateWritingWords(characterCount = 0) {
-  return Math.max(0, Math.round((Number(characterCount) || 0) * WORDS_PER_CHARACTER));
+export function countWritingWords(value = "") {
+  const normalizedValue = String(value).trim();
+  if (!normalizedValue) {
+    return 0;
+  }
+
+  const rawTokens = getRawJapaneseWordTokens(normalizedValue);
+  if (!rawTokens.length) {
+    return fallbackWordCount(normalizedValue);
+  }
+
+  const groupedTokens = rawTokens.reduce((groups, token) => {
+    if (!token) {
+      return groups;
+    }
+
+    if (!groups.length) {
+      groups.push(token);
+      return groups;
+    }
+
+    if (shouldAttachToken(token)) {
+      groups[groups.length - 1] += token;
+      return groups;
+    }
+
+    groups.push(token);
+    return groups;
+  }, []);
+
+  return groupedTokens.length;
 }
 
 export function estimateWritingMinutes(estimatedWords = 0) {
@@ -20,7 +90,7 @@ export function estimateWritingHours(estimatedWords = 0) {
 
 export function buildWritingMetrics(body = "") {
   const characterCount = countWritingCharacters(body);
-  const estimatedWords = estimateWritingWords(characterCount);
+  const estimatedWords = countWritingWords(body);
   const estimatedMinutes = estimateWritingMinutes(estimatedWords);
 
   return {
@@ -28,6 +98,37 @@ export function buildWritingMetrics(body = "") {
     estimatedWords,
     estimatedMinutes,
   };
+}
+
+function getRawJapaneseWordTokens(value) {
+  if (JAPANESE_WORD_SEGMENTER) {
+    return Array.from(JAPANESE_WORD_SEGMENTER.segment(value))
+      .filter((segment) => segment.isWordLike)
+      .map((segment) => segment.segment.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function shouldAttachToken(token) {
+  if (ATTACHED_HIRAGANA_TOKENS.has(token)) {
+    return true;
+  }
+
+  return HIRAGANA_ONLY_PATTERN.test(token) && token.length === 1;
+}
+
+function fallbackWordCount(value) {
+  const compactValue = value.replace(/\s+/g, " ").trim();
+  if (!compactValue) {
+    return 0;
+  }
+
+  return compactValue
+    .split(/[\s、。！？,.!?]+/)
+    .map((token) => token.trim())
+    .filter(Boolean).length;
 }
 
 export function getEntryPreview(body = "", maxLength = 180) {

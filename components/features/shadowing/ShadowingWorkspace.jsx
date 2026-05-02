@@ -6,13 +6,12 @@ import {
   AudioLines,
   BarChart3,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CloudUpload,
   Languages,
+  Maximize2,
+  Minimize2,
   Play,
   Pause,
-  RotateCcw,
   Sparkles,
   SlidersHorizontal,
   Volume2,
@@ -36,6 +35,8 @@ import {
 } from "@/lib/profiles";
 
 const DEFAULT_SHADOWING_GOAL = 250;
+const KANA_CHARACTER_REGEX = /[ぁ-ゖゝゞァ-ヺー]/;
+const KANJI_CHARACTER_REGEX = /[一-龯々〆ヵヶ]/;
 
 function getScopedStorageKey(baseKey, userId = "") {
   return userId ? `${baseKey}:${userId}` : baseKey;
@@ -122,6 +123,202 @@ function clampIndex(value, maxLength) {
   return Math.max(0, Math.min(maxLength - 1, Number(value) || 0));
 }
 
+function katakanaToHiragana(value) {
+  return String(value || "").replace(/[ァ-ヶ]/g, (character) =>
+    String.fromCharCode(character.charCodeAt(0) - 0x60),
+  );
+}
+
+function normalizeKanaForMatch(value) {
+  return katakanaToHiragana(String(value || ""));
+}
+
+function isKanaCharacter(character) {
+  return KANA_CHARACTER_REGEX.test(character);
+}
+
+function isKanjiCharacter(character) {
+  return KANJI_CHARACTER_REGEX.test(character);
+}
+
+function isRenderableRubyCharacter(character) {
+  return isKanjiCharacter(character);
+}
+
+function buildBracketFuriganaSegments(text) {
+  const normalizedText = String(text || "");
+  const matcher = /([一-龯々〆ヵヶ]+)[（(【\[]([^）)】\]]+)[）)】\]]/g;
+  const segments = [];
+  let cursor = 0;
+  let matchedAny = false;
+
+  for (const match of normalizedText.matchAll(matcher)) {
+    matchedAny = true;
+    const matchedText = match[0] || "";
+    const baseText = match[1] || "";
+    const furiganaText = match[2] || "";
+    const matchIndex = Number(match.index || 0);
+
+    if (matchIndex > cursor) {
+      segments.push({
+        type: "text",
+        text: normalizedText.slice(cursor, matchIndex),
+      });
+    }
+
+    segments.push({
+      type: "ruby",
+      base: baseText,
+      reading: furiganaText,
+    });
+
+    cursor = matchIndex + matchedText.length;
+  }
+
+  if (!matchedAny) {
+    return null;
+  }
+
+  if (cursor < normalizedText.length) {
+    segments.push({
+      type: "text",
+      text: normalizedText.slice(cursor),
+    });
+  }
+
+  return segments;
+}
+
+function buildAlignedFuriganaSegments(text, reading) {
+  const baseText = String(text || "");
+  const readingText = String(reading || "");
+
+  if (!baseText || !readingText) {
+    return [{ type: "text", text: baseText }];
+  }
+
+  const normalizedReading = normalizeKanaForMatch(readingText);
+  const segments = [];
+  let readingIndex = 0;
+  let cursor = 0;
+
+  while (cursor < baseText.length) {
+    const character = baseText[cursor];
+
+    if (!isRenderableRubyCharacter(character)) {
+      if (
+        isKanaCharacter(character) &&
+        normalizeKanaForMatch(character) === normalizedReading[readingIndex]
+      ) {
+        readingIndex += 1;
+      }
+
+      segments.push({
+        type: "text",
+        text: character,
+      });
+      cursor += 1;
+      continue;
+    }
+
+    let kanjiEnd = cursor + 1;
+    while (kanjiEnd < baseText.length && isRenderableRubyCharacter(baseText[kanjiEnd])) {
+      kanjiEnd += 1;
+    }
+
+    const kanjiChunk = baseText.slice(cursor, kanjiEnd);
+    let nextLiteralKana = "";
+    let literalCursor = kanjiEnd;
+
+    while (literalCursor < baseText.length && isKanaCharacter(baseText[literalCursor])) {
+      nextLiteralKana += baseText[literalCursor];
+      literalCursor += 1;
+    }
+
+    const normalizedLiteralKana = normalizeKanaForMatch(nextLiteralKana);
+    const nextLiteralIndex = normalizedLiteralKana
+      ? normalizedReading.indexOf(normalizedLiteralKana, readingIndex)
+      : -1;
+
+    const rubyReading =
+      nextLiteralIndex >= 0
+        ? readingText.slice(readingIndex, nextLiteralIndex)
+        : readingText.slice(readingIndex);
+
+    if (rubyReading) {
+      segments.push({
+        type: "ruby",
+        base: kanjiChunk,
+        reading: rubyReading,
+      });
+      readingIndex += rubyReading.length;
+    } else {
+      segments.push({
+        type: "text",
+        text: kanjiChunk,
+      });
+    }
+
+    if (nextLiteralKana) {
+      segments.push({
+        type: "text",
+        text: nextLiteralKana,
+      });
+      readingIndex += nextLiteralKana.length;
+      cursor = literalCursor;
+      continue;
+    }
+
+    cursor = kanjiEnd;
+  }
+
+  return segments;
+}
+
+function buildRubySegments(text, reading = "") {
+  const normalizedText = String(text || "");
+  const normalizedReading = String(reading || "");
+
+  if (!normalizedText) {
+    return [];
+  }
+
+  if (!normalizedReading) {
+    return [{ type: "text", text: normalizedText }];
+  }
+
+  return (
+    buildBracketFuriganaSegments(normalizedText) ||
+    buildBracketFuriganaSegments(normalizedReading) ||
+    buildAlignedFuriganaSegments(normalizedText, normalizedReading)
+  );
+}
+
+function hasRubyReading(text, reading = "") {
+  return buildRubySegments(text, reading).some((segment) => segment.type === "ruby" && segment.reading);
+}
+
+function RubyText({ text, reading = "", style = null, rubyStyle = null, rtStyle = null }) {
+  const segments = buildRubySegments(text, reading);
+
+  return (
+    <span style={style}>
+      {segments.map((segment, index) => {
+        if (segment.type === "ruby" && segment.reading) {
+          return (
+            <ruby key={`${segment.base}-${segment.reading}-${index}`} style={rubyStyle}>
+              {segment.base}
+              <rt style={rtStyle}>{segment.reading}</rt>
+            </ruby>
+          );
+        }
+
+        return <span key={`${segment.text}-${index}`}>{segment.text}</span>;
+      })}
+    </span>
+  );
+}
+
 async function parseJsonResponse(response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload?.ok) {
@@ -131,13 +328,72 @@ async function parseJsonResponse(response) {
   return payload;
 }
 
+function createImportSessionId() {
+  if (typeof window !== "undefined" && window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `shadowing-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function fetchShadowingImportStatus(sessionId) {
+  const response = await fetch(`/api/shadowing/import-status?sessionId=${encodeURIComponent(sessionId)}`, {
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error || "Failed to load shadowing import progress.");
+  }
+
+  return payload?.status || null;
+}
+
+function formatImportProgressSummary(snapshot, uploadProgress) {
+  const totalCards = Number(snapshot?.totalCards || 0);
+  const currentCard = Math.max(
+    Number(snapshot?.currentCard || 0),
+    Number(snapshot?.processedCards || 0),
+  );
+
+  if (totalCards > 0) {
+    return `${Math.min(currentCard, totalCards)}/${totalCards}`;
+  }
+
+  return uploadProgress ? `${uploadProgress}%` : "Waiting";
+}
+
 async function uploadShadowingDeckRequest(formData, { onProgress, onProcessing } = {}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let processingTriggered = false;
+    let processingFallbackTimeoutId = null;
+
+    const triggerProcessing = () => {
+      if (processingTriggered) {
+        return;
+      }
+
+      processingTriggered = true;
+      onProcessing?.();
+    };
+
+    const clearProcessingFallback = () => {
+      if (processingFallbackTimeoutId) {
+        window.clearTimeout(processingFallbackTimeoutId);
+        processingFallbackTimeoutId = null;
+      }
+    };
 
     xhr.open("POST", "/api/shadowing/decks");
     xhr.responseType = "text";
+    processingFallbackTimeoutId = window.setTimeout(() => {
+      triggerProcessing();
+    }, 12000);
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) {
@@ -146,21 +402,31 @@ async function uploadShadowingDeckRequest(formData, { onProgress, onProcessing }
 
       const progress = Math.max(6, Math.min(72, Math.round((event.loaded / event.total) * 72)));
       onProgress?.(progress);
+
+      if (event.loaded >= event.total) {
+        triggerProcessing();
+      }
     };
 
     xhr.onreadystatechange = () => {
-      if (!processingTriggered && xhr.readyState >= 2) {
-        processingTriggered = true;
-        onProcessing?.();
+      if (xhr.readyState >= 2) {
+        triggerProcessing();
       }
     };
 
     xhr.onerror = () => {
-      reject(new Error("Upload failed before the server could respond."));
+      clearProcessingFallback();
+      reject(
+        new Error(
+          "Upload failed before the server could respond. Check the browser Network tab and the local server terminal for the real error.",
+        ),
+      );
     };
 
     xhr.onload = () => {
+      clearProcessingFallback();
       let payload = {};
+      const rawResponseText = String(xhr.responseText || "").trim();
 
       try {
         payload = JSON.parse(xhr.responseText || "{}");
@@ -169,11 +435,24 @@ async function uploadShadowingDeckRequest(formData, { onProgress, onProcessing }
       }
 
       if (xhr.status < 200 || xhr.status >= 300 || !payload?.ok) {
-        reject(new Error(payload?.error || "Upload failed."));
+        const fallbackMessage = rawResponseText
+          ? rawResponseText.replace(/\s+/g, " ").slice(0, 240)
+          : xhr.statusText || "Upload failed.";
+        reject(
+          new Error(
+            payload?.error ||
+              `Upload failed (${xhr.status || "unknown status"}). ${fallbackMessage}`,
+          ),
+        );
         return;
       }
 
       resolve(payload);
+    };
+
+    xhr.onabort = () => {
+      clearProcessingFallback();
+      reject(new Error("Upload was cancelled before the import finished."));
     };
 
     xhr.send(formData);
@@ -187,6 +466,14 @@ function logShadowingDebug(eventName, payload) {
 
   console.debug(`[Shadowing] ${eventName}`, payload);
 }
+
+const SHADOWING_PLAYBACK_RATE_OPTIONS = [
+  { value: 0.75, label: "0.75x" },
+  { value: 0.9, label: "0.9x" },
+  { value: 1, label: "1x" },
+  { value: 1.1, label: "1.1x" },
+  { value: 1.25, label: "1.25x" },
+];
 
 export default function ShadowingWorkspace({
   styles,
@@ -207,8 +494,12 @@ export default function ShadowingWorkspace({
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [deckActionStatus, setDeckActionStatus] = useState("");
+  const [importSessionId, setImportSessionId] = useState("");
+  const [importProgressSnapshot, setImportProgressSnapshot] = useState(null);
   const [hasMounted, setHasMounted] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [uploadMode, setUploadMode] = useState("new");
   const [uploadTargetDeckId, setUploadTargetDeckId] = useState("");
@@ -318,6 +609,7 @@ export default function ShadowingWorkspace({
     sessionQueue.length,
     settings.repetitions,
   );
+  const visibleSessionProgress = sessionCompleted ? 100 : sessionProgress;
   const goalProgress = Math.max(
     0,
     Math.min(100, (Number(shadowingHours || 0) / Math.max(1, Number(goalHours || 0))) * 100),
@@ -328,12 +620,39 @@ export default function ShadowingWorkspace({
   const vocabularyAudioUrl = currentCard?.hasVocabAudio
     ? `/api/shadowing/media/${currentCard.id}?kind=vocabulary`
     : "";
+  const activeImportProgressSnapshot =
+    importProgressSnapshot && importProgressSnapshot.sessionId === importSessionId
+      ? importProgressSnapshot
+      : null;
+  const hasVisibleImportProgress = Boolean(
+    uploading ||
+      uploadStatus ||
+      (activeImportProgressSnapshot &&
+        !activeImportProgressSnapshot.isComplete &&
+        !activeImportProgressSnapshot.isError),
+  );
+  const uploadProgressSummary = formatImportProgressSummary(
+    activeImportProgressSnapshot,
+    uploadProgress,
+  );
 
   queueRef.current = sessionQueue;
   settingsRef.current = settings;
   isPlayingRef.current = isPlaying;
   currentIndexRef.current = currentIndex;
   currentRepetitionRef.current = currentRepetition;
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = settings.playbackRate;
+      audioRef.current.defaultPlaybackRate = settings.playbackRate;
+    }
+
+    if (vocabularyAudioRef.current) {
+      vocabularyAudioRef.current.playbackRate = settings.playbackRate;
+      vocabularyAudioRef.current.defaultPlaybackRate = settings.playbackRate;
+    }
+  }, [settings.playbackRate]);
 
   const pauseSessionClock = useCallback(() => {
     if (!sessionClockRef.current.startedAt) {
@@ -553,6 +872,9 @@ export default function ShadowingWorkspace({
         audioNode.currentTime = 0;
       }
 
+      audioNode.playbackRate = settingsRef.current.playbackRate;
+      audioNode.defaultPlaybackRate = settingsRef.current.playbackRate;
+
       try {
         await audioNode.play();
       } catch (error) {
@@ -687,70 +1009,6 @@ export default function ShadowingWorkspace({
     startGap,
   ]);
 
-  const handleRestartSentence = useCallback(async () => {
-    if (!sessionQueue.length) {
-      return;
-    }
-
-    clearPendingGap();
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-
-    setCurrentRepetition(1);
-    playbackRef.current = {
-      ...playbackRef.current,
-      phase: isPlayingRef.current ? "audio" : "idle",
-      repetition: 1,
-      remainingMs: 0,
-      dueAt: 0,
-      gapKind: "",
-      resumeAction: null,
-      index: clampIndex(currentIndex, sessionQueue.length),
-    };
-
-    if (isPlayingRef.current) {
-      await playSentenceAt(clampIndex(currentIndex, sessionQueue.length), 1);
-    }
-  }, [clearPendingGap, currentIndex, playSentenceAt, sessionQueue.length]);
-
-  const handleJumpSentence = useCallback(
-    async (direction) => {
-      if (!sessionQueue.length) {
-        return;
-      }
-
-      const nextIndex = clampIndex(currentIndex + direction, sessionQueue.length);
-      clearPendingGap();
-
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-
-      setCurrentIndex(nextIndex);
-      setCurrentRepetition(1);
-      setSessionCompleted(false);
-      playbackRef.current = {
-        phase: "idle",
-        timeoutId: null,
-        dueAt: 0,
-        remainingMs: 0,
-        gapKind: "",
-        resumeAction: null,
-        index: nextIndex,
-        repetition: 1,
-      };
-
-      if (isPlayingRef.current) {
-        await playSentenceAt(nextIndex, 1);
-      }
-    },
-    [clearPendingGap, currentIndex, playSentenceAt, sessionQueue.length],
-  );
-
   const handleVocabularyAudio = useCallback(async () => {
     if (!vocabularyAudioUrl || !vocabularyAudioRef.current) {
       return;
@@ -758,6 +1016,8 @@ export default function ShadowingWorkspace({
 
     vocabularyAudioRef.current.src = vocabularyAudioUrl;
     vocabularyAudioRef.current.currentTime = 0;
+    vocabularyAudioRef.current.playbackRate = settingsRef.current.playbackRate;
+    vocabularyAudioRef.current.defaultPlaybackRate = settingsRef.current.playbackRate;
 
     try {
       await vocabularyAudioRef.current.play();
@@ -903,10 +1163,25 @@ export default function ShadowingWorkspace({
       setUploadProgress(8);
       setUploadStatus(`Uploading ${file.name}...`);
       setDecksError("");
+      const nextImportSessionId = createImportSessionId();
+      setImportSessionId(nextImportSessionId);
+      setImportProgressSnapshot({
+        sessionId: nextImportSessionId,
+        stage: "uploading",
+        statusText: `Uploading ${file.name}...`,
+        totalCards: 0,
+        processedCards: 0,
+        currentCard: 0,
+        progressPercent: 8,
+        isComplete: false,
+        isError: false,
+        error: "",
+      });
 
       try {
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("importSessionId", nextImportSessionId);
         if (uploadMode === "existing" && uploadTargetDeckId) {
           formData.append("targetDeckId", uploadTargetDeckId);
         }
@@ -920,7 +1195,7 @@ export default function ShadowingWorkspace({
           },
           onProcessing: () => {
             setUploadProgress((currentValue) => Math.max(currentValue, 84));
-            setUploadStatus(`Processing ${file.name}...`);
+            setUploadStatus(`Importing ${file.name}... this can take a few minutes for large decks.`);
           },
         });
 
@@ -949,6 +1224,18 @@ export default function ShadowingWorkspace({
         persistSelectedDeck(nextSelectedDeckId);
         setUploadProgress(100);
         setUploadStatus(`Imported ${file.name}.`);
+        setImportProgressSnapshot((currentValue) =>
+          currentValue
+            ? {
+                ...currentValue,
+                importedDeckId: nextSelectedDeckId,
+                progressPercent: 100,
+                isComplete: true,
+                isError: false,
+                statusText: `Imported ${file.name}.`,
+              }
+            : currentValue,
+        );
         setDeckActionStatus(
           uploadMode === "existing"
             ? `Added ${file.name} to ${uploadDeckName.trim() || selectedDeck?.name || "that deck"}.`
@@ -959,7 +1246,18 @@ export default function ShadowingWorkspace({
       } catch (error) {
         console.error("Failed to import shadowing deck", error);
         setUploadProgress(0);
-        setUploadStatus("");
+        setUploadStatus(error instanceof Error ? error.message : "Upload failed.");
+        setImportProgressSnapshot((currentValue) =>
+          currentValue
+            ? {
+                ...currentValue,
+                isError: true,
+                isComplete: false,
+                error: error instanceof Error ? error.message : "Upload failed.",
+                statusText: error instanceof Error ? error.message : "Upload failed.",
+              }
+            : currentValue,
+        );
         setDecksError(error instanceof Error ? error.message : "Failed to import the deck.");
       } finally {
         setUploading(false);
@@ -1027,17 +1325,21 @@ export default function ShadowingWorkspace({
     }
   }, [authUserId, deckNameDraft, selectedDeck?.id]);
 
-  const resetUploadForm = useCallback(
-    (nextDeckId = "") => {
-      setUploadMode(nextDeckId ? "existing" : "new");
-      setUploadTargetDeckId(nextDeckId || selectedDeck?.id || decks[0]?.id || "");
-      setUploadDeckName(nextDeckId ? selectedDeck?.name || "" : "");
-      setPendingUploadFile(null);
-      setUploadProgress(0);
-      setUploadStatus("");
-    },
-    [decks, selectedDeck?.id, selectedDeck?.name],
-  );
+    const resetUploadForm = useCallback(
+      (nextDeckId = "") => {
+        setUploadMode(nextDeckId ? "existing" : "new");
+        setUploadTargetDeckId(nextDeckId || selectedDeck?.id || decks[0]?.id || "");
+        setUploadDeckName(nextDeckId ? selectedDeck?.name || "" : "");
+        if (!uploading) {
+          setPendingUploadFile(null);
+          setUploadProgress(0);
+          setUploadStatus("");
+          setImportSessionId("");
+          setImportProgressSnapshot(null);
+        }
+      },
+      [decks, selectedDeck?.id, selectedDeck?.name, uploading],
+    );
 
   useEffect(() => {
     void loadDecks();
@@ -1058,21 +1360,121 @@ export default function ShadowingWorkspace({
     setDeckCardsLoadedById({});
     setCardsLoadingDeckId("");
     setDeckCardsError("");
+    setImportSessionId("");
+    setImportProgressSnapshot(null);
   }, [authUserId]);
 
   useEffect(() => {
-    if (!isUploadModalOpen || typeof document === "undefined") {
+    if (!importSessionId || !authUserId) {
       return undefined;
     }
 
+    let cancelled = false;
+
+    const syncImportProgress = async () => {
+      try {
+        const snapshot = await fetchShadowingImportStatus(importSessionId);
+        if (!snapshot || cancelled) {
+          return;
+        }
+
+        setImportProgressSnapshot(snapshot);
+        if (snapshot.statusText) {
+          setUploadStatus(snapshot.statusText);
+        }
+        if (Number.isFinite(snapshot.progressPercent)) {
+          setUploadProgress(snapshot.progressPercent);
+        }
+        if (snapshot.isError && snapshot.error) {
+          setDecksError(snapshot.error);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to sync shadowing import progress", error);
+        }
+      }
+    };
+
+    void syncImportProgress();
+    const intervalId = window.setInterval(() => {
+      void syncImportProgress();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [authUserId, importSessionId]);
+
+  useEffect(() => {
+    if (!deckActionStatus) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDeckActionStatus("");
+    }, 4500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [deckActionStatus]);
+
+  useEffect(() => {
+    if (!uploadStatus || uploading) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setUploadStatus("");
+      setUploadProgress(0);
+      setImportSessionId("");
+      setImportProgressSnapshot(null);
+    }, 4500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [uploadStatus, uploading]);
+
+  useEffect(() => {
+    if (!isUploadModalOpen) {
+      return;
+    }
+
     resetUploadForm(uploadTargetDeckId || selectedDeck?.id || "");
+  }, [isUploadModalOpen, resetUploadForm, selectedDeck?.id, uploadTargetDeckId]);
+
+  useEffect(() => {
+    if ((!isUploadModalOpen && !focusMode) || typeof document === "undefined") {
+      return undefined;
+    }
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isUploadModalOpen, resetUploadForm, selectedDeck?.id, uploadTargetDeckId]);
+  }, [focusMode, isUploadModalOpen]);
+
+  useEffect(() => {
+    if (!focusMode || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setFocusMode(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [focusMode]);
 
   useEffect(() => {
     resetSessionPosition();
@@ -1270,38 +1672,36 @@ export default function ShadowingWorkspace({
       : "";
   const selectedDeckEmptyMessage =
     selectedDeck?.cardsLoaded && !selectedDeck.cards.length
-      ? "Deck selected but no cards found."
+      ? uploading
+        ? "This deck is still importing. Cards will appear here once the import finishes."
+        : "Deck selected but no cards found."
       : "";
+  const focusModeEnabled = focusMode && hasMounted;
 
-  return (
-    <div
-      style={{
-        ...styles.listeningMainGrid,
-        gridTemplateColumns: isMobile ? "1fr" : "1.65fr 1fr",
-        alignItems: "start",
-        minHeight: 0,
-        width: "100%",
-        boxSizing: "border-box",
-        overflow: "visible",
-      }}
-    >
+  const renderSessionSection = (isFocusView = false) => {
+    const focusToggleLabel = isFocusView ? "Exit focus" : "Deep focus";
+
+    return (
       <section
         style={{
           ...styles.largeCard,
-          display: "grid",
-          gap: "18px",
-          padding: isMobile ? "16px" : styles.largeCard.padding,
-          ...(isMobile ? localStyles.mobilePrimarySection : null),
+          ...(
+            isFocusView
+              ? localStyles.focusSectionShell(isMobile)
+              : {
+                  display: "grid",
+                  gridTemplateRows: "auto 1fr auto",
+                  gap: "18px",
+                  padding: isMobile ? "16px" : styles.largeCard.padding,
+                  height: isMobile ? "auto" : "100%",
+                  ...(isMobile ? localStyles.mobilePrimarySection : null),
+                }
+          ),
         }}
       >
         <div style={localStyles.headerRow}>
           <div style={{ minWidth: 0 }}>
             <h2 style={styles.sectionTitle}>Shadowing session</h2>
-            <p style={styles.sectionText}>
-              {selectedDeck
-                ? `${selectedDeck.name} - ${deckSummary}`
-                : deckSummary}
-            </p>
           </div>
 
           <div style={localStyles.inlineToggles}>
@@ -1324,10 +1724,20 @@ export default function ShadowingWorkspace({
             >
               <Sparkles size={16} />
             </button>
+
+            <button
+              type="button"
+              style={localStyles.focusToggleButton(isFocusView, isMobile)}
+              onClick={() => setFocusMode((value) => !value)}
+              aria-label={focusToggleLabel}
+              title={focusToggleLabel}
+            >
+              {isFocusView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
           </div>
         </div>
 
-        <div style={isMobile ? localStyles.mobilePlayerHero : localStyles.playerHero}>
+        <div style={isFocusView ? localStyles.focusPlayerHero(isMobile) : isMobile ? localStyles.mobilePlayerHero : localStyles.playerHero}>
           {loadingStateMessage ? <div style={localStyles.infoBox}>{loadingStateMessage}</div> : null}
           {selectedDeckEmptyMessage ? <div style={localStyles.infoBox}>{selectedDeckEmptyMessage}</div> : null}
           {deckCardsError ? <div style={localStyles.errorBox}>{deckCardsError}</div> : null}
@@ -1335,37 +1745,32 @@ export default function ShadowingWorkspace({
             <div style={localStyles.infoBox}>Select a deck in Settings to load its cards.</div>
           ) : null}
 
-          <div style={localStyles.progressMeta}>
-            <span style={localStyles.metaPill}>
-              Sentence {sessionQueue.length ? currentIndex + 1 : 0}/{sessionQueue.length}
-            </span>
-            <span style={localStyles.metaPill}>
-              Rep {currentRepetition}/{settings.repetitions}
-            </span>
-            {currentCard?.isAudioAvailable ? (
-              <span style={localStyles.metaPill}>Audio ready</span>
-            ) : currentCard ? (
-              <span style={localStyles.metaPillMuted}>Text-only</span>
-            ) : null}
-          </div>
-
-          <div style={localStyles.progressTrack}>
-            <div style={localStyles.progressFill(sessionProgress)} />
-          </div>
-
-          <div style={localStyles.expressionWrap}>
-            <div style={localStyles.expressionText}>
-              {currentCard?.expression || "No sentence selected yet."}
+          <div style={isFocusView ? localStyles.focusExpressionWrap : localStyles.expressionWrap}>
+            <div style={isFocusView ? localStyles.focusExpressionText : localStyles.expressionText}>
+              {currentCard?.expression ? (
+                <RubyText
+                  text={currentCard.expression}
+                  reading={readingVisible ? currentCard?.reading || currentCard?.sentenceKana : ""}
+                  rubyStyle={localStyles.rubyBase}
+                  rtStyle={isFocusView ? localStyles.focusRubyRt : localStyles.rubyRt}
+                />
+              ) : (
+                "No sentence selected yet."
+              )}
             </div>
 
-            {readingVisible && (currentCard?.reading || currentCard?.sentenceKana) ? (
-              <div style={localStyles.readingLine}>
+            {readingVisible &&
+            (currentCard?.reading || currentCard?.sentenceKana) &&
+            !hasRubyReading(currentCard?.expression, currentCard?.reading || currentCard?.sentenceKana) ? (
+              <div style={isFocusView ? localStyles.focusReadingLine : localStyles.readingLine}>
                 {currentCard?.reading || currentCard?.sentenceKana}
               </div>
             ) : null}
 
             {translationVisible && currentCard?.sentenceEnglish ? (
-              <div style={localStyles.translationLine}>{currentCard.sentenceEnglish}</div>
+              <div style={isFocusView ? localStyles.focusTranslationLine : localStyles.translationLine}>
+                {currentCard.sentenceEnglish}
+              </div>
             ) : null}
           </div>
 
@@ -1374,9 +1779,22 @@ export default function ShadowingWorkspace({
               <button
                 type="button"
                 onClick={() => setVocabularyOpen((value) => !value)}
-                style={localStyles.vocabularyChip}
+                style={isFocusView ? localStyles.focusVocabularyChip : localStyles.vocabularyChip}
               >
-                <span>{currentCard.vocabKanji}</span>
+                <div style={localStyles.vocabularyChipContent}>
+                  <RubyText
+                    text={currentCard.vocabKanji}
+                    reading={currentCard.vocabFurigana || currentCard.vocabKana}
+                    style={isFocusView ? localStyles.focusVocabularyChipText : localStyles.vocabularyChipText}
+                    rubyStyle={localStyles.vocabularyChipRuby}
+                    rtStyle={isFocusView ? localStyles.focusVocabularyChipRt : localStyles.vocabularyChipRt}
+                  />
+                  {currentCard.vocabEnglish ? (
+                    <span style={isFocusView ? localStyles.focusVocabularyChipMeaning : localStyles.vocabularyChipMeaning}>
+                      {currentCard.vocabEnglish}
+                    </span>
+                  ) : null}
+                </div>
                 <ChevronDown
                   size={14}
                   style={{
@@ -1413,51 +1831,67 @@ export default function ShadowingWorkspace({
               {selectedDeck.textOnlyCount === 1 ? "" : "s"} imported and excluded from audio sessions.
             </div>
           ) : null}
+
+          <div style={isFocusView ? localStyles.focusSessionFooter : localStyles.sessionFooter}>
+            <div style={localStyles.progressTrack}>
+              <div style={localStyles.progressFill(visibleSessionProgress)} />
+            </div>
+
+            <div style={localStyles.progressMeta}>
+              <span style={localStyles.metaPill}>
+                Sentence {sessionQueue.length ? currentIndex + 1 : 0}/{sessionQueue.length}
+              </span>
+              <span style={localStyles.metaPill}>
+                Rep {currentRepetition}/{settings.repetitions}
+              </span>
+              {currentCard?.isAudioAvailable ? (
+                <span style={localStyles.metaPill}>Audio ready</span>
+              ) : currentCard ? (
+                <span style={localStyles.metaPillMuted}>Text-only</span>
+              ) : null}
+            </div>
+          </div>
         </div>
 
-        <div style={isMobile ? localStyles.controlsRowMobile : localStyles.controlsRow}>
+        <div
+          style={
+            isFocusView
+              ? localStyles.focusControlsRow
+              : isMobile
+                ? localStyles.controlsRowMobile
+                : localStyles.controlsRow
+          }
+        >
           <button
             type="button"
-            style={isMobile ? localStyles.mobileCompactControl : localStyles.secondaryControl}
-            onClick={() => void handleJumpSentence(-1)}
-            disabled={!sessionQueue.length}
-          >
-            <ChevronLeft size={18} />
-          </button>
-
-          <button
-            type="button"
-            style={isMobile ? localStyles.mobilePrimaryControl : localStyles.primaryControl}
+            style={isFocusView ? localStyles.focusPrimaryControl(isMobile) : isMobile ? localStyles.mobilePrimaryControl : localStyles.primaryControl}
             onClick={() => void handlePlayPause()}
             disabled={!sessionQueue.length}
           >
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
             {isPlaying ? "Pause" : sessionCompleted ? "Replay session" : "Play"}
           </button>
-
-          <button
-            type="button"
-            style={isMobile ? localStyles.mobileCompactControl : localStyles.secondaryControl}
-            onClick={() => void handleJumpSentence(1)}
-            disabled={!sessionQueue.length}
-          >
-            <ChevronRight size={18} />
-          </button>
-
-          <button
-            type="button"
-            style={isMobile ? localStyles.mobileRestartControl : localStyles.secondaryControlWide}
-            onClick={() => void handleRestartSentence()}
-            disabled={!sessionQueue.length}
-          >
-            <RotateCcw size={16} />
-            Restart
-          </button>
         </div>
 
-        <audio ref={audioRef} preload="auto" />
-        <audio ref={vocabularyAudioRef} preload="none" />
+        {!isFocusView ? <audio ref={audioRef} preload="auto" /> : null}
+        {!isFocusView ? <audio ref={vocabularyAudioRef} preload="none" /> : null}
       </section>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        ...styles.listeningMainGrid,
+        gridTemplateColumns: isMobile ? "1fr" : "1.65fr 1fr",
+        alignItems: "stretch",
+        minHeight: 0,
+        width: "100%",
+        boxSizing: "border-box",
+        overflow: "visible",
+      }}
+    >
+      {renderSessionSection(false)}
 
       <div style={{ ...styles.sideColumn, minHeight: 0 }}>
         <section
@@ -1504,7 +1938,13 @@ export default function ShadowingWorkspace({
           {loadingStateMessage && !selectedDeckId ? (
             <div style={localStyles.infoBox}>{loadingStateMessage}</div>
           ) : null}
-          {uploadStatus ? <div style={localStyles.infoBox}>{uploadStatus}</div> : null}
+          {hasVisibleImportProgress ? (
+            <ImportProgressPanel
+              statusText={uploadStatus}
+              progressValue={uploadProgress}
+              progressSummary={uploadProgressSummary}
+            />
+          ) : null}
           {deckActionStatus ? <div style={localStyles.infoBox}>{deckActionStatus}</div> : null}
 
           <label style={localStyles.fieldStackCompact}>
@@ -1532,30 +1972,7 @@ export default function ShadowingWorkspace({
             </select>
           </label>
 
-          <div style={localStyles.renameRow}>
-            <label style={{ ...localStyles.fieldStackCompact, flex: 1 }}>
-              <span style={localStyles.fieldLabel}>Deck name</span>
-              <input
-                type="text"
-                value={deckNameDraft}
-                onChange={(event) => setDeckNameDraft(event.target.value)}
-                style={localStyles.textInput}
-                placeholder="Rename selected deck"
-                disabled={!selectedDeck?.id || savingDeckName}
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={() => void handleRenameDeck()}
-              style={localStyles.compactSecondaryButton}
-              disabled={!selectedDeck?.id || !deckNameDraft.trim() || savingDeckName}
-            >
-              {savingDeckName ? "Saving..." : "Save"}
-            </button>
-          </div>
-
-          <div style={localStyles.settingsGridCompact}>
+          <div style={localStyles.primarySettingsGrid}>
             <NumberField
               label="Sentences"
               value={settings.sentenceCount}
@@ -1580,56 +1997,117 @@ export default function ShadowingWorkspace({
               step={1}
               mobileOptimized={isCompact}
             />
-            <NumberField
-              label="Rep gap (s)"
-              value={settings.repeatGapSeconds}
-              onChange={(value) =>
-                setSettings((currentValue) => ({
-                  ...currentValue,
-                  repeatGapSeconds: Math.max(0, value),
-                }))
-              }
-              step={0.5}
-              mobileOptimized={isCompact}
-            />
-            <NumberField
-              label="Sentence gap (s)"
-              value={settings.sentenceGapSeconds}
-              onChange={(value) =>
-                setSettings((currentValue) => ({
-                  ...currentValue,
-                  sentenceGapSeconds: Math.max(0, value),
-                }))
-              }
-              step={0.5}
-              mobileOptimized={isCompact}
-            />
           </div>
 
-          <label style={localStyles.fieldStackCompact}>
-            <span style={localStyles.fieldLabel}>Sort mode</span>
-            <select
-              value={settings.sortMode}
-              onChange={(event) =>
-                setSettings((currentValue) => ({
-                  ...currentValue,
-                  sortMode: event.target.value,
-                }))
-              }
-              style={localStyles.select}
+          <div style={localStyles.settingsActionRow}>
+            <button
+              type="button"
+              onClick={() => setIsAdvancedSettingsOpen((currentValue) => !currentValue)}
+              style={localStyles.compactSecondaryButton}
             >
-              {SHADOWING_SORT_MODES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              {isAdvancedSettingsOpen ? "Hide more settings" : "More settings"}
+            </button>
+          </div>
+
+          {isAdvancedSettingsOpen ? (
+            <div style={localStyles.advancedSettingsPanel}>
+              <div style={localStyles.renameRow}>
+                <label style={{ ...localStyles.fieldStackCompact, flex: 1 }}>
+                  <span style={localStyles.fieldLabel}>Deck name</span>
+                  <input
+                    type="text"
+                    value={deckNameDraft}
+                    onChange={(event) => setDeckNameDraft(event.target.value)}
+                    style={localStyles.textInput}
+                    placeholder="Rename selected deck"
+                    disabled={!selectedDeck?.id || savingDeckName}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void handleRenameDeck()}
+                  style={localStyles.compactSecondaryButton}
+                  disabled={!selectedDeck?.id || !deckNameDraft.trim() || savingDeckName}
+                >
+                  {savingDeckName ? "Saving..." : "Save"}
+                </button>
+              </div>
+
+              <div style={localStyles.settingsGridCompact}>
+                <NumberField
+                  label="Rep gap (s)"
+                  value={settings.repeatGapSeconds}
+                  onChange={(value) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      repeatGapSeconds: Math.max(0, value),
+                    }))
+                  }
+                  step={0.5}
+                  mobileOptimized={isCompact}
+                />
+                <NumberField
+                  label="Sentence gap (s)"
+                  value={settings.sentenceGapSeconds}
+                  onChange={(value) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      sentenceGapSeconds: Math.max(0, value),
+                    }))
+                  }
+                  step={0.5}
+                  mobileOptimized={isCompact}
+                />
+              </div>
+
+              <label style={localStyles.fieldStackCompact}>
+                <span style={localStyles.fieldLabel}>Sort mode</span>
+                <select
+                  value={settings.sortMode}
+                  onChange={(event) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      sortMode: event.target.value,
+                    }))
+                  }
+                  style={localStyles.select}
+                >
+                  {SHADOWING_SORT_MODES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={localStyles.fieldStackCompact}>
+                <span style={localStyles.fieldLabel}>Audio speed</span>
+                <select
+                  value={String(settings.playbackRate)}
+                  onChange={(event) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      playbackRate: Number(event.target.value) || 1,
+                    }))
+                  }
+                  style={localStyles.select}
+                >
+                  {SHADOWING_PLAYBACK_RATE_OPTIONS.map((option) => (
+                    <option key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
 
           <div style={localStyles.settingsFootnote}>
             Session queue: {sessionQueue.length} playable sentence
             {sessionQueue.length === 1 ? "" : "s"} - repeat gap {formatSeconds(settings.repeatGapSeconds)}
             {" - "}sentence gap {formatSeconds(settings.sentenceGapSeconds)}
+            {" - "}speed {settings.playbackRate}x
           </div>
         </section>
 
@@ -1799,16 +2277,12 @@ export default function ShadowingWorkspace({
                   Sentence audio is imported when available. Cards without Sentence-Audio still import and stay visible as text-only.
                 </div>
 
-                {uploadStatus ? (
-                  <div style={localStyles.uploadProgressPanel}>
-                    <div style={localStyles.uploadProgressHeader}>
-                      <span>{uploadStatus}</span>
-                      <span>{uploadProgress ? `${uploadProgress}%` : "Waiting"}</span>
-                    </div>
-                    <div style={localStyles.progressTrack}>
-                      <div style={localStyles.progressFill(uploadProgress)} />
-                    </div>
-                  </div>
+                {hasVisibleImportProgress ? (
+                  <ImportProgressPanel
+                    statusText={uploadStatus}
+                    progressValue={uploadProgress}
+                    progressSummary={uploadProgressSummary}
+                  />
                 ) : null}
 
                 <div style={localStyles.modalActionRow}>
@@ -1816,9 +2290,8 @@ export default function ShadowingWorkspace({
                     type="button"
                     onClick={() => setIsUploadModalOpen(false)}
                     style={localStyles.compactSecondaryButton}
-                    disabled={uploading}
                   >
-                    Cancel
+                    {uploading ? "Close" : "Cancel"}
                   </button>
                   <button
                     type="button"
@@ -1829,6 +2302,18 @@ export default function ShadowingWorkspace({
                     {uploading ? "Uploading..." : "Upload deck"}
                   </button>
                 </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {focusModeEnabled
+        ? createPortal(
+            <div style={localStyles.focusOverlay}>
+              <div style={localStyles.focusBackdrop} onClick={() => setFocusMode(false)} />
+              <div style={localStyles.focusFrame}>
+                {renderSessionSection(true)}
               </div>
             </div>,
             document.body,
@@ -1887,6 +2372,20 @@ function UploadDropzone({
       <button type="button" onClick={onSelectFile} style={localStyles.dropzoneButton} disabled={uploading}>
         {pendingFileName ? "Choose different file" : "Choose file"}
       </button>
+    </div>
+  );
+}
+
+function ImportProgressPanel({ statusText, progressValue, progressSummary }) {
+  return (
+    <div style={localStyles.uploadProgressPanel}>
+      <div style={localStyles.uploadProgressHeader}>
+        <span>{statusText || "Preparing import..."}</span>
+        <span>{progressSummary}</span>
+      </div>
+      <div style={localStyles.progressTrack}>
+        <div style={localStyles.progressFill(progressValue)} />
+      </div>
     </div>
   );
 }
@@ -2004,6 +2503,20 @@ const localStyles = {
     justifyContent: "center",
     cursor: "pointer",
   }),
+  focusToggleButton: (active, isMobile) => ({
+    minHeight: "36px",
+    borderRadius: "12px",
+    border: "1px solid rgba(226,232,240,0.14)",
+    background: active ? "rgba(56,189,248,0.14)" : "var(--app-surface-elevated)",
+    color: active ? "#38bdf8" : "var(--app-text)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    cursor: "pointer",
+    fontWeight: 700,
+    padding: isMobile ? "0 10px" : "0 12px",
+  }),
   mobilePrimarySection: {
     padding: 0,
     border: "none",
@@ -2013,29 +2526,82 @@ const localStyles = {
     WebkitBackdropFilter: "none",
     overflow: "visible",
   },
+  focusSectionShell: (isMobile) => ({
+    display: "grid",
+    gridTemplateRows: "auto 1fr auto",
+    gap: isMobile ? "16px" : "20px",
+    width: "min(960px, 100%)",
+    maxWidth: "100%",
+    height: isMobile ? "100%" : "min(88vh, 860px)",
+    maxHeight: "100%",
+    padding: isMobile ? "18px" : "28px",
+    borderRadius: isMobile ? "24px" : "30px",
+    border: "1px solid rgba(148,163,184,0.18)",
+    background:
+      "linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(15,23,42,0.84) 100%)",
+    boxShadow: "0 28px 80px rgba(2, 6, 23, 0.48)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    overflow: "auto",
+  }),
   playerHero: {
     display: "grid",
-    gap: "14px",
-    padding: "18px",
+    gap: "22px",
+    padding: "28px",
     borderRadius: "24px",
     border: "1px solid var(--app-border-soft)",
     background: "linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-card) 100%)",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    alignItems: "center",
+    justifyItems: "center",
+    textAlign: "center",
   },
+  focusPlayerHero: (isMobile) => ({
+    display: "grid",
+    gap: isMobile ? "22px" : "28px",
+    padding: isMobile ? "28px 18px 22px" : "44px 56px 32px",
+    borderRadius: "26px",
+    border: "1px solid rgba(148,163,184,0.14)",
+    background:
+      "radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 42%), rgba(15,23,42,0.5)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    overflow: "visible",
+    alignItems: "center",
+    justifyItems: "center",
+    textAlign: "center",
+    minHeight: isMobile ? "auto" : "100%",
+  }),
   mobilePlayerHero: {
     display: "grid",
-    gap: "14px",
-    padding: "18px",
+    gap: "20px",
+    padding: "24px 18px",
     borderRadius: "24px",
     border: "1px solid var(--app-border-soft)",
     background: "linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-card) 100%)",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
     overflow: "visible",
+    alignItems: "center",
+    justifyItems: "center",
+    textAlign: "center",
   },
   progressMeta: {
     display: "flex",
     flexWrap: "wrap",
     gap: "8px",
+    justifyContent: "center",
+  },
+  sessionFooter: {
+    display: "grid",
+    gap: "12px",
+    width: "100%",
+    alignSelf: "end",
+  },
+  focusSessionFooter: {
+    display: "grid",
+    gap: "14px",
+    width: "100%",
+    alignSelf: "end",
+    paddingBottom: "4px",
   },
   metaPill: {
     display: "inline-flex",
@@ -2080,44 +2646,160 @@ const localStyles = {
   }),
   expressionWrap: {
     display: "grid",
-    gap: "10px",
+    gap: "14px",
+    justifyItems: "center",
+    maxWidth: "720px",
+  },
+  focusExpressionWrap: {
+    display: "grid",
+    gap: "18px",
+    justifyItems: "center",
+    alignContent: "center",
+    width: "100%",
+    maxWidth: "880px",
+    minHeight: "min(42vh, 360px)",
   },
   expressionText: {
-    fontSize: "clamp(28px, 4vw, 44px)",
+    fontSize: "clamp(24px, 3.3vw, 36px)",
     fontWeight: 800,
     letterSpacing: "-0.04em",
-    lineHeight: 1.18,
+    lineHeight: 1.28,
     color: "var(--app-text)",
     whiteSpace: "pre-wrap",
   },
+  focusExpressionText: {
+    fontSize: "clamp(30px, 4vw, 50px)",
+    fontWeight: 800,
+    letterSpacing: "-0.045em",
+    lineHeight: 1.32,
+    color: "var(--app-selected-text)",
+    whiteSpace: "pre-wrap",
+  },
+  rubyText: {
+    display: "inline",
+  },
+  rubyBase: {
+    rubyPosition: "over",
+    rubyAlign: "center",
+  },
+  rubyRt: {
+    fontSize: "0.46em",
+    fontWeight: 700,
+    color: "var(--app-text-soft)",
+    letterSpacing: "0.02em",
+  },
+  focusRubyRt: {
+    fontSize: "0.5em",
+    fontWeight: 700,
+    color: "rgba(226,232,240,0.8)",
+    letterSpacing: "0.02em",
+  },
   readingLine: {
-    fontSize: "clamp(15px, 2vw, 20px)",
+    fontSize: "clamp(15px, 1.9vw, 19px)",
     color: "var(--app-text-soft)",
     lineHeight: 1.5,
     whiteSpace: "pre-wrap",
+    maxWidth: "680px",
+  },
+  focusReadingLine: {
+    fontSize: "clamp(16px, 2vw, 22px)",
+    color: "rgba(226,232,240,0.78)",
+    lineHeight: 1.6,
+    whiteSpace: "pre-wrap",
+    maxWidth: "760px",
   },
   translationLine: {
     fontSize: "14px",
     color: "var(--app-text-muted)",
-    lineHeight: 1.55,
+    lineHeight: 1.7,
     whiteSpace: "pre-wrap",
+    maxWidth: "680px",
+  },
+  focusTranslationLine: {
+    fontSize: "clamp(15px, 1.8vw, 20px)",
+    color: "rgba(226,232,240,0.62)",
+    lineHeight: 1.7,
+    whiteSpace: "pre-wrap",
+    maxWidth: "760px",
   },
   vocabularyChipRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: "10px",
+    justifyContent: "center",
+  },
+  focusVocabularyChip: {
+    border: "1px solid rgba(251,191,36,0.24)",
+    background: "rgba(251,191,36,0.12)",
+    color: "var(--app-selected-text)",
+    borderRadius: "20px",
+    padding: "14px 18px",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    alignItems: "center",
+    gap: "12px",
+    fontWeight: 700,
+    cursor: "pointer",
+    minWidth: "min(100%, 380px)",
+    boxShadow: "0 10px 28px rgba(15, 23, 42, 0.18)",
   },
   vocabularyChip: {
     border: "1px solid rgba(245,158,11,0.25)",
     background: "rgba(251,191,36,0.16)",
     color: "var(--app-text)",
-    borderRadius: "999px",
-    padding: "7px 12px",
-    display: "inline-flex",
+    borderRadius: "18px",
+    padding: "10px 14px",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
-    gap: "8px",
+    gap: "10px",
     fontWeight: 700,
     cursor: "pointer",
+    minWidth: "min(100%, 320px)",
+  },
+  vocabularyChipContent: {
+    display: "grid",
+    gap: "4px",
+    justifyItems: "start",
+    textAlign: "left",
+    minWidth: 0,
+  },
+  vocabularyChipText: {
+    display: "inline-block",
+    lineHeight: 1.15,
+    fontSize: "18px",
+  },
+  focusVocabularyChipText: {
+    display: "inline-block",
+    lineHeight: 1.12,
+    fontSize: "22px",
+  },
+  vocabularyChipRuby: {
+    rubyAlign: "center",
+  },
+  vocabularyChipRt: {
+    fontSize: "0.6em",
+    fontWeight: 700,
+    color: "var(--app-text-soft)",
+  },
+  focusVocabularyChipRt: {
+    fontSize: "0.66em",
+    fontWeight: 700,
+    color: "rgba(226,232,240,0.74)",
+  },
+  vocabularyChipMeaning: {
+    fontSize: "12px",
+    lineHeight: 1.4,
+    fontWeight: 600,
+    color: "var(--app-text-muted)",
+    whiteSpace: "normal",
+  },
+  focusVocabularyChipMeaning: {
+    fontSize: "13px",
+    lineHeight: 1.5,
+    fontWeight: 600,
+    color: "rgba(226,232,240,0.62)",
+    whiteSpace: "normal",
   },
   vocabularyPanel: {
     display: "grid",
@@ -2126,6 +2808,7 @@ const localStyles = {
     border: "1px solid var(--app-border-soft)",
     background: "var(--app-surface-elevated)",
     padding: "14px",
+    width: "min(100%, 560px)",
   },
   vocabularyRow: {
     display: "grid",
@@ -2160,6 +2843,8 @@ const localStyles = {
     fontSize: "12px",
     color: "var(--app-text-muted)",
     lineHeight: 1.5,
+    textAlign: "center",
+    maxWidth: "620px",
   },
   notice: {
     borderRadius: "14px",
@@ -2169,18 +2854,28 @@ const localStyles = {
     padding: "10px 12px",
     fontSize: "13px",
     fontWeight: 600,
+    textAlign: "center",
+    width: "min(100%, 620px)",
   },
   controlsRow: {
-    display: "grid",
-    gridTemplateColumns: "auto 1fr auto auto",
-    gap: "10px",
+    display: "flex",
+    justifyContent: "center",
     alignItems: "center",
+    marginTop: "4px",
+    width: "100%",
   },
   controlsRowMobile: {
-    display: "grid",
-    gridTemplateColumns: "48px minmax(0, 1fr) 48px",
-    gap: "10px",
+    display: "flex",
+    justifyContent: "center",
     alignItems: "center",
+    width: "100%",
+  },
+  focusControlsRow: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    paddingTop: "14px",
   },
   primaryControl: {
     border: "none",
@@ -2195,6 +2890,7 @@ const localStyles = {
     fontWeight: 700,
     cursor: "pointer",
     minHeight: "48px",
+    minWidth: "180px",
   },
   mobilePrimaryControl: {
     border: "none",
@@ -2211,7 +2907,24 @@ const localStyles = {
     minHeight: "48px",
     minWidth: 0,
     width: "100%",
+    maxWidth: "280px",
   },
+  focusPrimaryControl: (isMobile) => ({
+    border: "none",
+    borderRadius: "18px",
+    padding: isMobile ? "14px 18px" : "15px 24px",
+    background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
+    color: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    fontWeight: 700,
+    cursor: "pointer",
+    minHeight: "52px",
+    minWidth: isMobile ? "min(100%, 240px)" : "220px",
+    boxShadow: "0 18px 36px rgba(14,165,233,0.24)",
+  }),
   secondaryControl: {
     border: "1px solid var(--app-border-soft)",
     borderRadius: "16px",
@@ -2372,10 +3085,27 @@ const localStyles = {
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "12px",
   },
+  primarySettingsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
+  },
   settingsGridCompact: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "10px",
+  },
+  settingsActionRow: {
+    display: "flex",
+    justifyContent: "flex-start",
+  },
+  advancedSettingsPanel: {
+    display: "grid",
+    gap: "12px",
+    padding: "12px",
+    borderRadius: "16px",
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-surface-elevated)",
   },
   settingsFootnote: {
     fontSize: "12px",
@@ -2455,6 +3185,31 @@ const localStyles = {
     alignItems: "center",
     justifyContent: "center",
     padding: "20px",
+  },
+  focusOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 1250,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px",
+  },
+  focusBackdrop: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(2, 6, 23, 0.78)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+  },
+  focusFrame: {
+    position: "relative",
+    zIndex: 1,
+    width: "min(1040px, 100%)",
+    height: "min(100%, 900px)",
+    display: "flex",
+    alignItems: "stretch",
+    justifyContent: "center",
   },
   modalBackdrop: {
     position: "absolute",

@@ -8,6 +8,12 @@ import {
   buildStorageUploadPath,
   parseApkgShadowingDeck,
 } from "@/lib/shadowingImport";
+import {
+  completeShadowingImportStatus,
+  createShadowingImportStatus,
+  failShadowingImportStatus,
+  updateShadowingImportStatus,
+} from "@/lib/shadowingImportStatus";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,8 +51,18 @@ const SHADOWING_CARD_BASE_SELECT_COLUMNS = [
   "notes",
   "is_audio_available",
   "created_at",
-].join(", ");
+];
 const SHADOWING_CARD_OPTIONAL_ID_COLUMNS = ["original_card_id", "original_note_id"];
+const SHADOWING_CARD_LEGACY_COLUMN_MAP = {
+  vocab_kanji: "vocabulary_kanji",
+  vocab_furigana: "vocabulary_furigana",
+  vocab_kana: "vocabulary_kana",
+  vocab_english: "vocabulary_english",
+  vocab_audio_url: "vocabulary_audio_url",
+  vocab_pos: "vocabulary_pos",
+  optimized_vocab_index: "optimized_voc_index",
+};
+const SHADOWING_CARD_OPTIONAL_COMPAT_COLUMNS = ["is_audio_available", "created_at"];
 
 function summarizeSupabaseError(error) {
   return {
@@ -63,6 +79,22 @@ function formatSupabaseErrorMessage(prefix, error) {
   return detailParts.length
     ? `${prefix} ${summary.message || "Unknown Supabase error."} (${detailParts.join(" | ")})`
     : `${prefix} ${summary.message || "Unknown Supabase error."}`;
+}
+
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  let timeoutId = null;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
 }
 
 function logShadowingImportDebug(eventName, payload = {}) {
@@ -103,14 +135,38 @@ function isMissingColumnError(error, columnName, tableName = "") {
   );
 }
 
-function buildShadowingCardSelectColumns(baseColumns, optionalColumns = []) {
-  return [baseColumns, ...optionalColumns].filter(Boolean).join(", ");
+function buildShadowingCardSelectColumns({
+  baseColumns,
+  optionalColumns = [],
+  legacyColumns = new Set(),
+  omittedColumns = new Set(),
+}) {
+  return [...baseColumns, ...optionalColumns]
+    .filter((columnName) => columnName && !omittedColumns.has(columnName))
+    .map((columnName) => {
+      const legacyColumnName = SHADOWING_CARD_LEGACY_COLUMN_MAP[columnName];
+      return legacyColumns.has(columnName) && legacyColumnName
+        ? `${columnName}:${legacyColumnName}`
+        : columnName;
+    })
+    .join(", ");
+}
+
+function findMissingShadowingCardColumn(error, columnNames = []) {
+  return columnNames.find((columnName) => {
+    if (isMissingColumnError(error, columnName, "shadowing_cards")) {
+      return true;
+    }
+
+    const legacyColumnName = SHADOWING_CARD_LEGACY_COLUMN_MAP[columnName];
+    return legacyColumnName
+      ? isMissingColumnError(error, legacyColumnName, "shadowing_cards")
+      : false;
+  });
 }
 
 function findMissingShadowingIdColumn(error) {
-  return SHADOWING_CARD_OPTIONAL_ID_COLUMNS.find((columnName) =>
-    isMissingColumnError(error, columnName, "shadowing_cards"),
-  );
+  return findMissingShadowingCardColumn(error, SHADOWING_CARD_OPTIONAL_ID_COLUMNS);
 }
 
 function omitPayloadKeys(payloads, omittedKeys) {
@@ -134,6 +190,32 @@ function normalizeShadowingIdentifier(value) {
 function normalizeShadowingOrder(value) {
   const parsedValue = Number(value);
   return Number.isFinite(parsedValue) ? String(Math.max(0, Math.floor(parsedValue))) : "";
+}
+
+function remapShadowingCardInsertPayloads(payloads, legacyColumns = new Set(), omittedColumns = new Set()) {
+  return payloads.map((payload) => {
+    const nextPayload = { ...payload };
+
+    for (const columnName of omittedColumns) {
+      delete nextPayload[columnName];
+    }
+
+    for (const columnName of legacyColumns) {
+      if (!(columnName in nextPayload)) {
+        continue;
+      }
+
+      const legacyColumnName = SHADOWING_CARD_LEGACY_COLUMN_MAP[columnName];
+      if (!legacyColumnName) {
+        continue;
+      }
+
+      nextPayload[legacyColumnName] = nextPayload[columnName];
+      delete nextPayload[columnName];
+    }
+
+    return nextPayload;
+  });
 }
 
 function createShadowingDuplicateTracker(rows = []) {
@@ -209,15 +291,24 @@ async function runShadowingCardSelectQuery({
   queryBuilder,
   warningContext = {},
 }) {
+  const normalizedBaseColumns = Array.isArray(baseColumns) ? baseColumns : [baseColumns];
   const omittedColumns = new Set();
+  const legacyColumns = new Set();
   let data = [];
   let error = null;
+  const recoverableColumnNames = [
+    ...normalizedBaseColumns,
+    ...SHADOWING_CARD_OPTIONAL_ID_COLUMNS,
+    ...SHADOWING_CARD_OPTIONAL_COMPAT_COLUMNS,
+  ];
 
   while (true) {
-    const selectColumns = buildShadowingCardSelectColumns(
-      baseColumns,
-      SHADOWING_CARD_OPTIONAL_ID_COLUMNS.filter((columnName) => !omittedColumns.has(columnName)),
-    );
+    const selectColumns = buildShadowingCardSelectColumns({
+      baseColumns: normalizedBaseColumns,
+      optionalColumns: SHADOWING_CARD_OPTIONAL_ID_COLUMNS,
+      legacyColumns,
+      omittedColumns,
+    });
 
     ({ data, error } = await queryBuilder(
       adminClient.from("shadowing_cards").select(selectColumns),
@@ -227,16 +318,33 @@ async function runShadowingCardSelectQuery({
       break;
     }
 
-    const missingColumn = findMissingShadowingIdColumn(error);
-    if (!missingColumn || omittedColumns.has(missingColumn)) {
+    const missingColumn = findMissingShadowingCardColumn(error, recoverableColumnNames);
+    if (!missingColumn) {
       break;
     }
 
-    omittedColumns.add(missingColumn);
+    const legacyColumnName = SHADOWING_CARD_LEGACY_COLUMN_MAP[missingColumn];
+    const usingLegacyColumn = legacyColumns.has(missingColumn);
+    const canRetryWithLegacy = legacyColumnName && !usingLegacyColumn;
+
+    if (canRetryWithLegacy) {
+      legacyColumns.add(missingColumn);
+    } else {
+      if (omittedColumns.has(missingColumn)) {
+        break;
+      }
+
+      omittedColumns.add(missingColumn);
+    }
+
     console.warn(
-      `[Shadowing] shadowing_cards.${missingColumn} is missing in this database. Falling back to the reduced card schema. Run the latest Supabase migrations to restore the full import metadata.`,
+      canRetryWithLegacy
+        ? `[Shadowing] shadowing_cards.${missingColumn} is missing in this database. Retrying with the legacy column name ${legacyColumnName}. Run the latest Supabase migrations to align the schema.`
+        : `[Shadowing] shadowing_cards.${missingColumn} is missing in this database. Falling back to the reduced card schema. Run the latest Supabase migrations to restore the full import metadata.`,
       {
         missingColumn,
+        legacyColumnName: canRetryWithLegacy ? legacyColumnName : "",
+        legacyColumns: [...legacyColumns],
         omittedColumns: [...omittedColumns],
         ...warningContext,
         ...summarizeSupabaseError(error),
@@ -247,6 +355,7 @@ async function runShadowingCardSelectQuery({
   return {
     data: data || [],
     error: error || null,
+    legacyColumns,
     omittedColumns,
   };
 }
@@ -423,16 +532,38 @@ async function uploadCardMedia(adminClient, userId, sourceFilename, checksum, ca
       mediaType: upload.kind,
     });
 
-    const { error } = await adminClient.storage
-      .from(SHADOWING_MEDIA_BUCKET)
-      .upload(uploadPath, upload.buffer, {
-        contentType: upload.contentType,
-        upsert: true,
-      });
+    console.info("[Shadowing Import] Uploading media", {
+      userId,
+      cardOrder: Number(card.original_order || 0) + 1,
+      mediaKind: upload.kind,
+      sourceFileName: sourceFilename,
+      mediaFileName: upload.originalFileName,
+      byteLength: upload.buffer?.length || 0,
+      uploadPath,
+    });
+
+    const { error } = await withTimeout(
+      adminClient.storage
+        .from(SHADOWING_MEDIA_BUCKET)
+        .upload(uploadPath, upload.buffer, {
+          contentType: upload.contentType,
+          upsert: true,
+        }),
+      45_000,
+      `Timed out while uploading ${upload.kind} audio for card ${Number(card.original_order || 0) + 1}.`,
+    );
 
     if (error) {
       throw new Error(formatSupabaseErrorMessage(`Failed to upload ${upload.kind} audio.`, error));
     }
+
+    console.info("[Shadowing Import] Uploaded media", {
+      userId,
+      cardOrder: Number(card.original_order || 0) + 1,
+      mediaKind: upload.kind,
+      mediaFileName: upload.originalFileName,
+      uploadPath,
+    });
 
     result.uploadedPaths.push(uploadPath);
     result.uploadedCount += 1;
@@ -601,6 +732,9 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  let importSessionId = "";
+  let importFileName = "";
+
   try {
     const { user, error } = await getAuthenticatedUser();
     if (error || !user?.id) {
@@ -609,6 +743,7 @@ export async function POST(request) {
 
     const formData = await request.formData();
     const file = formData.get("file");
+    importSessionId = String(formData.get("importSessionId") || "").trim() || randomUUID();
     const requestedDeckId = String(formData.get("targetDeckId") || "").trim();
     const requestedDeckName = String(formData.get("deckName") || "").trim();
     const importMode = requestedDeckId ? "existing" : "new";
@@ -621,6 +756,14 @@ export async function POST(request) {
       return jsonError(400, new Error("Only .apkg imports are supported."));
     }
 
+    importFileName = file.name;
+    createShadowingImportStatus({
+      sessionId: importSessionId,
+      userId: user.id,
+      fileName: file.name,
+      statusText: `Preparing ${file.name}...`,
+    });
+
     const parsedDeck = await parseApkgShadowingDeck(file.name, await file.arrayBuffer());
     logShadowingImportDebug("parsed notes count", {
       fileName: file.name,
@@ -629,6 +772,15 @@ export async function POST(request) {
     if (!parsedDeck.cards.length) {
       return jsonError(400, new Error("No notes were found in this .apkg file."));
     }
+
+    updateShadowingImportStatus(importSessionId, {
+      stage: "parsed",
+      fileName: file.name,
+      totalCards: parsedDeck.cards.length,
+      processedCards: 0,
+      statusText: `Parsed ${parsedDeck.cards.length} cards. Preparing import...`,
+      progressPercent: 4,
+    });
 
     const adminClient = getSupabaseAdminClient();
     await ensureShadowingAudioBucket(adminClient);
@@ -695,7 +847,45 @@ export async function POST(request) {
         dedupedCardCount: cardsToImport.length,
       });
 
-      for (const parsedCard of cardsToImport) {
+      updateShadowingImportStatus(importSessionId, {
+        deckId,
+        stage: "importing",
+        totalCards: cardsToImport.length,
+        processedCards: 0,
+        currentCard: 0,
+        uploadedAudioCount,
+        skippedAudioCount,
+        statusText: `Importing 0 / ${cardsToImport.length} cards...`,
+        progressPercent: cardsToImport.length ? 10 : 100,
+      });
+
+      for (const [cardIndex, parsedCard] of cardsToImport.entries()) {
+        if (
+          cardIndex === 0 ||
+          (cardIndex + 1) % 250 === 0 ||
+          cardIndex === cardsToImport.length - 1
+        ) {
+          console.info("[Shadowing Import] Processing card", {
+            deckId,
+            importMode,
+            currentCard: cardIndex + 1,
+            totalCards: cardsToImport.length,
+            uploadedAudioCount,
+            skippedAudioCount,
+          });
+        }
+
+        updateShadowingImportStatus(importSessionId, {
+          deckId,
+          stage: "importing",
+          totalCards: cardsToImport.length,
+          processedCards: cardIndex,
+          currentCard: cardIndex + 1,
+          uploadedAudioCount,
+          skippedAudioCount,
+          statusText: `Importing ${cardIndex + 1} / ${cardsToImport.length} cards...`,
+        });
+
         const uploadedMedia = await uploadCardMedia(
           adminClient,
           user.id,
@@ -732,8 +922,18 @@ export async function POST(request) {
           optimized_sent_index: parsedCard.optimized_sent_index,
           tags: parsedCard.tags,
           notes: parsedCard.notes,
-          is_audio_available: Boolean(uploadedMedia.sentence_audio_url || parsedCard.is_audio_available),
           created_at: importTimestamp,
+        });
+
+        updateShadowingImportStatus(importSessionId, {
+          deckId,
+          stage: "importing",
+          totalCards: cardsToImport.length,
+          processedCards: cardIndex + 1,
+          currentCard: cardIndex + 1,
+          uploadedAudioCount,
+          skippedAudioCount,
+          statusText: `Importing ${cardIndex + 1} / ${cardsToImport.length} cards...`,
         });
       }
 
@@ -745,30 +945,72 @@ export async function POST(request) {
       });
 
       const noteCount = cardPayloads.length;
+      updateShadowingImportStatus(importSessionId, {
+        deckId,
+        stage: "saving-cards",
+        totalCards: noteCount,
+        processedCards: noteCount,
+        currentCard: noteCount,
+        uploadedAudioCount,
+        skippedAudioCount,
+        statusText: `Saving ${noteCount} imported cards...`,
+        progressPercent: noteCount ? 99 : 100,
+      });
+
       let cardsInsertError = null;
       if (cardPayloads.length) {
         const omittedColumns = new Set();
+        const legacyColumns = new Set();
+        const recoverableColumnNames = [
+          ...Object.keys(SHADOWING_CARD_LEGACY_COLUMN_MAP),
+          ...SHADOWING_CARD_OPTIONAL_ID_COLUMNS,
+          ...SHADOWING_CARD_OPTIONAL_COMPAT_COLUMNS,
+        ];
 
         while (true) {
-          const insertPayloads = omitPayloadKeys(cardPayloads, omittedColumns);
+          const insertPayloads = remapShadowingCardInsertPayloads(
+            omitPayloadKeys(cardPayloads, omittedColumns),
+            legacyColumns,
+            omittedColumns,
+          );
           ({ error: cardsInsertError } = await adminClient.from("shadowing_cards").insert(insertPayloads));
 
           if (!cardsInsertError) {
             break;
           }
 
-          const missingColumn = findMissingShadowingIdColumn(cardsInsertError);
-          if (!missingColumn || omittedColumns.has(missingColumn)) {
+          const missingColumn = findMissingShadowingCardColumn(
+            cardsInsertError,
+            recoverableColumnNames,
+          );
+          if (!missingColumn) {
             break;
           }
 
-          omittedColumns.add(missingColumn);
+          const legacyColumnName = SHADOWING_CARD_LEGACY_COLUMN_MAP[missingColumn];
+          const usingLegacyColumn = legacyColumns.has(missingColumn);
+          const canRetryWithLegacy = legacyColumnName && !usingLegacyColumn;
+
+          if (canRetryWithLegacy) {
+            legacyColumns.add(missingColumn);
+          } else {
+            if (omittedColumns.has(missingColumn)) {
+              break;
+            }
+
+            omittedColumns.add(missingColumn);
+          }
+
           console.warn(
-            `[Shadowing] shadowing_cards.${missingColumn} is missing during import. Retrying without that optional column. Run the latest Supabase migrations to preserve original import metadata.`,
+            canRetryWithLegacy
+              ? `[Shadowing] shadowing_cards.${missingColumn} is missing during import. Retrying with the legacy column name ${legacyColumnName}. Run the latest Supabase migrations to align the schema.`
+              : `[Shadowing] shadowing_cards.${missingColumn} is missing during import. Retrying without that optional column. Run the latest Supabase migrations to preserve original import metadata.`,
             {
               userId: user.id,
               deckId,
               missingColumn,
+              legacyColumnName: canRetryWithLegacy ? legacyColumnName : "",
+              legacyColumns: [...legacyColumns],
               omittedColumns: [...omittedColumns],
               ...summarizeSupabaseError(cardsInsertError),
             },
@@ -831,6 +1073,38 @@ export async function POST(request) {
         }
       }
     } catch (importError) {
+      failShadowingImportStatus(importSessionId, {
+        deckId,
+        totalCards: cardsToImport.length,
+        processedCards: cardPayloads.length,
+        currentCard: cardPayloads.length,
+        uploadedAudioCount,
+        skippedAudioCount,
+        statusText:
+          importError instanceof Error
+            ? importError.message
+            : "Shadowing import failed before completion.",
+        error:
+          importError instanceof Error
+            ? importError.message
+            : "Shadowing import failed before completion.",
+      });
+
+      console.error("[Shadowing Import] Import failed", {
+        userId: user.id,
+        deckId,
+        importMode,
+        requestedDeckId,
+        requestedDeckName,
+        fileName: file.name,
+        cardsQueued: cardsToImport.length,
+        preparedCardCount: cardPayloads.length,
+        uploadedPathCount: uploadedPaths.length,
+        uploadedAudioCount,
+        skippedAudioCount,
+        error: importError instanceof Error ? importError.message : String(importError),
+      });
+
       await cleanupUploadedShadowingMedia(adminClient, uploadedPaths);
 
       if (targetDeckContext) {
@@ -852,12 +1126,34 @@ export async function POST(request) {
     }
 
     const payload = await loadShadowingDeckList(adminClient, user.id);
+    completeShadowingImportStatus(importSessionId, {
+      deckId,
+      importedDeckId: deckId,
+      totalCards: cardPayloads.length,
+      processedCards: cardPayloads.length,
+      currentCard: cardPayloads.length,
+      uploadedAudioCount,
+      skippedAudioCount,
+      statusText: `Imported ${cardPayloads.length} cards into ${deckName}.`,
+    });
+
     return NextResponse.json({
       ok: true,
+      importSessionId,
       importedDeckId: deckId,
       ...payload,
     });
   } catch (error) {
+    failShadowingImportStatus(importSessionId, {
+      fileName: importFileName,
+      statusText:
+        error instanceof Error ? error.message : "Shadowing import failed before completion.",
+      error: error instanceof Error ? error.message : "Shadowing import failed before completion.",
+    });
+
+    console.error("[Shadowing Import] Request failed before completion", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return jsonError(500, error);
   }
 }

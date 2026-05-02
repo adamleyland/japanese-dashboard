@@ -120,5 +120,4 @@ alter table public.shadowing_cards
 
 update public.shadowing_cards
 set
-  is_audio_available = sentence_audio_url is not null,
   created_at = coalesce(created_at, now());
