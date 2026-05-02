@@ -186,8 +186,8 @@ export default function WritingSection({
       setWordsWritten?.(
         (currentWords) => Math.max(0, currentWords + metricDelta),
         {
-          kind: existingEntry ? "writing-edit" : "writing-entry",
-          source: "writing",
+          kind: metricDelta > 0 ? "session" : "adjustment",
+          source: existingEntry ? "writing-edit" : "writing",
           note: persistedEntry.title || "Journal entry",
         },
       );
@@ -225,7 +225,7 @@ export default function WritingSection({
       setWordsWritten?.(
         (currentWords) => Math.max(0, currentWords - selectedEntry.estimatedWords),
         {
-          kind: "writing-delete",
+          kind: "adjustment",
           source: "writing",
           note: selectedEntry.title || "Deleted journal entry",
         },
