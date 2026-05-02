@@ -22,7 +22,7 @@ export default function TopNav({
   const calendarRef = useRef(null);
   const triggerMobileNavHaptic = useMobileNavHaptics(isMobile);
   const mobileModuleTabs = moduleTabs.filter(
-    (item) => item.key !== "shadowing" && item.key !== "writing",
+    (item) => item.key !== "shadowing",
   );
 
   const dateLabel = useMemo(
@@ -52,7 +52,12 @@ export default function TopNav({
 
   if (isMobile) {
     return (
-      <section style={styles.topNavShell(isCompact, true)}>
+      <section
+        style={{
+          ...styles.topNavShell(isCompact, true),
+          gridTemplateColumns: `repeat(${mobileModuleTabs.length + 2}, minmax(0, 1fr))`,
+        }}
+      >
         <div style={styles.mobileNavItemWrap}>
           <button
             type="button"

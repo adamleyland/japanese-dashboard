@@ -29,6 +29,7 @@ import useGamingData from "@/hooks/useGamingData";
 import useGamingTotals from "@/hooks/useGamingTotals";
 import useReadingLibrary from "@/hooks/useReadingLibrary";
 import useLingQStats from "@/hooks/useLingQStats";
+import { estimateWritingHours } from "@/components/features/writing/utils/writingStats";
 
 
 const MODULE_TABS = [
@@ -47,7 +48,7 @@ const TRACKING_SOURCE_DEFAULTS = {
   gaming: { positive: "gaming", negative: "adjustment" },
 };
 const TRACKER_FOCUS_MODE_STORAGE_KEY = "jp_tracker_focus_mode";
-const MOBILE_HIDDEN_TAB_KEYS = new Set(["shadowing", "writing"]);
+const MOBILE_HIDDEN_TAB_KEYS = new Set(["shadowing"]);
 const MOBILE_SWIPE_AXIS_LOCK_DISTANCE = 14;
 const MOBILE_SWIPE_DISTANCE_RATIO = 0.18;
 const MOBILE_SWIPE_VELOCITY_THRESHOLD = 540;
@@ -178,9 +179,18 @@ export default function Home() {
   });
   const estimatedReadingHours =
     typeof lingqStats.estimatedReadingHours === "number" ? lingqStats.estimatedReadingHours : 0;
+  const estimatedWritingHours = useMemo(
+    () => estimateWritingHours(wordsWritten),
+    [wordsWritten],
+  );
   const overallHours = useMemo(
-    () => listeningHours + gamingHours + shadowingHours + estimatedReadingHours,
-    [estimatedReadingHours, listeningHours, gamingHours, shadowingHours],
+    () =>
+      listeningHours +
+      gamingHours +
+      shadowingHours +
+      estimatedReadingHours +
+      estimatedWritingHours,
+    [estimatedReadingHours, estimatedWritingHours, listeningHours, gamingHours, shadowingHours],
   );
   const { totalMinutes: gamingTotalMinutes } = useGamingTotals(gamingData.games);
   const mobileModuleTabs = useMemo(
@@ -937,10 +947,12 @@ export default function Home() {
       if (tabKey === "writing") {
         return (
           <WritingWorkspace
+            key={authUserId || "guest-writing"}
             styles={styles}
-            wordsWritten={wordsWritten}
             setWordsWritten={updateWordsWritten}
             isCompact={isCompact}
+            isMobile={isMobile}
+            authUserId={authUserId}
           />
         );
       }
@@ -982,7 +994,6 @@ export default function Home() {
       updateShadowingHours,
       updateWordsWritten,
       wordsRead,
-      wordsWritten,
     ],
   );
   const mobileSwipeListeningVisible = [
@@ -1563,10 +1574,12 @@ export default function Home() {
                 wordsReadLabel={formatWords(wordsRead)}
                 wordsRead={wordsRead}
                 estimatedReadingHours={estimatedReadingHours}
+                estimatedWritingHours={estimatedWritingHours}
                 gamingHoursLabel={formatHours(gamingHours)}
                 gamingHours={gamingHours}
                 shadowingHoursLabel={formatHours(shadowingHours)}
                 shadowingHours={shadowingHours}
+                writingHoursLabel={formatHours(estimatedWritingHours)}
                 wordsWrittenLabel={formatWords(wordsWritten)}
                 wordsWritten={wordsWritten}
                 onAdjustMetric={adjustMetricByDelta}

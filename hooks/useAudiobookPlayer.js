@@ -350,6 +350,11 @@ function serializeError(error) {
   }
 
   if (error && typeof error === "object") {
+    const propertyNames = Object.getOwnPropertyNames(error);
+    if (propertyNames.length) {
+      return Object.fromEntries(propertyNames.map((propertyName) => [propertyName, error[propertyName]]));
+    }
+
     const entries = Object.entries(error);
     if (entries.length) {
       return Object.fromEntries(entries);
@@ -654,10 +659,6 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
   const fetchedChapterBookIdsRef = useRef(new Set());
   const availableBookIds = useMemo(
     () => new Set(availableBooks.map((book) => book.id)),
-    [availableBooks],
-  );
-  const availableBookIdList = useMemo(
-    () => availableBooks.map((book) => book.id),
     [availableBooks],
   );
   const resolvedCurrentBookId = availableBookIds.has(currentBookId) ? currentBookId : null;
@@ -1165,7 +1166,7 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
 
     const hydrateProgress = async () => {
       try {
-        const rows = await fetchUserAudiobookProgress(userId, availableBookIdList);
+        const rows = await fetchUserAudiobookProgress(userId);
         if (cancelled) {
           return;
         }
@@ -1258,22 +1259,21 @@ export function useAudiobookPlayer(sourceBooks = [], userId = "") {
           nextDurationEntries,
         });
       } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to restore audiobook progress", {
-            userId,
-            availableAudiobookIds: availableBookIdList,
-            error: serializeError(error),
-          });
+          if (!cancelled) {
+            console.error("Failed to restore audiobook progress", {
+              userId,
+              error: serializeError(error),
+            });
+          }
         }
-      }
-    };
+      };
 
     void hydrateProgress();
 
-    return () => {
-      cancelled = true;
-    };
-    }, [availableBookIdList, availableBookIds, userId]);
+      return () => {
+        cancelled = true;
+      };
+    }, [availableBookIds, userId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

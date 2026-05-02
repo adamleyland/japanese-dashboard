@@ -1285,7 +1285,7 @@ export default function ShadowingWorkspace({
       >
         <div style={localStyles.headerRow}>
           <div style={{ minWidth: 0 }}>
-            <h2 style={styles.sectionTitle}>Glossika-style sentence loop</h2>
+            <h2 style={styles.sectionTitle}>Shadowing session</h2>
             <p style={styles.sectionText}>
               {selectedDeck
                 ? `${selectedDeck.name} - ${deckSummary}`
