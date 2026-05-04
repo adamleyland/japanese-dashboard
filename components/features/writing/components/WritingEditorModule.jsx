@@ -25,6 +25,8 @@ export default function WritingEditorModule({
     <div
       style={{
         ...styles.largeCard,
+        border: isMobile ? "var(--reading-mobile-top-card-border)" : styles.largeCard.border,
+        boxShadow: isMobile ? "var(--reading-mobile-top-card-shadow)" : styles.largeCard.boxShadow,
         padding: isMobile ? "18px" : styles.largeCard.padding,
         display: "grid",
         gridTemplateRows: "auto minmax(0, 1fr)",

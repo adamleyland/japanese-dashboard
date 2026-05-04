@@ -254,34 +254,53 @@ export default function MainTracker({
             : mobileMotion.static
         }
         transition={mobileMotion.transition}
-        style={
-          isMobile
-            ? {
-                ...mobileStyles.pinnedShell,
-                ...(isVisible ? null : mobileStyles.pinnedShellHidden),
-                padding: isCompact ? "12px" : "14px",
-              }
-            : styles.heroCard
-        }
+        style={isMobile ? mobileStyles.dashboardShell : styles.heroCard}
       >
         {isMobile ? (
-          <div style={mobileStyles.metricButtonRow}>
-            {mobileTrackerMetrics.map((metric) => {
-              const Icon = metric.icon;
+          <div style={mobileStyles.dashboardGrid}>
+            <section style={mobileStyles.overallCard}>
+              <div style={mobileStyles.overallHeaderRow}>
+                <div style={mobileStyles.overallEyebrow}>Tracker dashboard</div>
+              </div>
 
-              return (
-                <button
-                  key={metric.key}
-                  type="button"
-                  onClick={metric.onAdjust}
-                  style={mobileStyles.metricButton(metric.accent)}
-                  aria-label={`Adjust ${metric.label}`}
-                  title={metric.label}
-                >
-                  <Icon size={isCompact ? 18 : 20} strokeWidth={2.1} color={metric.accent.bg} />
-                </button>
-              );
-            })}
+              <div style={mobileStyles.overallValue}>{overallHoursLabel}</div>
+            </section>
+
+            <div style={mobileStyles.metricCardGrid}>
+              {mobileTrackerMetrics.map((metric) => {
+                const Icon = metric.icon;
+                const metricValue =
+                  metric.key === "listening"
+                    ? listeningHoursLabel
+                    : metric.key === "reading"
+                      ? wordsReadLabel
+                      : metric.key === "shadowing"
+                        ? shadowingHoursLabel
+                        : metric.key === "writing"
+                          ? wordsWrittenLabel
+                          : gamingHoursLabel;
+
+                return (
+                  <button
+                    key={metric.key}
+                    type="button"
+                    onClick={metric.onAdjust}
+                    style={mobileStyles.metricDashboardCard()}
+                    aria-label={`Adjust ${metric.label}`}
+                    title={metric.label}
+                  >
+                    <div style={mobileStyles.metricDashboardTopRow}>
+                      <div style={mobileStyles.metricDashboardIcon(metric.accent)}>
+                        <Icon size={18} strokeWidth={2.1} color={metric.accent.bg} />
+                      </div>
+                    </div>
+
+                    <div style={mobileStyles.metricDashboardLabel}>{metric.label}</div>
+                    <div style={mobileStyles.metricDashboardValue}>{metricValue}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <>
@@ -447,47 +466,107 @@ const mobileMotion = {
 };
 
 const mobileStyles = {
-  pinnedShell: {
-    position: "fixed",
-    left: "16px",
-    right: "16px",
-    bottom: "90px",
-    zIndex: 90,
-    width: "auto",
-    height: "auto",
-    maxWidth: "calc(100% - 32px)",
-    margin: "0 auto",
-    boxSizing: "border-box",
-    borderRadius: "24px",
+  dashboardShell: {
+    borderRadius: "28px",
     border: "var(--app-glass-border)",
     background: "var(--app-glass-bg)",
     boxShadow: "var(--app-glass-shadow)",
     backdropFilter: "blur(18px)",
     WebkitBackdropFilter: "blur(18px)",
-    transformOrigin: "center bottom",
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    padding: "14px",
+    minHeight: 0,
+    height: "100%",
   },
-  pinnedShellHidden: {
-    pointerEvents: "none",
-  },
-  metricButtonRow: {
+  dashboardGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-    gap: "8px",
+    gridTemplateRows: "auto 1fr",
+    gap: "12px",
     width: "100%",
+    height: "100%",
+    minHeight: 0,
   },
-  metricButton: (accent) => ({
-    width: "100%",
-    aspectRatio: "1 / 1",
-    borderRadius: "16px",
-    border: "1px solid var(--app-border-soft)",
-    background: accent.soft,
-    display: "inline-flex",
+  overallCard: {
+    borderRadius: "22px",
+    border: "1px solid rgba(255,255,255,0.82)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.76) 100%)",
+    boxShadow: "0 16px 32px rgba(15,23,42,0.1)",
+    padding: "14px",
+    display: "grid",
+    gap: "10px",
+    minWidth: 0,
+  },
+  overallHeaderRow: {
+    display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+  },
+  overallEyebrow: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "var(--app-text-muted)",
+  },
+  overallValue: {
+    fontSize: "34px",
+    fontWeight: 800,
+    letterSpacing: "-0.05em",
+    lineHeight: 1,
+    color: "var(--app-text)",
+  },
+  metricCardGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
+    minHeight: 0,
+    alignContent: "start",
+  },
+  metricDashboardCard: () => ({
+    width: "100%",
+    minHeight: "88px",
+    borderRadius: "20px",
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-card-muted)",
+    display: "grid",
+    gap: "10px",
+    textAlign: "left",
     cursor: "pointer",
-    padding: 0,
+    padding: "12px",
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
     transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
     touchAction: "manipulation",
   }),
+  metricDashboardTopRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  metricDashboardIcon: (accent) => ({
+    width: "36px",
+    height: "36px",
+    borderRadius: "12px",
+    border: "1px solid var(--app-border)",
+    background: accent.soft,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  }),
+  metricDashboardLabel: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "var(--app-text-muted)",
+  },
+  metricDashboardValue: {
+    fontSize: "24px",
+    fontWeight: 800,
+    letterSpacing: "-0.04em",
+    lineHeight: 1,
+    color: "var(--app-text)",
+  },
 };

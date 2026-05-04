@@ -1,7 +1,5 @@
 export default function NavigationBar({ activeTab, isMobile, onChange, moduleTabs, styles }) {
-  const visibleTabs = isMobile
-    ? moduleTabs.filter((item) => item.key !== "shadowing")
-    : moduleTabs;
+  const visibleTabs = moduleTabs;
 
   return (
     <div

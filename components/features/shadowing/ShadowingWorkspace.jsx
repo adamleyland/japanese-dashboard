@@ -499,6 +499,7 @@ export default function ShadowingWorkspace({
   const [hasMounted, setHasMounted] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
+  const [isMobileSessionOpen, setIsMobileSessionOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [uploadMode, setUploadMode] = useState("new");
@@ -614,6 +615,7 @@ export default function ShadowingWorkspace({
     0,
     Math.min(100, (Number(shadowingHours || 0) / Math.max(1, Number(goalHours || 0))) * 100),
   );
+  const numericFieldMobileOptimized = isMobile || isCompact;
   const sentenceAudioUrl = currentCard?.hasSentenceAudio
     ? `/api/shadowing/media/${currentCard.id}?kind=sentence`
     : "";
@@ -1008,6 +1010,22 @@ export default function ShadowingWorkspace({
     settings.repetitions,
     startGap,
   ]);
+
+  const handleOpenMobileSession = useCallback(async () => {
+    setIsMobileSessionOpen(true);
+
+    if (!isPlayingRef.current && sessionQueue.length) {
+      await handlePlayPause();
+    }
+  }, [handlePlayPause, sessionQueue.length]);
+
+  const handleCloseMobileSession = useCallback(async () => {
+    if (isPlayingRef.current) {
+      await handlePlayPause();
+    }
+
+    setIsMobileSessionOpen(false);
+  }, [handlePlayPause]);
 
   const handleVocabularyAudio = useCallback(async () => {
     if (!vocabularyAudioUrl || !vocabularyAudioRef.current) {
@@ -1446,7 +1464,7 @@ export default function ShadowingWorkspace({
   }, [isUploadModalOpen, resetUploadForm, selectedDeck?.id, uploadTargetDeckId]);
 
   useEffect(() => {
-    if ((!isUploadModalOpen && !focusMode) || typeof document === "undefined") {
+    if ((!isUploadModalOpen && !focusMode && !isMobileSessionOpen) || typeof document === "undefined") {
       return undefined;
     }
 
@@ -1456,16 +1474,22 @@ export default function ShadowingWorkspace({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [focusMode, isUploadModalOpen]);
+  }, [focusMode, isMobileSessionOpen, isUploadModalOpen]);
 
   useEffect(() => {
-    if (!focusMode || typeof window === "undefined") {
+    if ((!focusMode && !isMobileSessionOpen) || typeof window === "undefined") {
       return undefined;
     }
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        setFocusMode(false);
+        if (focusMode) {
+          setFocusMode(false);
+        }
+
+        if (isMobileSessionOpen) {
+          setIsMobileSessionOpen(false);
+        }
       }
     };
 
@@ -1474,7 +1498,7 @@ export default function ShadowingWorkspace({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [focusMode]);
+  }, [focusMode, isMobileSessionOpen]);
 
   useEffect(() => {
     resetSessionPosition();
@@ -1678,7 +1702,8 @@ export default function ShadowingWorkspace({
       : "";
   const focusModeEnabled = focusMode && hasMounted;
 
-  const renderSessionSection = (isFocusView = false) => {
+  const renderSessionSection = (isFocusView = false, options = {}) => {
+    const { isMobileSheet = false } = options;
     const focusToggleLabel = isFocusView ? "Exit focus" : "Deep focus";
 
     return (
@@ -1686,7 +1711,9 @@ export default function ShadowingWorkspace({
         style={{
           ...styles.largeCard,
           ...(
-            isFocusView
+            isMobileSheet
+              ? localStyles.mobileSessionSheetContent
+              : isFocusView
               ? localStyles.focusSectionShell(isMobile)
               : {
                   display: "grid",
@@ -1725,19 +1752,41 @@ export default function ShadowingWorkspace({
               <Sparkles size={16} />
             </button>
 
-            <button
-              type="button"
-              style={localStyles.focusToggleButton(isFocusView, isMobile)}
-              onClick={() => setFocusMode((value) => !value)}
-              aria-label={focusToggleLabel}
-              title={focusToggleLabel}
-            >
-              {isFocusView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
+            {isMobileSheet ? (
+              <button
+                type="button"
+                style={localStyles.focusToggleButton(false, true)}
+                onClick={() => void handleCloseMobileSession()}
+                aria-label="Close shadowing session"
+                title="Close shadowing session"
+              >
+                <X size={16} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                style={localStyles.focusToggleButton(isFocusView, isMobile)}
+                onClick={() => setFocusMode((value) => !value)}
+                aria-label={focusToggleLabel}
+                title={focusToggleLabel}
+              >
+                {isFocusView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            )}
           </div>
         </div>
 
-        <div style={isFocusView ? localStyles.focusPlayerHero(isMobile) : isMobile ? localStyles.mobilePlayerHero : localStyles.playerHero}>
+        <div
+          style={
+            isMobileSheet
+              ? localStyles.mobileSessionSheetHero
+              : isFocusView
+                ? localStyles.focusPlayerHero(isMobile)
+                : isMobile
+                  ? localStyles.mobilePlayerHero
+                  : localStyles.playerHero
+          }
+        >
           {loadingStateMessage ? <div style={localStyles.infoBox}>{loadingStateMessage}</div> : null}
           {selectedDeckEmptyMessage ? <div style={localStyles.infoBox}>{selectedDeckEmptyMessage}</div> : null}
           {deckCardsError ? <div style={localStyles.errorBox}>{deckCardsError}</div> : null}
@@ -1855,7 +1904,7 @@ export default function ShadowingWorkspace({
 
         <div
           style={
-            isFocusView
+            isMobileSheet || isFocusView
               ? localStyles.focusControlsRow
               : isMobile
                 ? localStyles.controlsRowMobile
@@ -1873,8 +1922,6 @@ export default function ShadowingWorkspace({
           </button>
         </div>
 
-        {!isFocusView ? <audio ref={audioRef} preload="auto" /> : null}
-        {!isFocusView ? <audio ref={vocabularyAudioRef} preload="none" /> : null}
       </section>
     );
   };
@@ -1891,9 +1938,206 @@ export default function ShadowingWorkspace({
         overflow: "visible",
       }}
     >
-      {renderSessionSection(false)}
+      {isMobile ? (
+        <section
+          style={{
+            ...styles.largeCard,
+            display: "grid",
+            gap: "16px",
+            padding: "16px",
+            border: "var(--listening-mobile-workspace-border)",
+            boxShadow: "var(--listening-mobile-workspace-shadow)",
+          }}
+        >
+          <div style={styles.sectionHeader}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={styles.sectionTitle}>Shadowing session</h2>
+              <p style={styles.sectionText}>
+                {selectedDeck?.name ? `${selectedDeck.name} ready to run.` : deckSummary}
+              </p>
+            </div>
+          </div>
+
+          <div style={localStyles.mobileLauncherMetaRow}>
+            <div style={localStyles.mobileLauncherPill}>
+              {sessionQueue.length} sentence{sessionQueue.length === 1 ? "" : "s"}
+            </div>
+            <div style={localStyles.mobileLauncherPill}>
+              {settings.repetitions} rep{settings.repetitions === 1 ? "" : "s"}
+            </div>
+          </div>
+
+          {decksError ? <div style={localStyles.errorBox}>{decksError}</div> : null}
+          {emptyStateMessage ? <div style={localStyles.infoBox}>{emptyStateMessage}</div> : null}
+          {loadingStateMessage && !selectedDeckId ? (
+            <div style={localStyles.infoBox}>{loadingStateMessage}</div>
+          ) : null}
+          {deckActionStatus ? <div style={localStyles.infoBox}>{deckActionStatus}</div> : null}
+
+          <div
+            style={{
+              ...localStyles.primarySettingsGrid,
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            }}
+          >
+            <NumberField
+              label="Sentences"
+              value={settings.sentenceCount}
+              onChange={(value) =>
+                setSettings((currentValue) => ({
+                  ...currentValue,
+                  sentenceCount: Math.max(1, Math.round(value)),
+                }))
+              }
+              step={1}
+              mobileOptimized={numericFieldMobileOptimized}
+            />
+            <NumberField
+              label="Repetitions"
+              value={settings.repetitions}
+              onChange={(value) =>
+                setSettings((currentValue) => ({
+                  ...currentValue,
+                  repetitions: Math.max(1, Math.round(value)),
+                }))
+              }
+              step={1}
+              mobileOptimized={numericFieldMobileOptimized}
+            />
+          </div>
+
+          {!selectedDeck && decks.length > 1 && !decksLoading ? (
+            <div style={localStyles.infoBox}>Choose a deck below before starting.</div>
+          ) : null}
+          {!selectedDeck && !decks.length && !decksLoading ? (
+            <div style={localStyles.infoBox}>Upload decks on desktop, then run your session here.</div>
+          ) : null}
+
+          <div style={localStyles.settingsActionRow}>
+            <button
+              type="button"
+              onClick={() => setIsAdvancedSettingsOpen((currentValue) => !currentValue)}
+              style={localStyles.compactSecondaryButton}
+            >
+              {isAdvancedSettingsOpen ? "Hide more settings" : "More settings"}
+            </button>
+          </div>
+
+          {isAdvancedSettingsOpen ? (
+            <div style={localStyles.advancedSettingsPanel}>
+              <div style={localStyles.renameRow}>
+                <label style={{ ...localStyles.fieldStackCompact, flex: 1 }}>
+                  <span style={localStyles.fieldLabel}>Deck name</span>
+                  <input
+                    type="text"
+                    value={deckNameDraft}
+                    onChange={(event) => setDeckNameDraft(event.target.value)}
+                    style={localStyles.textInput}
+                    placeholder="Rename selected deck"
+                    disabled={!selectedDeck?.id || savingDeckName}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void handleRenameDeck()}
+                  style={localStyles.compactSecondaryButton}
+                  disabled={!selectedDeck?.id || !deckNameDraft.trim() || savingDeckName}
+                >
+                  {savingDeckName ? "Saving..." : "Save"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  ...localStyles.settingsGridCompact,
+                  gridTemplateColumns: "1fr",
+                }}
+              >
+                <NumberField
+                  label="Rep gap (s)"
+                  value={settings.repeatGapSeconds}
+                  onChange={(value) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      repeatGapSeconds: Math.max(0, value),
+                    }))
+                  }
+                  step={0.5}
+                  mobileOptimized={numericFieldMobileOptimized}
+                />
+                <NumberField
+                  label="Sentence gap (s)"
+                  value={settings.sentenceGapSeconds}
+                  onChange={(value) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      sentenceGapSeconds: Math.max(0, value),
+                    }))
+                  }
+                  step={0.5}
+                  mobileOptimized={numericFieldMobileOptimized}
+                />
+              </div>
+
+              <label style={localStyles.fieldStackCompact}>
+                <span style={localStyles.fieldLabel}>Sort mode</span>
+                <select
+                  value={settings.sortMode}
+                  onChange={(event) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      sortMode: event.target.value,
+                    }))
+                  }
+                  style={localStyles.select}
+                >
+                  {SHADOWING_SORT_MODES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={localStyles.fieldStackCompact}>
+                <span style={localStyles.fieldLabel}>Audio speed</span>
+                <select
+                  value={String(settings.playbackRate)}
+                  onChange={(event) =>
+                    setSettings((currentValue) => ({
+                      ...currentValue,
+                      playbackRate: Number(event.target.value) || 1,
+                    }))
+                  }
+                  style={localStyles.select}
+                >
+                  {SHADOWING_PLAYBACK_RATE_OPTIONS.map((option) => (
+                    <option key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            style={localStyles.mobileLauncherPlayButton(Boolean(sessionQueue.length))}
+            onClick={() => void handleOpenMobileSession()}
+            disabled={!sessionQueue.length}
+          >
+            <Play size={18} />
+            {sessionCompleted ? "Replay session" : isPlaying ? "Resume session" : "Start session"}
+          </button>
+        </section>
+      ) : (
+        renderSessionSection(false)
+      )}
 
       <div style={{ ...styles.sideColumn, minHeight: 0 }}>
+        {!isMobile ? (
         <section
           style={{
             ...styles.sideCard,
@@ -1907,6 +2151,7 @@ export default function ShadowingWorkspace({
             icon={<SlidersHorizontal size={14} color="#38bdf8" strokeWidth={2.5} />}
             eyebrow="Settings"
             action={
+              !isMobile ? (
               <button
                 type="button"
                 onClick={() => setIsUploadModalOpen(true)}
@@ -1915,6 +2160,7 @@ export default function ShadowingWorkspace({
                 <CloudUpload size={14} />
                 Upload deck
               </button>
+              ) : null
             }
           />
 
@@ -1972,32 +2218,39 @@ export default function ShadowingWorkspace({
             </select>
           </label>
 
-          <div style={localStyles.primarySettingsGrid}>
-            <NumberField
-              label="Sentences"
-              value={settings.sentenceCount}
-              onChange={(value) =>
-                setSettings((currentValue) => ({
-                  ...currentValue,
-                  sentenceCount: Math.max(1, Math.round(value)),
-                }))
-              }
-              step={1}
-              mobileOptimized={isCompact}
-            />
-            <NumberField
-              label="Repetitions"
-              value={settings.repetitions}
-              onChange={(value) =>
-                setSettings((currentValue) => ({
-                  ...currentValue,
-                  repetitions: Math.max(1, Math.round(value)),
-                }))
-              }
-              step={1}
-              mobileOptimized={isCompact}
-            />
-          </div>
+          {!isMobile ? (
+            <div
+              style={{
+                ...localStyles.primarySettingsGrid,
+                gridTemplateColumns: isMobile ? "1fr" : localStyles.primarySettingsGrid.gridTemplateColumns,
+              }}
+            >
+              <NumberField
+                label="Sentences"
+                value={settings.sentenceCount}
+                onChange={(value) =>
+                  setSettings((currentValue) => ({
+                    ...currentValue,
+                    sentenceCount: Math.max(1, Math.round(value)),
+                  }))
+                }
+                step={1}
+                mobileOptimized={numericFieldMobileOptimized}
+              />
+              <NumberField
+                label="Repetitions"
+                value={settings.repetitions}
+                onChange={(value) =>
+                  setSettings((currentValue) => ({
+                    ...currentValue,
+                    repetitions: Math.max(1, Math.round(value)),
+                  }))
+                }
+                step={1}
+                mobileOptimized={numericFieldMobileOptimized}
+              />
+            </div>
+          ) : null}
 
           <div style={localStyles.settingsActionRow}>
             <button
@@ -2034,7 +2287,12 @@ export default function ShadowingWorkspace({
                 </button>
               </div>
 
-              <div style={localStyles.settingsGridCompact}>
+              <div
+                style={{
+                  ...localStyles.settingsGridCompact,
+                  gridTemplateColumns: isMobile ? "1fr" : localStyles.settingsGridCompact.gridTemplateColumns,
+                }}
+              >
                 <NumberField
                   label="Rep gap (s)"
                   value={settings.repeatGapSeconds}
@@ -2045,7 +2303,7 @@ export default function ShadowingWorkspace({
                     }))
                   }
                   step={0.5}
-                  mobileOptimized={isCompact}
+                  mobileOptimized={numericFieldMobileOptimized}
                 />
                 <NumberField
                   label="Sentence gap (s)"
@@ -2057,7 +2315,7 @@ export default function ShadowingWorkspace({
                     }))
                   }
                   step={0.5}
-                  mobileOptimized={isCompact}
+                  mobileOptimized={numericFieldMobileOptimized}
                 />
               </div>
 
@@ -2110,61 +2368,105 @@ export default function ShadowingWorkspace({
             {" - "}speed {settings.playbackRate}x
           </div>
         </section>
+        ) : null}
 
-        <section
-          style={{
-            ...styles.sideCard,
-            display: "grid",
-            gap: "14px",
-            padding: isMobile ? "16px" : styles.sideCard.padding,
-          }}
-        >
-          <SideModuleHeader
-            styles={styles}
-            icon={<BarChart3 size={14} color="#38bdf8" strokeWidth={2.5} />}
-            eyebrow="Shadowing Stats"
-            title="Shadowing progress"
-          />
+        {isMobile ? (
+          <section
+            style={{
+              ...styles.sideCard,
+              padding: "12px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={localStyles.mobileVisualizationValue}
+              title={formatShadowingHours(shadowingHours)}
+              aria-label={`Total shadowing ${formatShadowingHours(shadowingHours)}`}
+            >
+              {formatShadowingHours(shadowingHours)}
+            </div>
 
-          <div style={localStyles.statsGrid}>
-            <StatTile
-              icon={<AudioLines size={16} />}
-              label="Total shadowing hours"
-              value={formatShadowingHours(shadowingHours)}
+            <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+              <div
+                style={{
+                  ...styles.progressBarWrap,
+                  height: "10px",
+                  borderRadius: "999px",
+                }}
+                aria-hidden="true"
+              >
+                <div
+                  style={{
+                    ...styles.progressBarFill(goalProgress),
+                    background: "#0ea5e9",
+                  }}
+                />
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              ...styles.sideCard,
+              display: "grid",
+              gap: "14px",
+              padding: isMobile ? "16px" : styles.sideCard.padding,
+            }}
+          >
+            <SideModuleHeader
+              styles={styles}
+              icon={<BarChart3 size={14} color="#38bdf8" strokeWidth={2.5} />}
+              eyebrow="Shadowing Stats"
+              title="Shadowing progress"
             />
-            <StatTile
-              icon={<Volume2 size={16} />}
-              label="Total reps"
-              value={new Intl.NumberFormat().format(totalReps)}
-            />
-          </div>
 
-          <div style={localStyles.goalCard}>
-            <div style={localStyles.goalHeader}>
-              <div>
-                <div style={localStyles.goalLabel}>Goal setting</div>
-                <div style={localStyles.goalValue}>
-                  {formatShadowingHours(shadowingHours)} / {formatShadowingHours(goalHours)}
+            <div style={localStyles.statsGrid}>
+              <StatTile
+                icon={<AudioLines size={16} />}
+                label="Total shadowing hours"
+                value={formatShadowingHours(shadowingHours)}
+              />
+              <StatTile
+                icon={<Volume2 size={16} />}
+                label="Total reps"
+                value={new Intl.NumberFormat().format(totalReps)}
+              />
+            </div>
+
+            <div style={localStyles.goalCard}>
+              <div style={localStyles.goalHeader}>
+                <div>
+                  <div style={localStyles.goalLabel}>Goal setting</div>
+                  <div style={localStyles.goalValue}>
+                    {formatShadowingHours(shadowingHours)} / {formatShadowingHours(goalHours)}
+                  </div>
                 </div>
+
+                <div style={localStyles.goalPercent}>{goalProgress.toFixed(1)}%</div>
               </div>
 
-              <div style={localStyles.goalPercent}>{goalProgress.toFixed(1)}%</div>
-            </div>
+              <div style={localStyles.progressTrack}>
+                <div style={localStyles.goalProgressFill(goalProgress)} />
+              </div>
 
-            <div style={localStyles.progressTrack}>
-              <div style={localStyles.goalProgressFill(goalProgress)} />
+              <NumberField
+                label="Goal (hours)"
+                value={goalHours}
+                onChange={(value) => setGoalHours(Math.max(1, Math.round(value)))}
+                step={1}
+                mobileOptimized={numericFieldMobileOptimized}
+              />
             </div>
-
-            <NumberField
-              label="Goal (hours)"
-              value={goalHours}
-              onChange={(value) => setGoalHours(Math.max(1, Math.round(value)))}
-              step={1}
-              mobileOptimized={isCompact}
-            />
-          </div>
-        </section>
+          </section>
+        )}
       </div>
+
+      <audio ref={audioRef} preload="auto" />
+      <audio ref={vocabularyAudioRef} preload="none" />
 
       {hasMounted && isUploadModalOpen
         ? createPortal(
@@ -2319,6 +2621,21 @@ export default function ShadowingWorkspace({
             document.body,
           )
         : null}
+
+      {hasMounted && isMobile
+        ? createPortal(
+            <div style={localStyles.mobileSessionOverlay(isMobileSessionOpen)}>
+              <div
+                style={localStyles.mobileSessionBackdrop(isMobileSessionOpen)}
+                onClick={() => void handleCloseMobileSession()}
+              />
+              <div style={localStyles.mobileSessionSheet(isMobileSessionOpen)}>
+                {renderSessionSection(false, { isMobileSheet: true })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -2467,6 +2784,40 @@ const localStyles = {
     alignItems: "flex-start",
     gap: "12px",
   },
+  mobileLauncherMetaRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  mobileLauncherPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "rgba(56,189,248,0.12)",
+    color: "#38bdf8",
+    fontSize: "12px",
+    fontWeight: 700,
+  },
+  mobileLauncherPlayButton: (enabled) => ({
+    border: "none",
+    borderRadius: "16px",
+    padding: "14px 16px",
+    background: enabled
+      ? "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)"
+      : "rgba(148,163,184,0.42)",
+    color: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    fontWeight: 700,
+    cursor: enabled ? "pointer" : "not-allowed",
+    minHeight: "52px",
+    width: "100%",
+    boxShadow: enabled ? "0 18px 36px rgba(14,165,233,0.22)" : "none",
+    opacity: enabled ? 1 : 0.76,
+  }),
   compactActionButton: {
     border: "1px solid rgba(56,189,248,0.2)",
     background: "rgba(56,189,248,0.1)",
@@ -2544,6 +2895,19 @@ const localStyles = {
     WebkitBackdropFilter: "blur(12px)",
     overflow: "auto",
   }),
+  mobileSessionSheetContent: {
+    display: "grid",
+    gridTemplateRows: "auto 1fr auto",
+    gap: "16px",
+    width: "100%",
+    height: "100%",
+    padding: "18px 16px calc(18px + env(safe-area-inset-bottom, 0px))",
+    borderRadius: "28px 28px 0 0",
+    border: "1px solid var(--app-border-strong)",
+    background: "var(--app-surface-strong)",
+    boxShadow: "var(--app-glass-shadow)",
+    overflow: "auto",
+  },
   playerHero: {
     display: "grid",
     gap: "22px",
@@ -2583,6 +2947,20 @@ const localStyles = {
     alignItems: "center",
     justifyItems: "center",
     textAlign: "center",
+  },
+  mobileSessionSheetHero: {
+    display: "grid",
+    gap: "22px",
+    padding: "24px 16px",
+    borderRadius: "24px",
+    border: "1px solid var(--app-border-soft)",
+    background: "linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-card) 100%)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    overflow: "visible",
+    alignItems: "center",
+    justifyItems: "center",
+    textAlign: "center",
+    minHeight: "calc(100dvh - 220px)",
   },
   progressMeta: {
     display: "flex",
@@ -3145,6 +3523,14 @@ const localStyles = {
     letterSpacing: "-0.03em",
     color: "var(--app-text)",
   },
+  mobileVisualizationValue: {
+    fontSize: "18px",
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    color: "var(--app-text)",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+  },
   goalCard: {
     display: "grid",
     gap: "12px",
@@ -3195,6 +3581,29 @@ const localStyles = {
     justifyContent: "center",
     padding: "20px",
   },
+  mobileSessionOverlay: (open) => ({
+    position: "fixed",
+    inset: 0,
+    zIndex: 1240,
+    pointerEvents: open ? "auto" : "none",
+  }),
+  mobileSessionBackdrop: (open) => ({
+    position: "absolute",
+    inset: 0,
+    background: open ? "rgba(148, 163, 184, 0.22)" : "rgba(148, 163, 184, 0)",
+    backdropFilter: open ? "blur(10px)" : "blur(0px)",
+    WebkitBackdropFilter: open ? "blur(10px)" : "blur(0px)",
+    transition: "background 240ms ease, backdrop-filter 240ms ease",
+  }),
+  mobileSessionSheet: (open) => ({
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "100dvh",
+    transform: open ? "translateY(0%)" : "translateY(100%)",
+    transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+  }),
   focusBackdrop: {
     position: "absolute",
     inset: 0,

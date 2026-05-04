@@ -49,7 +49,6 @@ const TRACKING_SOURCE_DEFAULTS = {
   gaming: { positive: "gaming", negative: "adjustment" },
 };
 const TRACKER_FOCUS_MODE_STORAGE_KEY = "jp_tracker_focus_mode";
-const MOBILE_HIDDEN_TAB_KEYS = new Set(["shadowing"]);
 const MOBILE_SWIPE_AXIS_LOCK_DISTANCE = 14;
 const MOBILE_SWIPE_DISTANCE_RATIO = 0.18;
 const MOBILE_SWIPE_VELOCITY_THRESHOLD = 540;
@@ -80,7 +79,7 @@ const MOBILE_SWIPE_IGNORE_SELECTOR = [
 ].join(", ");
 
 function getMobileBottomInset(hasPinnedTracker) {
-  return hasPinnedTracker ? 236 : 136;
+  return hasPinnedTracker ? 136 : 136;
 }
 
 function mergeTrackingTotals(baseTotals, pendingTotals) {
@@ -98,7 +97,7 @@ function isFiniteNumber(value) {
 }
 
 function isMobileModuleTab(item) {
-  return !MOBILE_HIDDEN_TAB_KEYS.has(item.key);
+  return Boolean(item?.key);
 }
 
 function shouldIgnoreMobileSwipeTarget(target) {
@@ -1644,7 +1643,7 @@ export default function Home() {
           styles={styles}
         />
 
-        {(showDashboard || isMobile) && (
+        {(!isMobile || showDashboard) && (
           <section
             style={{
               ...styles.heroGrid,
@@ -1654,6 +1653,7 @@ export default function Home() {
                 ? "minmax(0, 1fr) 0fr"
                 : "minmax(0, 1.6fr) minmax(320px, 1fr)",
               gap: isMobile ? "14px" : trackerFocusMode ? "0px" : "14px",
+              ...(isMobile ? styles.mobileTrackerSection : null),
             }}
           >
             <div style={styles.dashboardPrimaryColumn}>
@@ -1694,65 +1694,89 @@ export default function Home() {
           </section>
         )}
 
-        <section
-          style={isMobile ? styles.contentWrapMobile(mobileBottomInset) : styles.contentWrap}
-        >
-          {isMobile && mobileSwipeIsSwipeableTab && currentMobileSwipeTab ? (
-            <>
-              <div
-                ref={mobileSwipeViewportRef}
-                style={styles.mobileSwipeViewport}
-                onPointerCancel={handleMobileSwipePointerEnd}
-                onPointerDown={handleMobileSwipePointerDown}
-                onPointerMove={handleMobileSwipePointerMove}
-                onPointerUp={handleMobileSwipePointerEnd}
-              >
-                {mobileSwipeWidth > 0 ? (
-                  <div
-                    ref={mobileSwipeTrackRef}
-                    style={styles.mobileSwipeTrack(mobileSwipeWidth, mobileSwipeBaseOffset)}
-                  >
-                    {mobileSwipeSlots.map(({ key, tabItem }) => (
-                      <div
-                        key={`mobile-swipe-slot-${key}`}
-                        aria-hidden={tabItem?.key !== currentMobileSwipeTab.key}
-                        style={styles.mobileSwipePanel(
-                          mobileSwipeWidth,
-                          tabItem?.key === currentMobileSwipeTab.key,
-                          mobileBottomInset,
-                        )}
-                      >
-                        {tabItem ? (
-                          <div key={tabItem.key}>
-                            {renderModuleContent(tabItem.key)}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  renderModuleContent(currentMobileSwipeTab.key)
-                )}
-              </div>
-
-              {shouldKeepListeningTabMounted && !mobileSwipeListeningVisible ? (
-                <div style={styles.hiddenKeepAlive}>{renderModuleContent("listening")}</div>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {shouldKeepListeningTabMounted && (
-                <div style={{ display: tab === "listening" ? "block" : "none" }}>
-                  {renderModuleContent("listening")}
+        {!showDashboard || !isMobile ? (
+          <section
+            style={isMobile ? styles.contentWrapMobile(mobileBottomInset) : styles.contentWrap}
+          >
+            {isMobile && mobileSwipeIsSwipeableTab && currentMobileSwipeTab ? (
+              <>
+                <div
+                  ref={mobileSwipeViewportRef}
+                  style={styles.mobileSwipeViewport}
+                  onPointerCancel={handleMobileSwipePointerEnd}
+                  onPointerDown={handleMobileSwipePointerDown}
+                  onPointerMove={handleMobileSwipePointerMove}
+                  onPointerUp={handleMobileSwipePointerEnd}
+                >
+                  {mobileSwipeWidth > 0 ? (
+                    <div
+                      ref={mobileSwipeTrackRef}
+                      style={styles.mobileSwipeTrack(mobileSwipeWidth, mobileSwipeBaseOffset)}
+                    >
+                      {mobileSwipeSlots.map(({ key, tabItem }) => (
+                        <div
+                          key={`mobile-swipe-slot-${key}`}
+                          aria-hidden={tabItem?.key !== currentMobileSwipeTab.key}
+                          style={styles.mobileSwipePanel(
+                            mobileSwipeWidth,
+                            tabItem?.key === currentMobileSwipeTab.key,
+                            mobileBottomInset,
+                          )}
+                        >
+                          {tabItem ? (
+                            <div key={tabItem.key}>
+                              {renderModuleContent(tabItem.key)}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={styles.mobileSwipeFallbackPanel(mobileBottomInset)}>
+                      {renderModuleContent(currentMobileSwipeTab.key)}
+                    </div>
+                  )}
                 </div>
-              )}
-              {tab === "reading" && renderModuleContent("reading")}
-              {tab === "shadowing" && renderModuleContent("shadowing")}
-              {tab === "writing" && renderModuleContent("writing")}
-              {tab === "gaming" && renderModuleContent("gaming")}
-            </>
-          )}
-        </section>
+
+                {shouldKeepListeningTabMounted && !mobileSwipeListeningVisible ? (
+                  <div style={styles.hiddenKeepAlive}>{renderModuleContent("listening")}</div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {shouldKeepListeningTabMounted && (
+                  <div
+                    style={{
+                      ...(tab === "listening" ? styles.mobileSwipeFallbackPanel(mobileBottomInset) : styles.hiddenKeepAlive),
+                    }}
+                  >
+                    {renderModuleContent("listening")}
+                  </div>
+                )}
+                {tab === "reading" ? (
+                  <div style={styles.mobileSwipeFallbackPanel(mobileBottomInset)}>
+                    {renderModuleContent("reading")}
+                  </div>
+                ) : null}
+                {tab === "shadowing" ? (
+                  <div style={styles.mobileSwipeFallbackPanel(mobileBottomInset)}>
+                    {renderModuleContent("shadowing")}
+                  </div>
+                ) : null}
+                {tab === "writing" ? (
+                  <div style={styles.mobileSwipeFallbackPanel(mobileBottomInset)}>
+                    {renderModuleContent("writing")}
+                  </div>
+                ) : null}
+                {tab === "gaming" ? (
+                  <div style={styles.mobileSwipeFallbackPanel(mobileBottomInset)}>
+                    {renderModuleContent("gaming")}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </section>
+        ) : null}
       </div>
     </main>
   );
@@ -1862,6 +1886,11 @@ const styles = {
     gap: "14px",
     alignItems: "stretch",
     transition: "grid-template-columns 280ms cubic-bezier(0.22, 1, 0.36, 1), gap 280ms ease",
+  },
+  mobileTrackerSection: {
+    minHeight: "calc(100dvh - 112px)",
+    maxHeight: "calc(100dvh - 112px)",
+    alignItems: "stretch",
   },
   dashboardPrimaryColumn: {
     minWidth: 0,
@@ -2489,6 +2518,16 @@ const styles = {
     background: "transparent",
     pointerEvents: active ? "auto" : "none",
     overflow: "visible",
+  }),
+  mobileSwipeFallbackPanel: (bottomInset) => ({
+    minWidth: 0,
+    width: "100%",
+    boxSizing: "border-box",
+    paddingLeft: `${MOBILE_SWIPE_PANEL_SIDE_PADDING}px`,
+    paddingRight: `${MOBILE_SWIPE_PANEL_SIDE_PADDING}px`,
+    paddingTop: `${MOBILE_SWIPE_PANEL_VERTICAL_PADDING}px`,
+    paddingBottom: `${bottomInset + MOBILE_SWIPE_PANEL_VERTICAL_PADDING}px`,
+    background: "transparent",
   }),
   hiddenKeepAlive: {
     display: "none",

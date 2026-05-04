@@ -346,7 +346,7 @@ export default function ReadingTab({
 
 const mobileStyles = {
   libraryLauncher: {
-    border: "1px solid var(--app-border-soft)",
+    border: "var(--reading-mobile-top-card-border)",
     background: "var(--app-card)",
     borderRadius: "18px",
     padding: "12px 14px",
@@ -355,7 +355,7 @@ const mobileStyles = {
     justifyContent: "space-between",
     gap: "12px",
     textAlign: "left",
-    boxShadow: "0 16px 36px rgba(15,23,42,0.08)",
+    boxShadow: "var(--reading-mobile-top-card-shadow)",
     cursor: "pointer",
   },
   libraryLauncherLabel: {

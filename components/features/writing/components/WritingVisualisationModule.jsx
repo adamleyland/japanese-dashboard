@@ -5,6 +5,64 @@ import { formatWritingCount } from "@/components/features/writing/utils/writingS
 
 export default function WritingVisualisationModule({ styles, isMobile = false, summary }) {
   const maxBarValue = Math.max(1, ...summary.weeklyActivity.map((item) => item.estimatedWords));
+  const activeDaysThisWeek = summary.weeklyActivity.filter((item) => item.estimatedWords > 0).length;
+  const weeklyConsistencyProgress = Math.round((activeDaysThisWeek / Math.max(1, summary.weeklyActivity.length)) * 100);
+
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          ...styles.sideCard,
+          padding: "12px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "18px",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--app-text)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+          title={`${formatWritingCount(summary.totalEstimatedWords)} total words written`}
+          aria-label={`Writing total ${formatWritingCount(summary.totalEstimatedWords)} words written`}
+        >
+          {formatWritingCount(summary.totalEstimatedWords)}
+        </div>
+
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+          }}
+          title={`${activeDaysThisWeek} active writing days in the last 7 days`}
+          aria-label={`${activeDaysThisWeek} active writing days in the last 7 days`}
+        >
+          <div
+            style={{
+              ...styles.progressBarWrap,
+              height: "10px",
+              borderRadius: "999px",
+            }}
+            aria-hidden="true"
+          >
+            <div
+              style={{
+                ...styles.progressBarFill(weeklyConsistencyProgress),
+                background: "#10b981",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.sideCard}>

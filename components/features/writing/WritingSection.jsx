@@ -286,24 +286,36 @@ export default function WritingSection({
         />
       </div>
 
-      <WritingLibraryModule
-        styles={styles}
-        isCompact={isCompact}
-        isMobile={isMobile}
-        entries={filteredEntries}
-        loading={loadingEntries}
-        error={loadError}
-        selectedEntryId={selectedEntryId}
-        activeFilter={libraryFilter}
-        onFilterChange={setLibraryFilter}
-        onSelectEntry={handleSelectEntry}
-      />
+      {isMobile ? (
+        <WritingVisualisationModule
+          styles={styles}
+          isMobile
+          summary={writingSummary}
+        />
+      ) : null}
 
-      <WritingVisualisationModule
-        styles={styles}
-        isMobile={isMobile}
-        summary={writingSummary}
-      />
+      {!isMobile ? (
+        <WritingLibraryModule
+          styles={styles}
+          isCompact={isCompact}
+          isMobile={isMobile}
+          entries={filteredEntries}
+          loading={loadingEntries}
+          error={loadError}
+          selectedEntryId={selectedEntryId}
+          activeFilter={libraryFilter}
+          onFilterChange={setLibraryFilter}
+          onSelectEntry={handleSelectEntry}
+        />
+      ) : null}
+
+      {!isMobile ? (
+        <WritingVisualisationModule
+          styles={styles}
+          isMobile={isMobile}
+          summary={writingSummary}
+        />
+      ) : null}
     </div>
   );
 }

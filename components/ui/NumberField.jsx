@@ -29,6 +29,8 @@ const styles = {
   inputCard: {
     display: "grid",
     gap: "6px",
+    minWidth: 0,
+    width: "100%",
   },
   inputLabel: {
     fontSize: "11px",
@@ -38,6 +40,8 @@ const styles = {
     letterSpacing: "0.08em",
   },
   input: (mobileOptimized) => ({
+    width: "100%",
+    minWidth: 0,
     padding: "10px",
     borderRadius: "12px",
     border: "1px solid var(--app-border)",
