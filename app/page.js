@@ -119,7 +119,8 @@ export default function Home() {
   const [wordsRead, setWordsRead] = useState(3050000);
   const [wordsWritten, setWordsWritten] = useState(260000);
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [showMobileDashboard, setShowMobileDashboard] = useState(false);
+  const [showDesktopDashboard, setShowDesktopDashboard] = useState(true);
   const [trackerFocusMode, setTrackerFocusMode] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -167,6 +168,7 @@ export default function Home() {
   const mobileSwipeReleaseTimerRef = useRef(null);
   const audiobooksRequestedRef = useRef(false);
   const [mobileSwipeWidth, setMobileSwipeWidth] = useState(0);
+  const showDashboard = isMobile ? showMobileDashboard : showDesktopDashboard;
   const gamingData = useGamingData({
     authUserId,
     authResolved: !authLoading,
@@ -1638,12 +1640,19 @@ export default function Home() {
           isMobile={isMobile}
           moduleTabs={MODULE_TABS}
           onChange={handleTabChange}
-          onToggleDashboard={() => setShowDashboard((visible) => !visible)}
+          onToggleDashboard={() => {
+            if (isMobile) {
+              setShowMobileDashboard((visible) => !visible);
+              return;
+            }
+
+            setShowDesktopDashboard((visible) => !visible);
+          }}
           showDashboard={showDashboard}
           styles={styles}
         />
 
-        {(!isMobile || showDashboard) && (
+        {showDashboard && (
           <section
             style={{
               ...styles.heroGrid,
