@@ -29,7 +29,11 @@ export default function WritingLibraryModule({
         display: "grid",
         gridTemplateRows: "auto minmax(0, 1fr)",
         gap: "14px",
-        minHeight: isMobile ? "auto" : "360px",
+        minHeight: isMobile ? "auto" : "320px",
+        height: isMobile ? "auto" : "min(420px, calc(100vh - 240px))",
+        maxHeight: isMobile ? "none" : "calc(100vh - 240px)",
+        overflow: "hidden",
+        alignSelf: "start",
       }}
     >
       <div style={styles.sectionHeader}>
@@ -88,6 +92,7 @@ export default function WritingLibraryModule({
                 key={entry.id}
                 entry={entry}
                 active={entry.id === selectedEntryId}
+                isDense={!isMobile}
                 onSelect={onSelectEntry}
               />
             ))}
@@ -140,13 +145,14 @@ const localStyles = {
     minHeight: 0,
     height: "100%",
     overflowY: "auto",
-    paddingRight: "4px",
+    paddingRight: "6px",
     overscrollBehavior: "contain",
     scrollbarWidth: "thin",
+    scrollbarGutter: "stable",
   },
   entryStack: {
     display: "grid",
-    gap: "8px",
+    gap: "6px",
   },
   emptyState: {
     borderRadius: "20px",

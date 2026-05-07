@@ -38,6 +38,12 @@ export default function WritingSection({
   const [libraryFilter, setLibraryFilter] = useState("all");
   const [statusMessage, setStatusMessage] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [coachPrompt, setCoachPrompt] = useState(null);
+  const [coachFeedback, setCoachFeedback] = useState(null);
+  const [coachError, setCoachError] = useState("");
+  const [coachNotice, setCoachNotice] = useState("");
+  const [loadingCoachPrompt, setLoadingCoachPrompt] = useState(false);
+  const [loadingCoachFeedback, setLoadingCoachFeedback] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -114,17 +120,25 @@ export default function WritingSection({
     [selectedEntry],
   );
 
+  const resetCoachFeedback = useCallback(() => {
+    setCoachFeedback(null);
+    setCoachError("");
+    setCoachNotice("");
+  }, []);
+
   const handleSelectEntry = useCallback(
     async (entry) => {
       if (entry.id === selectedEntryId) {
         setSelectedEntryId(null);
         setEntryBody("");
         setStatusMessage("Entry closed.");
+        resetCoachFeedback();
         return;
       }
 
       setSelectedEntryId(entry.id);
       setEntryBody(entry.body || "");
+      resetCoachFeedback();
 
       if (entry.body) {
         setStatusMessage("Loaded entry into the editor.");
@@ -143,14 +157,87 @@ export default function WritingSection({
       setEntryBody(fullEntry.body || "");
       setStatusMessage("Loaded entry into the editor.");
     },
-    [authUserId, selectedEntryId],
+    [authUserId, resetCoachFeedback, selectedEntryId],
   );
 
   const handleNewEntry = useCallback(() => {
     setSelectedEntryId(null);
     setEntryBody("");
     setStatusMessage("Ready for a new entry.");
+    resetCoachFeedback();
+  }, [resetCoachFeedback]);
+
+  const handleGenerateCoachPrompt = useCallback(async () => {
+    setLoadingCoachPrompt(true);
+    setCoachError("");
+    setCoachNotice("");
+
+    try {
+      const response = await fetch("/api/writing/coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "prompt",
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.prompt) {
+        throw new Error(payload?.error || "Unable to generate a writing prompt.");
+      }
+
+      setCoachPrompt(payload.prompt);
+    } catch (error) {
+      setCoachError(error?.message || "Unable to generate a writing prompt.");
+    } finally {
+      setLoadingCoachPrompt(false);
+    }
   }, []);
+
+  const handleGetCoachFeedback = useCallback(async () => {
+    const nextBody = entryBody.trim();
+
+    if (!nextBody) {
+      setCoachError("Write a little first, then ask for feedback.");
+      setCoachFeedback(null);
+      setCoachNotice("");
+      return;
+    }
+
+    setLoadingCoachFeedback(true);
+    setCoachError("");
+    setCoachNotice("");
+
+    try {
+      const response = await fetch("/api/writing/coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "feedback",
+          body: nextBody,
+          coachPrompt,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.feedback) {
+        throw new Error(payload?.error || "Unable to generate writing feedback.");
+      }
+
+      setCoachFeedback(payload.feedback);
+      setCoachNotice(payload?.notice || "");
+    } catch (error) {
+      setCoachError(error?.message || "Unable to generate writing feedback.");
+      setCoachFeedback(null);
+      setCoachNotice("");
+    } finally {
+      setLoadingCoachFeedback(false);
+    }
+  }, [coachPrompt, entryBody]);
 
   const handleSaveEntry = useCallback(async () => {
     const nextBody = entryBody;
@@ -274,8 +361,17 @@ export default function WritingSection({
           statusMessage={statusMessage}
           isSaving={savingEntry}
           isDeleting={deletingEntry}
+          coachPrompt={coachPrompt}
+          coachFeedback={coachFeedback}
+          coachError={coachError}
+          coachNotice={coachNotice}
+          isGeneratingPrompt={loadingCoachPrompt}
+          isGeneratingFeedback={loadingCoachFeedback}
           onContentChange={(nextValue) => {
             setEntryBody(nextValue);
+            setCoachFeedback(null);
+            setCoachError("");
+            setCoachNotice("");
             if (!loadError) {
               setStatusMessage("");
             }
@@ -283,6 +379,8 @@ export default function WritingSection({
           onSave={handleSaveEntry}
           onNewEntry={handleNewEntry}
           onDelete={handleDeleteEntry}
+          onGeneratePrompt={handleGenerateCoachPrompt}
+          onGetFeedback={handleGetCoachFeedback}
         />
       </div>
 
