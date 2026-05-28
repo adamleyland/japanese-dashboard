@@ -386,9 +386,19 @@ export default function Home() {
       totalWords: writingTotals.totalWords,
       loading: writingTotals.loading,
       error: writingTotals.error,
+      authUserId,
     };
 
     console.info("[Dashboard Totals] Raw writing source loader result", rawResult);
+
+    if (!authUserId) {
+      return {
+        value: wordsWrittenRef.current,
+        source: "retain-current",
+        reason: "no-auth-user",
+        rawResult,
+      };
+    }
 
     if (isFiniteNumber(writingTotals.totalWords)) {
       return {
@@ -423,7 +433,7 @@ export default function Home() {
       reason: "writing-entries-missing",
       rawResult,
     };
-  }, [writingTotals.error, writingTotals.loading, writingTotals.totalWords]);
+  }, [authUserId, writingTotals.error, writingTotals.loading, writingTotals.totalWords]);
 
   const applyResolvedMetricValue = useCallback((metric, nextValue, sourceDetails = {}) => {
     const metricRefs = {
@@ -1491,11 +1501,19 @@ export default function Home() {
       if (!authUserId) {
         const pendingTotals = getPendingTrackingTotals("");
         trackingReadStrategyRef.current = "local-pending";
-        applyTrackingTotalsSnapshotRef.current?.(pendingTotals, {
-          reason: "initial-load-no-auth",
-          source: "local-pending",
-          pendingTotals,
-        });
+
+        if (hasTrackingTotalsValue(pendingTotals)) {
+          applyTrackingTotalsSnapshotRef.current?.(pendingTotals, {
+            reason: "initial-load-no-auth",
+            source: "local-pending",
+            pendingTotals,
+          });
+        } else {
+          console.info("[Tracking UI] No auth session and no pending local totals; retaining bootstrap values", {
+            reason: "initial-load-no-auth",
+          });
+          setTrackingHydrated(true);
+        }
         return;
       }
 

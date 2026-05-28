@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 const OPENXBL_TITLE_HISTORY_ENDPOINT = "https://xbl.io/api/v2/player/titleHistory";
 const OPENXBL_STATS_ENDPOINT = "https://xbl.io/api/v2/achievements/stats";
+const OPENXBL_ACTIVITY_FEED_ENDPOINT = "https://xbl.io/api/v2/activity/feed";
+const OPENXBL_PRESENCE_ENDPOINT = "https://xbl.io/api/v2/presence";
 
 function getOpenXblHeaders(apiKey) {
   return {
@@ -77,9 +79,118 @@ function extractTitleHistoryTitles(payload) {
     payload?.titles,
     payload?.content?.items,
     payload?.items,
+    payload?.data?.titles,
+    payload?.data?.items,
   ];
 
   return candidateArrays.find((value) => Array.isArray(value)) || [];
+}
+
+function extractActivityFeedItems(payload) {
+  const candidateArrays = [
+    payload?.content?.activityItems,
+    payload?.activityItems,
+    payload?.content?.items,
+    payload?.items,
+  ];
+
+  return candidateArrays.find((value) => Array.isArray(value)) || [];
+}
+
+function extractPresenceTitles(payload) {
+  const devices = Array.isArray(payload?.content?.devices)
+    ? payload.content.devices
+    : Array.isArray(payload?.devices)
+      ? payload.devices
+      : [];
+
+  return devices.flatMap((device) => {
+    const titles = Array.isArray(device?.titles) ? device.titles : [];
+    const deviceType = toIdentifier(device?.type);
+
+    return titles.map((title) => ({
+      ...title,
+      devices: deviceType ? [deviceType] : [],
+      sourceHint: "presence",
+    }));
+  });
+}
+
+function isLikelyGameTitle(title = {}) {
+  if (!title || typeof title !== "object") {
+    return false;
+  }
+
+  if (title.sourceHint === "activity-feed" || title.sourceHint === "presence") {
+    return Boolean(getXboxTitleId(title) && getXboxTitleName(title));
+  }
+
+  const type = toIdentifier(title.type || title.contentType).toLowerCase();
+
+  if (!type) {
+    return true;
+  }
+
+  return type.includes("game") || type.includes("title");
+}
+
+function getXboxTitleId(title = {}) {
+  return toIdentifier(
+    title.titleId ||
+      title.id ||
+      title.uploadTitleId ||
+      title.modernTitleId ||
+      title.productId ||
+      title.scid ||
+      title.name ||
+      title.contentTitle,
+  );
+}
+
+function getXboxTitleName(title = {}) {
+  return (
+    toIdentifier(title.name) ||
+    toIdentifier(title.title) ||
+    toIdentifier(title.contentTitle) ||
+    toIdentifier(title.productTitle) ||
+    toIdentifier(title.localizedName) ||
+    "Unknown game"
+  );
+}
+
+function dedupeTitles(titles = []) {
+  const titlesById = new Map();
+
+  titles.forEach((title) => {
+    const titleId = getXboxTitleId(title);
+    const titleName = getXboxTitleName(title);
+
+    if (!titleId || !titleName) {
+      return;
+    }
+
+    const key = titleId || titleName.toLowerCase();
+    const existingTitle = titlesById.get(key);
+
+    if (!existingTitle) {
+      titlesById.set(key, title);
+      return;
+    }
+
+    titlesById.set(key, {
+      ...existingTitle,
+      ...title,
+      devices: [
+        ...new Set([
+          ...getXboxDevices(existingTitle),
+          ...getXboxDevices(title),
+        ]),
+      ],
+      lastPlayedAt: getXboxLastPlayedAt(title) || getXboxLastPlayedAt(existingTitle),
+    });
+  });
+
+  return [...titlesById.values()];
 }
 
 function getArtworkCandidates(title = {}) {
@@ -89,6 +200,10 @@ function getArtworkCandidates(title = {}) {
     title.headerArtworkUrl,
     title.portraitArtworkUrl,
     title.tileImageUrl,
+    title.imageUrl,
+    title.contentImageUri,
+    title.itemImage,
+    title.screenshotThumbnail,
   ];
 
   const nestedCandidates = [
@@ -136,6 +251,8 @@ function getXboxLastPlayedAt(title = {}) {
   return toIsoDate(
     title.lastPlayedAt ||
       title.lastTimePlayed ||
+      title.date ||
+      title.lastModified ||
       title?.titleHistory?.lastTimePlayed ||
       title?.titleHistory?.lastPlayedAt ||
       title?.activity?.lastPlayedAt,
@@ -250,8 +367,8 @@ async function getMinutesPlayedForTitle(apiKey, titleId) {
 }
 
 async function normalizeXboxTitle(apiKey, title = {}) {
-  const sourceGameId = toIdentifier(title.titleId || title.modernTitleId || title.name);
-  const appId = Number(title.titleId);
+  const sourceGameId = getXboxTitleId(title);
+  const appId = Number(title.titleId || title.id || title.uploadTitleId);
   const { minutesPlayedTotal, foundMinutesPlayed } = await getMinutesPlayedForTitle(
     apiKey,
     sourceGameId,
@@ -262,7 +379,7 @@ async function normalizeXboxTitle(apiKey, title = {}) {
       source: "xbox",
       sourceGameId,
       appId: Number.isFinite(appId) ? appId : null,
-      title: title.name || "Unknown game",
+      title: getXboxTitleName(title),
       artworkUrl: getXboxArtwork(title),
       headerArtworkUrl: getXboxHeaderArtwork(title),
       portraitArtworkUrl: getXboxPortraitArtwork(title),
@@ -281,6 +398,58 @@ async function normalizeXboxTitle(apiKey, title = {}) {
   };
 }
 
+async function fetchOpenXblJson(apiKey, endpoint) {
+  const response = await fetch(endpoint, {
+    headers: getOpenXblHeaders(apiKey),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  return { response, payload };
+}
+
+async function getFallbackTitles(apiKey) {
+  const [activityResult, presenceResult] = await Promise.allSettled([
+    fetchOpenXblJson(apiKey, OPENXBL_ACTIVITY_FEED_ENDPOINT),
+    fetchOpenXblJson(apiKey, OPENXBL_PRESENCE_ENDPOINT),
+  ]);
+
+  const activityItems =
+    activityResult.status === "fulfilled" && activityResult.value.response.ok
+      ? extractActivityFeedItems(activityResult.value.payload)
+      : [];
+  const presenceTitles =
+    presenceResult.status === "fulfilled" && presenceResult.value.response.ok
+      ? extractPresenceTitles(presenceResult.value.payload)
+      : [];
+
+  const activityTitles = activityItems
+    .filter((item) => item?.titleId || item?.uploadTitleId)
+    .map((item) => ({
+      ...item,
+      name: item.contentTitle || item.name || item.title,
+      titleId: item.titleId || item.uploadTitleId,
+      lastPlayedAt: item.date,
+      sourceHint: "activity-feed",
+    }));
+
+  return {
+    titles: dedupeTitles([...activityTitles, ...presenceTitles]).filter(isLikelyGameTitle),
+    debug: {
+      activityStatus:
+        activityResult.status === "fulfilled"
+          ? activityResult.value.response.status
+          : "failed",
+      activityItemCount: activityItems.length,
+      presenceStatus:
+        presenceResult.status === "fulfilled"
+          ? presenceResult.value.response.status
+          : "failed",
+      presenceTitleCount: presenceTitles.length,
+    },
+  };
+}
+
 export async function GET() {
   const apiKey = process.env.XBL_API_KEY;
   const xuid = process.env.XBL_XUID;
@@ -293,12 +462,10 @@ export async function GET() {
   }
 
   try {
-    const titleHistoryResponse = await fetch(`${OPENXBL_TITLE_HISTORY_ENDPOINT}/${xuid}`, {
-      headers: getOpenXblHeaders(apiKey),
-      cache: "no-store",
-    });
-
-    const payload = await titleHistoryResponse.json().catch(() => ({}));
+    const { response: titleHistoryResponse, payload } = await fetchOpenXblJson(
+      apiKey,
+      `${OPENXBL_TITLE_HISTORY_ENDPOINT}/${xuid}`,
+    );
 
     if (!titleHistoryResponse.ok) {
       return NextResponse.json(
@@ -309,7 +476,11 @@ export async function GET() {
       );
     }
 
-    const titles = extractTitleHistoryTitles(payload).filter((title) => title?.type === "Game");
+    const titleHistoryTitles = extractTitleHistoryTitles(payload).filter(isLikelyGameTitle);
+    const fallbackResult = titleHistoryTitles.length
+      ? { titles: [], debug: null }
+      : await getFallbackTitles(apiKey);
+    const titles = titleHistoryTitles.length ? titleHistoryTitles : fallbackResult.titles;
     const normalizedResults = await Promise.all(
       titles.map((title) => normalizeXboxTitle(apiKey, title)),
     );
@@ -335,9 +506,12 @@ export async function GET() {
     return NextResponse.json({
       games,
       debug: {
+        source: titleHistoryTitles.length ? "title-history" : "activity-presence-fallback",
+        titleHistoryCount: titleHistoryTitles.length,
         totalTitleCount: titles.length,
         normalizedCount: games.length,
         minutesPlayedFoundCount,
+        fallback: fallbackResult.debug,
       },
     });
   } catch (error) {
