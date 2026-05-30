@@ -124,6 +124,7 @@ async function hardResetYoutubeConnection(userId, { reason = "hard-reset" } = {}
 function shouldBypassCache(reason) {
   return (
     reason === "manual-connect" ||
+    reason === "manual_queue_refresh" ||
     reason === "reset-youtube-state" ||
     reason === "end_of_queue"
   );

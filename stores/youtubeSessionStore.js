@@ -603,8 +603,16 @@ function hasRestorableAccountSnapshot(snapshot) {
   return Boolean(snapshot.accountProfile || normalizeVideoList(snapshot.accountVideos).length);
 }
 
-function resolveVideoSelection(videos, currentState) {
+function resolveVideoSelection(videos, currentState, { preserveSelectedVideo = true } = {}) {
   const normalizedVideos = normalizeVideoList(videos);
+
+  if (!preserveSelectedVideo) {
+    return {
+      videoId: normalizedVideos[0]?.id || DEFAULT_VIDEO_ID,
+      source: normalizedVideos[0]?.id ? "fresh-server-forced" : "default-fallback",
+    };
+  }
+
   const candidateEntries = [
     {
       videoId: currentState?.selectedVideoId || "",
@@ -932,7 +940,10 @@ export function YoutubeSessionProvider({ children }) {
         const queueVideos = normalizeVideoList(snapshot?.accountVideos);
 
         setState((currentState) => {
-          const resolvedSelection = resolveVideoSelection(queueVideos, currentState);
+          const preserveSelectedVideo = options.preserveSelectedVideo !== false;
+          const resolvedSelection = resolveVideoSelection(queueVideos, currentState, {
+            preserveSelectedVideo,
+          });
           const currentExcludedChannelIds = normalizeExcludedChannelIds(
             currentState.excludedChannelIds,
             "youtube-account-refresh-current-state",
@@ -956,6 +967,7 @@ export function YoutubeSessionProvider({ children }) {
             accountVideoCount: queueVideos.length,
             selectedVideoId: nextSelectedVideoId,
             selectedVideoSource: resolvedSelection.source,
+            preserveSelectedVideo,
             previousSelectedVideoId: currentState.selectedVideoId || "",
             previousPlaybackVideoId: currentState.playbackState.selectedVideoId || "",
           });
