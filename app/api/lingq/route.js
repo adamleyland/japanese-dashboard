@@ -1,13 +1,29 @@
 import rakutenImageUtils from "@/lib/rakutenImage";
-import { buildLingQLessonUrl } from "@/lib/reading/lingq";
+import {
+  buildLingQApiHeaders,
+  buildLingQLessonUrl,
+  extractLingQReadingChartWords,
+  extractLingQWordsRead,
+  getLingQApiToken,
+} from "@/lib/reading/lingq";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const { getHighResRakutenImage } = rakutenImageUtils;
 
+async function fetchJson(url, headers) {
+  const response = await fetch(url, {
+    headers,
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  return { response, payload };
+}
+
 export async function GET() {
-  const token = process.env.LINGQ_API_KEY;
+  const token = getLingQApiToken();
 
   if (!token) {
     return Response.json({
@@ -21,21 +37,19 @@ export async function GET() {
       lessonId: null,
       lessonUrl: null,
       source: "lingq",
+      message: "Add LINGQ_API_KEY to enable automatic words-read totals.",
       fetchedAt: new Date().toISOString(),
     });
   }
 
-  const headers = {
-    Authorization: `Token ${token}`,
-    Accept: "application/json",
-  };
+  const headers = buildLingQApiHeaders();
 
   try {
-    const [statsRes, recentRes] = await Promise.all([
-      fetch("https://www.lingq.com/api/v2/ja/progress/?interval=all_time", {
+    const [chartStatsResult, recentRes] = await Promise.all([
+      fetchJson(
+        "https://www.lingq.com/api/v3/ja/progress/chart_data/?metric=reading&period=all",
         headers,
-        cache: "no-store",
-      }),
+      ),
       fetch(
         "https://www.lingq.com/api/v2/ja/lessons/recent/?page_size=1&groupBy=collection&page=1",
         {
@@ -45,18 +59,52 @@ export async function GET() {
       ),
     ]);
 
-    if (!statsRes.ok || !recentRes.ok) {
-      return new Response(JSON.stringify({ error: "LingQ API failed" }), {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+    let stats = chartStatsResult.payload;
+    let statsRes = chartStatsResult.response;
+    let wordsRead = statsRes.ok ? extractLingQReadingChartWords(stats) : null;
+
+    if (!statsRes.ok || wordsRead === null) {
+      const progressStatsResult = await fetchJson(
+        "https://www.lingq.com/api/v2/ja/progress/?interval=all_time",
+        headers,
+      );
+      const fallbackWordsRead = progressStatsResult.response.ok
+        ? extractLingQWordsRead(progressStatsResult.payload)
+        : null;
+
+      if (fallbackWordsRead !== null) {
+        stats = progressStatsResult.payload;
+        statsRes = progressStatsResult.response;
+        wordsRead = fallbackWordsRead;
+      } else if (!statsRes.ok) {
+        stats = progressStatsResult.payload;
+        statsRes = progressStatsResult.response;
+      }
     }
 
-    const stats = await statsRes.json();
-    const recent = await recentRes.json();
-    const lesson = recent?.results?.[0];
+    if (!statsRes.ok || wordsRead === null) {
+      const lingqMessage = stats?.detail || stats?.error || stats?.message || "LingQ API failed";
+      const error =
+        statsRes.status === 401
+          ? "LingQ rejected LINGQ_API_KEY. Generate a fresh LingQ API key, update .env.local, then restart the dev server."
+          : wordsRead === null
+            ? "LingQ did not return a readable words-read total."
+            : lingqMessage;
+
+      return Response.json(
+        {
+          configured: true,
+          error,
+          status: statsRes.status,
+          source: "lingq",
+          fetchedAt: new Date().toISOString(),
+        },
+        { status: statsRes.ok ? 502 : statsRes.status || 502 },
+      );
+    }
+
+    const recent = recentRes.ok ? await recentRes.json().catch(() => ({})) : {};
+    const lesson = recent?.results?.[0] ?? null;
     const collectionId = lesson?.collectionId;
     const lessonId = Number(lesson?.contentId);
     let collection = null;
@@ -70,19 +118,10 @@ export async function GET() {
         },
       );
 
-      if (!collectionRes.ok) {
-        return new Response(JSON.stringify({ error: "LingQ API failed" }), {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+      if (collectionRes.ok) {
+        collection = await collectionRes.json().catch(() => null);
       }
-
-      collection = await collectionRes.json();
     }
-
-    const wordsRead = typeof stats?.readWords === "number" ? stats.readWords : 0;
 
     return Response.json({
       configured: true,

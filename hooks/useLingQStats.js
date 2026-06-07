@@ -55,13 +55,28 @@ export default function useLingQStats(options = {}) {
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(payload?.error || "Failed to load LingQ stats.");
+          setStats((currentValue) => ({
+            ...currentValue,
+            configured:
+              typeof payload?.configured === "boolean"
+                ? payload.configured
+                : currentValue.configured,
+            loading: false,
+            error: payload?.error || "Failed to load LingQ stats.",
+            source: payload?.source || currentValue.source,
+            fetchedAt: payload?.fetchedAt || new Date().toISOString(),
+          }));
+          return;
         }
 
         setStats({
           configured: Boolean(payload?.configured),
           totalWordsRead:
-            typeof payload?.wordsRead === "number" ? payload.wordsRead : null,
+            typeof payload?.wordsRead === "number"
+              ? payload.wordsRead
+              : typeof payload?.totalWordsRead === "number"
+                ? payload.totalWordsRead
+                : null,
           estimatedReadingHours:
             typeof payload?.estimatedReadingHours === "number"
               ? payload.estimatedReadingHours
