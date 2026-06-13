@@ -141,6 +141,14 @@ function parseCsvParam(searchParams, key, limit = 100) {
   ].slice(0, limit);
 }
 
+function parseCsvListParam(searchParams, key, limit = 100) {
+  return String(searchParams.get(key) || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
 async function getAuthenticatedUser() {
   const cookieStore = await cookies();
   const { client } = createSupabaseServerClient(cookieStore);
@@ -335,6 +343,8 @@ export async function GET(request) {
     selectedChannelIds: parseCsvParam(requestUrl.searchParams, "selectedChannelIds", 100),
     excludeVideoIds: parseCsvParam(requestUrl.searchParams, "excludeVideoIds", 100),
     recentVideoIds: parseCsvParam(requestUrl.searchParams, "recentVideoIds", 100),
+    preferredChannelIds: parseCsvListParam(requestUrl.searchParams, "preferredChannelIds", 100),
+    preferredVideoIds: parseCsvParam(requestUrl.searchParams, "preferredVideoIds", 100),
   };
   const cacheBypass = shouldBypassCache(requestReason);
   const endpoint = "/api/youtube/account";
@@ -351,6 +361,8 @@ export async function GET(request) {
       selectedChannelCount: queueOptions.selectedChannelIds.length,
       excludedVideoCount: queueOptions.excludeVideoIds.length,
       recentVideoCount: queueOptions.recentVideoIds.length,
+      preferredChannelCount: queueOptions.preferredChannelIds.length,
+      preferredVideoCount: queueOptions.preferredVideoIds.length,
     },
   });
 

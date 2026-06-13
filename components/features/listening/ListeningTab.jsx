@@ -8,6 +8,13 @@ import {
   fetchProfileListeningGoal,
   persistProfileListeningGoal,
 } from "@/lib/profiles";
+import {
+  fetchPreferredYoutubeVideos,
+  normalizePreferredYoutubeVideos,
+  removePreferredYoutubeVideo,
+  upsertPreferredYoutubeVideo,
+  upsertPreferredYoutubeVideos,
+} from "@/lib/youtubePreferences";
 import { useYoutubeSession } from "@/hooks/useYoutubeSession";
 import { DEFAULT_VIDEO_ID } from "@/lib/youtubeDefaults";
 
@@ -17,8 +24,12 @@ const LISTENING_SOURCE_STORAGE_KEY = "jp_listening_workspace_source";
 const LISTENING_GOAL_SETTINGS_STORAGE_KEY = "jp_listening_goal_settings_open";
 const YOUTUBE_WORKSPACE_RESUME_STORAGE_KEY = "jp_youtube_workspace_resume_v1";
 const YOUTUBE_RECENT_VIDEO_HISTORY_STORAGE_KEY = "jp_youtube_recent_video_ids_v1";
+const YOUTUBE_PREFERRED_VIDEOS_STORAGE_KEY = "jp_youtube_preferred_videos_v1";
+const YOUTUBE_PREFERRED_VIDEOS_MIGRATED_STORAGE_KEY =
+  "jp_youtube_preferred_videos_supabase_migrated_v1";
 const YOUTUBE_WORKSPACE_RESUME_SCHEMA_VERSION = 2;
 const YOUTUBE_RECENT_VIDEO_HISTORY_LIMIT = 75;
+const YOUTUBE_PREFERRED_VIDEOS_LIMIT = 120;
 const YOUTUBE_IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
 
 function normalizeListeningGoalInput(value, fallback = DEFAULT_LISTENING_GOAL) {
@@ -149,6 +160,71 @@ function rememberRecentYoutubeVideo(videoId) {
   return nextHistory;
 }
 
+function readPreferredYoutubeVideos() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    return normalizePreferredYoutubeVideos(
+      JSON.parse(window.localStorage.getItem(YOUTUBE_PREFERRED_VIDEOS_STORAGE_KEY) || "[]"),
+    ).slice(0, YOUTUBE_PREFERRED_VIDEOS_LIMIT);
+  } catch (error) {
+    console.warn("[YouTube Queue] Invalid preferred video list cleared", {
+      errorMessage: error?.message || String(error || ""),
+    });
+    window.localStorage.removeItem(YOUTUBE_PREFERRED_VIDEOS_STORAGE_KEY);
+    return [];
+  }
+}
+
+function writePreferredYoutubeVideos(preferredVideos) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    YOUTUBE_PREFERRED_VIDEOS_STORAGE_KEY,
+    JSON.stringify(
+      normalizePreferredYoutubeVideos(preferredVideos).slice(0, YOUTUBE_PREFERRED_VIDEOS_LIMIT),
+    ),
+  );
+}
+
+function getPreferredYoutubeMigrationStorageKey(userId = "") {
+  return userId
+    ? `${YOUTUBE_PREFERRED_VIDEOS_MIGRATED_STORAGE_KEY}:${userId}`
+    : YOUTUBE_PREFERRED_VIDEOS_MIGRATED_STORAGE_KEY;
+}
+
+function hasMigratedPreferredYoutubeVideos(userId = "") {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  return window.localStorage.getItem(getPreferredYoutubeMigrationStorageKey(userId)) === "true";
+}
+
+function markPreferredYoutubeVideosMigrated(userId = "") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(getPreferredYoutubeMigrationStorageKey(userId), "true");
+}
+
+function getPreferredYoutubeQueueHints(preferredVideos) {
+  const normalizedPreferences = normalizePreferredYoutubeVideos(preferredVideos).slice(
+    0,
+    YOUTUBE_PREFERRED_VIDEOS_LIMIT,
+  );
+
+  return {
+    preferredVideoIds: normalizedPreferences.map((video) => video.id),
+    preferredChannelIds: normalizedPreferences.map((video) => video.channelId).filter(Boolean),
+  };
+}
+
 function validateYoutubeWorkspaceResumeSnapshot(snapshot, playbackList) {
   if (!snapshot?.videoId) {
     return null;
@@ -257,6 +333,7 @@ export default function ListeningTab({
   const [vizMode, setVizMode] = useState("bar");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [preferredYoutubeVideos, setPreferredYoutubeVideos] = useState([]);
   const isYoutubeMode = workspaceSource === "youtube";
   const playerCanMount = !isYoutubeMode || (connectionStatus !== "connecting" && connectionStatus !== "restoring" && playbackList.length > 0 && Boolean(selectedVideo?.id));
 
@@ -300,6 +377,7 @@ export default function ListeningTab({
   const listeningGoalRequestRef = useRef(0);
   const listeningGoalEditVersionRef = useRef(0);
   const resolvedListeningGoalUserRef = useRef(null);
+  const preferredYoutubeSyncRequestRef = useRef(0);
   const youtubeVideoProgressRef = useRef(0);
   const playbackResumeRef = useRef({
     videoId: playbackResumeVideoId,
@@ -370,12 +448,131 @@ export default function ListeningTab({
     }
 
     setSettingsOpen(storedSettingsOpen);
+    setPreferredYoutubeVideos(readPreferredYoutubeVideos());
     setIsMounted(true);
   }, []);
+
+  const preferredYoutubeQueueHints = useMemo(
+    () => getPreferredYoutubeQueueHints(preferredYoutubeVideos),
+    [preferredYoutubeVideos],
+  );
+  const isSelectedVideoPreferred = useMemo(
+    () =>
+      Boolean(
+        selectedVideo?.id &&
+          preferredYoutubeVideos.some((preferredVideo) => preferredVideo.id === selectedVideo.id),
+      ),
+    [preferredYoutubeVideos, selectedVideo?.id],
+  );
+
+  const toggleSelectedVideoPreference = useCallback(() => {
+    if (!selectedVideo?.id) {
+      return;
+    }
+
+    const alreadyPreferred = preferredYoutubeVideos.some(
+      (preferredVideo) => preferredVideo.id === selectedVideo.id,
+    );
+    const selectedPreference = {
+      id: selectedVideo.id,
+      channelId: selectedVideo.channelId || "",
+      title: selectedVideo.title || "",
+      channel: selectedVideo.channel || "",
+      likedAt: Date.now(),
+    };
+    const nextPreferences = alreadyPreferred
+      ? preferredYoutubeVideos.filter((preferredVideo) => preferredVideo.id !== selectedVideo.id)
+      : normalizePreferredYoutubeVideos([
+          selectedPreference,
+          ...preferredYoutubeVideos,
+        ]).slice(0, YOUTUBE_PREFERRED_VIDEOS_LIMIT);
+
+    setPreferredYoutubeVideos(nextPreferences);
+    writePreferredYoutubeVideos(nextPreferences);
+
+    if (!authResolved || !authUserId) {
+      return;
+    }
+
+    const syncPreference = async () => {
+      try {
+        if (alreadyPreferred) {
+          await removePreferredYoutubeVideo(authUserId, selectedVideo.id);
+        } else {
+          await upsertPreferredYoutubeVideo(authUserId, selectedPreference);
+        }
+      } catch (error) {
+        console.warn("[YouTube Queue] Failed to sync preferred video to Supabase", {
+          videoId: selectedVideo.id,
+          action: alreadyPreferred ? "remove" : "upsert",
+          errorMessage: error?.message || String(error || ""),
+        });
+      }
+    };
+
+    void syncPreference();
+  }, [authResolved, authUserId, preferredYoutubeVideos, selectedVideo]);
 
   useEffect(() => {
     authUserIdRef.current = authUserId;
   }, [authUserId]);
+
+  useEffect(() => {
+    if (!authResolved) {
+      return undefined;
+    }
+
+    const requestId = ++preferredYoutubeSyncRequestRef.current;
+    let isActive = true;
+    const localPreferences = readPreferredYoutubeVideos();
+
+    if (!authUserId) {
+      setPreferredYoutubeVideos(localPreferences);
+      return undefined;
+    }
+
+    const hydratePreferredVideos = async () => {
+      try {
+        const remotePreferences = await fetchPreferredYoutubeVideos(authUserId);
+        if (!isActive || requestId !== preferredYoutubeSyncRequestRef.current) {
+          return;
+        }
+
+        const shouldMigrateLocalPreferences =
+          localPreferences.length > 0 && !hasMigratedPreferredYoutubeVideos(authUserId);
+        let nextPreferences = remotePreferences;
+
+        if (shouldMigrateLocalPreferences) {
+          nextPreferences = normalizePreferredYoutubeVideos([
+            ...localPreferences,
+            ...remotePreferences,
+          ]).slice(0, YOUTUBE_PREFERRED_VIDEOS_LIMIT);
+          await upsertPreferredYoutubeVideos(authUserId, nextPreferences);
+          if (!isActive || requestId !== preferredYoutubeSyncRequestRef.current) {
+            return;
+          }
+        }
+
+        markPreferredYoutubeVideosMigrated(authUserId);
+        setPreferredYoutubeVideos(nextPreferences);
+        writePreferredYoutubeVideos(nextPreferences);
+      } catch (error) {
+        console.warn("[YouTube Queue] Failed to load preferred videos from Supabase", {
+          userId: authUserId,
+          errorMessage: error?.message || String(error || ""),
+        });
+        if (isActive && requestId === preferredYoutubeSyncRequestRef.current) {
+          setPreferredYoutubeVideos(localPreferences);
+        }
+      }
+    };
+
+    void hydratePreferredVideos();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authResolved, authUserId]);
 
   useEffect(() => {
     listeningGoalRef.current = listeningGoal;
@@ -879,6 +1076,8 @@ export default function ListeningTab({
             reason: "end_of_queue",
             currentVideoIds,
             recentVideoIds: completedRecentVideoIds,
+            preferredChannelIds: preferredYoutubeQueueHints.preferredChannelIds,
+            preferredVideoIds: preferredYoutubeQueueHints.preferredVideoIds,
           });
           const refreshedQueue = Array.isArray(result?.snapshot?.accountVideos)
             ? result.snapshot.accountVideos
@@ -926,7 +1125,7 @@ export default function ListeningTab({
       setSelectedVideoId(nextVideo.id);
       return true;
     },
-    [generateYoutubeQueue, isPlayerCurrentlyPlaying, setSelectedVideoId],
+    [generateYoutubeQueue, isPlayerCurrentlyPlaying, preferredYoutubeQueueHints, setSelectedVideoId],
   );
 
   const refreshYoutubeQueue = useCallback(async () => {
@@ -940,6 +1139,8 @@ export default function ListeningTab({
       reason: "manual_queue_refresh",
       currentVideoIds,
       recentVideoIds: readRecentYoutubeVideoIds(),
+      preferredChannelIds: preferredYoutubeQueueHints.preferredChannelIds,
+      preferredVideoIds: preferredYoutubeQueueHints.preferredVideoIds,
     });
 
     const refreshedQueue = Array.isArray(result?.snapshot?.accountVideos)
@@ -949,7 +1150,7 @@ export default function ListeningTab({
     if (!result?.ok || !refreshedQueue[0]?.id) {
       pendingSelectionPlaybackRef.current = null;
     }
-  }, [generateYoutubeQueue, isPlayerCurrentlyPlaying]);
+  }, [generateYoutubeQueue, isPlayerCurrentlyPlaying, preferredYoutubeQueueHints]);
 
   useEffect(() => {
     const previousWorkspaceSource = previousWorkspaceSourceRef.current;
@@ -1811,6 +2012,8 @@ export default function ListeningTab({
         discoverLoading={discoverLoading}
         selectedVideo={selectedVideo}
         selectedChannelAvatar={selectedChannelAvatar}
+        isSelectedVideoPreferred={isSelectedVideoPreferred}
+        onToggleSelectedVideoPreference={toggleSelectedVideoPreference}
         showDiscoverSubscribe={Boolean(selectedDiscoverVideo?.channelId)}
         queueTotal={queueTotal}
         queueIndex={queueIndex}

@@ -603,6 +603,24 @@ function hasRestorableAccountSnapshot(snapshot) {
   return Boolean(snapshot.accountProfile || normalizeVideoList(snapshot.accountVideos).length);
 }
 
+function shouldKeepExistingQueueForPassiveBootstrap(
+  currentState,
+  { reason = "session-restore", forceRefresh = false, manual = false } = {},
+) {
+  if (manual || forceRefresh || !currentState?.wasConnected || !hasRestorableAccountSnapshot(currentState)) {
+    return false;
+  }
+
+  return [
+    "session-restore",
+    "visibility-resume",
+    "window-focus-resume",
+    "pageshow-resume",
+    "pageshow-bfcache-resume",
+    "online-resume",
+  ].includes(reason);
+}
+
 function resolveVideoSelection(videos, currentState, { preserveSelectedVideo = true } = {}) {
   const normalizedVideos = normalizeVideoList(videos);
 
@@ -819,6 +837,8 @@ export function YoutubeSessionProvider({ children }) {
     selectedChannelIds = [],
     excludeVideoIds = [],
     recentVideoIds = [],
+    preferredChannelIds = [],
+    preferredVideoIds = [],
   } = {}) => {
     const requestUrl = new URL("/api/youtube/account", window.location.origin);
     requestUrl.searchParams.set("reason", reason);
@@ -831,6 +851,12 @@ export function YoutubeSessionProvider({ children }) {
     if (recentVideoIds.length) {
       requestUrl.searchParams.set("recentVideoIds", recentVideoIds.join(","));
     }
+    if (preferredChannelIds.length) {
+      requestUrl.searchParams.set("preferredChannelIds", preferredChannelIds.join(","));
+    }
+    if (preferredVideoIds.length) {
+      requestUrl.searchParams.set("preferredVideoIds", preferredVideoIds.join(","));
+    }
 
     logYoutubeApiCall({
       phase: "request",
@@ -842,6 +868,8 @@ export function YoutubeSessionProvider({ children }) {
         selectedChannelCount: selectedChannelIds.length,
         excludedVideoCount: excludeVideoIds.length,
         recentVideoCount: recentVideoIds.length,
+        preferredChannelCount: preferredChannelIds.length,
+        preferredVideoCount: preferredVideoIds.length,
       },
     });
 
@@ -915,6 +943,12 @@ export function YoutubeSessionProvider({ children }) {
           selectedChannelIds,
           excludeVideoIds: Array.isArray(options.excludeVideoIds) ? options.excludeVideoIds : [],
           recentVideoIds: Array.isArray(options.recentVideoIds) ? options.recentVideoIds : [],
+          preferredChannelIds: Array.isArray(options.preferredChannelIds)
+            ? options.preferredChannelIds
+            : [],
+          preferredVideoIds: Array.isArray(options.preferredVideoIds)
+            ? options.preferredVideoIds
+            : [],
         });
 
         if (snapshot?.quotaExceeded) {
@@ -1105,6 +1139,11 @@ export function YoutubeSessionProvider({ children }) {
 
       const currentState = stateRef.current;
       const now = Date.now();
+      const canKeepExistingQueue = shouldKeepExistingQueueForPassiveBootstrap(currentState, {
+        forceRefresh,
+        manual,
+        reason,
+      });
 
       if (bootstrapRuntime.promise && bootstrapRuntime.userId === authUserId) {
         logYoutubeBootstrap({
@@ -1119,15 +1158,16 @@ export function YoutubeSessionProvider({ children }) {
         return bootstrapRuntime.promise;
       }
 
-      if (!forceRefresh && hasFreshAccountData(currentState)) {
+      if ((!forceRefresh && hasFreshAccountData(currentState)) || canKeepExistingQueue) {
         logYoutubeBootstrap({
           phase: "skip",
           caller,
           reason,
           userId: authUserId,
           details: {
-            skipReason: "fresh-local-cache",
+            skipReason: canKeepExistingQueue ? "passive-restore-existing-queue" : "fresh-local-cache",
             lastSyncedAt: currentState.lastSyncedAt,
+            accountVideoCount: currentState.accountVideos.length,
           },
         });
         setState((currentState) =>
@@ -1544,6 +1584,8 @@ export function YoutubeSessionProvider({ children }) {
       reason = "manual_queue_refresh",
       currentVideoIds = [],
       recentVideoIds = [],
+      preferredChannelIds = [],
+      preferredVideoIds = [],
     } = {}) => {
       const currentState = stateRef.current;
       const selectedChannelIds = currentState.subscribedChannels
@@ -1556,6 +1598,8 @@ export function YoutubeSessionProvider({ children }) {
         selectedChannelCount: selectedChannelIds.length,
         currentQueueVideoCount: currentVideoIds.length,
         recentVideoCount: recentVideoIds.length,
+        preferredChannelCount: preferredChannelIds.length,
+        preferredVideoCount: preferredVideoIds.length,
       });
 
       return refreshYoutubeAccountData({
@@ -1566,6 +1610,8 @@ export function YoutubeSessionProvider({ children }) {
         selectedChannelIds,
         excludeVideoIds: currentVideoIds,
         recentVideoIds,
+        preferredChannelIds,
+        preferredVideoIds,
       });
     },
     [refreshYoutubeAccountData],

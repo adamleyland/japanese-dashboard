@@ -17,6 +17,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Ear,
+  Heart,
   RefreshCcw,
 } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
@@ -43,6 +44,8 @@ export default function ListeningWorkspace({
   discoverLoading,
   selectedVideo,
   selectedChannelAvatar,
+  isSelectedVideoPreferred = false,
+  onToggleSelectedVideoPreference,
   queueTotal,
   queueIndex,
   forceReconnectYoutube,
@@ -183,6 +186,27 @@ export default function ListeningWorkspace({
     alignItems: "center",
     justifyContent: "center",
   });
+
+  const preferredVideoButtonStyle = {
+    width: isMobile ? "38px" : "36px",
+    height: isMobile ? "38px" : "36px",
+    borderRadius: "999px",
+    border: isSelectedVideoPreferred
+      ? "1px solid rgba(244, 63, 94, 0.28)"
+      : "1px solid var(--app-border-soft)",
+    background: isSelectedVideoPreferred
+      ? "rgba(244, 63, 94, 0.14)"
+      : "var(--app-surface-elevated)",
+    color: isSelectedVideoPreferred ? "#f43f5e" : "var(--app-text-muted)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: selectedVideo?.id ? "pointer" : "default",
+    flexShrink: 0,
+    boxShadow: isSelectedVideoPreferred
+      ? "0 8px 18px rgba(244, 63, 94, 0.12)"
+      : "0 8px 18px rgba(15,23,42,0.04)",
+  };
 
   const discoverFilterButtonStyle = (active) => ({
     border: "none",
@@ -624,6 +648,25 @@ export default function ListeningWorkspace({
               {selectedVideo?.channel || "YouTube"} | Queue {visibleQueueIndex}/{queueTotal || 0}
             </p>
           </div>
+          <button
+            type="button"
+            style={preferredVideoButtonStyle}
+            onClick={onToggleSelectedVideoPreference}
+            disabled={!selectedVideo?.id}
+            aria-pressed={isSelectedVideoPreferred}
+            aria-label={
+              isSelectedVideoPreferred
+                ? "Remove video preference"
+                : "Prefer videos like this"
+            }
+            title={
+              isSelectedVideoPreferred
+                ? "Remove video preference"
+                : "Prefer videos like this"
+            }
+          >
+            <Heart size={isMobile ? 18 : 16} fill={isSelectedVideoPreferred ? "currentColor" : "none"} />
+          </button>
         </div>
 
         {renderPlayerControls()}
@@ -1132,6 +1175,25 @@ export default function ListeningWorkspace({
                         {selectedVideo?.channel || "YouTube"} | Queue {visibleQueueIndex}/{queueTotal || 0}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      style={preferredVideoButtonStyle}
+                      onClick={onToggleSelectedVideoPreference}
+                      disabled={!selectedVideo?.id}
+                      aria-pressed={isSelectedVideoPreferred}
+                      aria-label={
+                        isSelectedVideoPreferred
+                          ? "Remove video preference"
+                          : "Prefer videos like this"
+                      }
+                      title={
+                        isSelectedVideoPreferred
+                          ? "Remove video preference"
+                          : "Prefer videos like this"
+                      }
+                    >
+                      <Heart size={isMobile ? 18 : 16} fill={isSelectedVideoPreferred ? "currentColor" : "none"} />
+                    </button>
                   </div>
 
                   {renderPlayerControls()}
