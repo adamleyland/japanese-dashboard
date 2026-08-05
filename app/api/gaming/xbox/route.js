@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/requestAuth";
 
 const OPENXBL_TITLE_HISTORY_ENDPOINT = "https://xbl.io/api/v2/player/titleHistory";
 const OPENXBL_STATS_ENDPOINT = "https://xbl.io/api/v2/achievements/stats";
@@ -450,7 +451,12 @@ async function getFallbackTitles(apiKey) {
   };
 }
 
-export async function GET() {
+export async function GET(request) {
+  const { user, error: authError } = await getRequestUser(request);
+  if (authError || !user?.id) {
+    return NextResponse.json({ error: "Sign in is required to view Xbox games." }, { status: 401 });
+  }
+
   const apiKey = process.env.XBL_API_KEY;
   const xuid = process.env.XBL_XUID;
 

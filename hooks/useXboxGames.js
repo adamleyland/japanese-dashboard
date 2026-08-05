@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { normalizeXboxGamesResponse } from "@/lib/gaming/normalizers";
 
-export function useXboxGames() {
+export function useXboxGames({ enabled = true } = {}) {
   const endpoint = "/api/gaming/xbox";
   const [refreshCount, setRefreshCount] = useState(0);
   const [state, setState] = useState({
@@ -14,6 +14,11 @@ export function useXboxGames() {
   });
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ games: [], loading: false, error: null, configured: false });
+      return undefined;
+    }
+
     const abortController = new AbortController();
 
     async function loadXboxGames() {
@@ -65,7 +70,7 @@ export function useXboxGames() {
     return () => {
       abortController.abort();
     };
-  }, [endpoint, refreshCount]);
+  }, [enabled, endpoint, refreshCount]);
 
   const refresh = useCallback(() => {
     setRefreshCount((count) => count + 1);

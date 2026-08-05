@@ -13,6 +13,7 @@ import { applyIncludeOverrides } from "@/lib/gaming/selectors";
 import { getGameStorageKey } from "@/lib/gaming/gaming-utils";
 import { useSteamGames } from "@/hooks/useSteamGames";
 import { useXboxGames } from "@/hooks/useXboxGames";
+import { useLocalGames } from "@/hooks/useLocalGames";
 
 const GAMING_INCLUDE_STORAGE_KEY = "jp_gaming_include_overrides";
 
@@ -22,8 +23,6 @@ export function useGamingData(options = {}) {
     authResolved: providedAuthResolved = false,
   } = options;
   const usesExternalAuthState = providedAuthUserId !== null;
-  const steamGames = useSteamGames();
-  const xboxGames = useXboxGames();
   const [internalAuthState, setInternalAuthState] = useState({
     authUserId: "",
     authResolved: false,
@@ -34,6 +33,10 @@ export function useGamingData(options = {}) {
   const authResolved = usesExternalAuthState
     ? Boolean(providedAuthResolved)
     : internalAuthState.authResolved;
+  const hasAuthenticatedUser = authResolved && Boolean(authUserId);
+  const steamGames = useSteamGames({ enabled: hasAuthenticatedUser });
+  const xboxGames = useXboxGames({ enabled: hasAuthenticatedUser });
+  const localGames = useLocalGames({ authUserId, authResolved });
   const [includeOverrides, setIncludeOverrides] = useState(() => {
     if (typeof window === "undefined") {
       return {};
@@ -143,8 +146,8 @@ export function useGamingData(options = {}) {
   }, [authResolved, authUserId]);
 
   const mergedGames = useMemo(
-    () => mergeNormalizedGames(steamGames.games, xboxGames.games),
-    [steamGames.games, xboxGames.games],
+    () => mergeNormalizedGames(steamGames.games, xboxGames.games, localGames.games),
+    [localGames.games, steamGames.games, xboxGames.games],
   );
 
   const games = useMemo(
@@ -215,19 +218,21 @@ export function useGamingData(options = {}) {
   const refreshAll = useCallback(() => {
     steamGames.refresh();
     xboxGames.refresh();
-  }, [steamGames, xboxGames]);
+    localGames.refresh();
+  }, [localGames, steamGames, xboxGames]);
 
   return {
     games,
     hasHydrated: typeof window !== "undefined",
-    loading: steamGames.loading || xboxGames.loading,
-    error: [steamGames.error, xboxGames.error].filter(Boolean).join(" ") || null,
+    loading: steamGames.loading || xboxGames.loading || localGames.loading,
+    error: [steamGames.error, xboxGames.error, localGames.error].filter(Boolean).join(" ") || null,
     setGameIncluded,
     toggleGameIncluded,
     refreshAll,
     sourceStatus: {
       steam: steamGames,
       xbox: xboxGames,
+      local: localGames,
     },
   };
 }

@@ -18,6 +18,7 @@ import {
 import { ensureUserProfile } from "@/lib/profiles";
 import TopNav from "@/components/layout/TopNav";
 import MagicLinkAuth from "@/components/auth/MagicLinkAuth";
+import AuthGate from "@/components/auth/AuthGate";
 import MainTracker from "@/components/dashboard/MainTracker";
 import DictionaryCarousel from "@/components/dashboard/DictionaryCarousel";
 import ListeningTab from "@/components/features/listening/ListeningTab";
@@ -1629,6 +1630,10 @@ export default function Home() {
     writingTotals.loading,
     writingTotals.totalWords,
   ]);
+
+  if (!authUserId) {
+    return <AuthGate isLoading={authLoading} />;
+  }
 
   return (
     <main

@@ -347,6 +347,11 @@ function MetaBadge({ label, tone }) {
       color: "#059669",
       border: "1px solid rgba(16,185,129,0.16)",
     },
+    local: {
+      background: "rgba(139,92,246,0.1)",
+      color: "#7c3aed",
+      border: "1px solid rgba(139,92,246,0.16)",
+    },
   };
 
   const toneStyle = styleMap[tone] || styleMap.neutral;
