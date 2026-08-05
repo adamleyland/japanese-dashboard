@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOff, Library } from "lucide-react";
+import { EyeOff, Library, Monitor } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
 import { SteamGlyph, XboxGlyph } from "@/components/features/gaming/components/GamingSourceIcons";
 
@@ -46,8 +46,14 @@ export default function GamingSourceToggle({
             },
             ariaLabel: "Xbox games",
           },
+          {
+            value: "local",
+            label: "Local",
+            icon: Monitor,
+            ariaLabel: "Local games",
+          },
         ]}
-        width={isMobile ? 138 : isCompact ? 220 : 260}
+        width={isMobile ? 160 : isCompact ? 372 : 420}
         size="sm"
         iconOnly={isMobile}
       />

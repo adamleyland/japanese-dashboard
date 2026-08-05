@@ -35,10 +35,16 @@ function GoogleMark() {
   );
 }
 
-export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = false }) {
+export default function MagicLinkAuth({
+  user,
+  isCompact = false,
+  isLoading,
+  isMobile = false,
+  embedded = false,
+}) {
   const { isDarkMode, toggleTheme } = useTheme();
   const [email, setEmail] = useState(user?.email || "");
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(embedded);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState("neutral");
@@ -137,6 +143,7 @@ export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = f
         email: trimmedEmail,
         options: {
           emailRedirectTo: window.location.origin,
+          shouldCreateUser: false,
         },
       });
 
@@ -222,7 +229,8 @@ export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = f
   const signedIn = !!user?.id;
 
   return (
-    <div ref={popupRef} style={styles.wrapper}>
+    <div ref={popupRef} style={embedded ? styles.embeddedWrapper : styles.wrapper}>
+      {!embedded ? (
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
@@ -234,18 +242,21 @@ export default function MagicLinkAuth({ user, isCompact, isLoading, isMobile = f
         {!isMobile ? <span style={styles.triggerDot(signedIn, isLoading)} /> : null}
         <UserCircle2 size={isMobile ? 22 : 16} strokeWidth={2} />
       </button>
+      ) : null}
 
       {isOpen && (
-        <div style={styles.popup(isCompact, isMobile)} role="dialog" aria-modal="false">
+        <div style={styles.popup(isCompact, isMobile, embedded)} role="dialog" aria-modal="false">
           <div style={styles.popupHeader}>
             <div style={styles.popupTitleWrap}>
               <div style={styles.eyebrow}>Sync</div>
               <div style={styles.title}>{signedIn ? "Signed in" : "Cross-device sign in"}</div>
             </div>
 
-            <button type="button" onClick={() => setIsOpen(false)} style={styles.closeButton} aria-label="Close sign-in">
-              <X size={14} strokeWidth={2} />
-            </button>
+            {!embedded ? (
+              <button type="button" onClick={() => setIsOpen(false)} style={styles.closeButton} aria-label="Close sign-in">
+                <X size={14} strokeWidth={2} />
+              </button>
+            ) : null}
           </div>
 
           {signedIn ? (
@@ -338,6 +349,9 @@ const styles = {
     position: "relative",
     flexShrink: 0,
   },
+  embeddedWrapper: {
+    width: "100%",
+  },
   triggerButton: (signedIn, isMobile) => ({
     width: isMobile ? "44px" : "38px",
     height: isMobile ? "44px" : "38px",
@@ -372,12 +386,12 @@ const styles = {
     background: isLoading ? "#cbd5e1" : signedIn ? "#10b981" : "#cbd5e1",
     boxShadow: "0 0 0 2px rgba(255,255,255,0.95)",
   }),
-  popup: (isCompact, isMobile) => ({
-    position: "absolute",
-    top: isMobile ? "auto" : "calc(100% + 10px)",
-    bottom: isMobile ? "calc(100% + 10px)" : "auto",
-    right: 0,
-    width: isCompact ? "min(260px, calc(100vw - 56px))" : "280px",
+  popup: (isCompact, isMobile, embedded) => ({
+    position: embedded ? "relative" : "absolute",
+    top: embedded ? "auto" : isMobile ? "auto" : "calc(100% + 10px)",
+    bottom: embedded ? "auto" : isMobile ? "calc(100% + 10px)" : "auto",
+    right: embedded ? "auto" : 0,
+    width: embedded ? "100%" : isCompact ? "min(260px, calc(100vw - 56px))" : "280px",
     maxHeight: isMobile ? "calc(100dvh - 136px)" : "none",
     overflowY: isMobile ? "auto" : "visible",
     overscrollBehavior: "contain",

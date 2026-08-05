@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/requestAuth";
 
 const STEAM_OWNED_GAMES_ENDPOINT =
   "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
@@ -100,7 +101,12 @@ function normalizeSteamGames(ownedGames, recentGames) {
     .map((game) => normalizeSteamGame(game, recentGamesMap.get(Number(game.appid)) || null));
 }
 
-export async function GET() {
+export async function GET(request) {
+  const { user, error: authError } = await getRequestUser(request);
+  if (authError || !user?.id) {
+    return NextResponse.json({ error: "Sign in is required to view Steam games." }, { status: 401 });
+  }
+
   const apiKey = process.env.STEAM_API_KEY;
   const steamUserId = process.env.STEAM_USER_ID;
 

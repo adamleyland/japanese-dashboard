@@ -5,7 +5,7 @@ import { normalizeSteamGamesResponse } from "@/lib/gaming/normalizers";
 
 const DEFAULT_STEAM_ENDPOINT = "/api/gaming/steam";
 
-export function useSteamGames() {
+export function useSteamGames({ enabled = true } = {}) {
   const endpoint = process.env.NEXT_PUBLIC_STEAM_GAMES_ENDPOINT || DEFAULT_STEAM_ENDPOINT;
   const [refreshCount, setRefreshCount] = useState(0);
   const [state, setState] = useState({
@@ -16,6 +16,11 @@ export function useSteamGames() {
   });
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ games: [], loading: false, error: null, configured: false });
+      return undefined;
+    }
+
     const abortController = new AbortController();
 
     async function loadSteamGames() {
@@ -66,7 +71,7 @@ export function useSteamGames() {
     return () => {
       abortController.abort();
     };
-  }, [endpoint, refreshCount]);
+  }, [enabled, endpoint, refreshCount]);
 
   const refresh = useCallback(() => {
     setRefreshCount((count) => count + 1);

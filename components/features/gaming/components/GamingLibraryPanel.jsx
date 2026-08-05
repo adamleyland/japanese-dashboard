@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCcw, Search } from "lucide-react";
+import { Monitor, RefreshCcw, Search } from "lucide-react";
 import GamingLayoutToggle from "@/components/features/gaming/components/GamingLayoutToggle";
 import { SteamGlyph, XboxGlyph } from "@/components/features/gaming/components/GamingSourceIcons";
 import GamingLibraryArtworkView from "@/components/features/gaming/components/GamingLibraryArtworkView";
@@ -45,7 +45,7 @@ export default function GamingLibraryPanel({
           label={
             showExcludedOnly
               ? "No excluded games right now. Toggle a game out of the total to move it here."
-              : "No games found yet. Add Steam config or an Xbox endpoint to populate this library."
+              : "No games found yet. Connect Steam or Xbox, or send a game from a Local Games companion client."
           }
         />
       );
@@ -109,7 +109,7 @@ export default function GamingLibraryPanel({
             <div style={{ minWidth: 0 }}>
               <h2 style={styles.sectionTitle}>Gaming Library</h2>
               <p style={styles.sectionText}>
-                Unified Steam and Xbox library data, playtime, and artwork in one dashboard.
+                Steam, Xbox, and local game data, playtime, and artwork in one dashboard.
               </p>
             </div>
 
@@ -203,6 +203,7 @@ export default function GamingLibraryPanel({
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <SourceStatusPill label="Steam" status={sourceStatus.steam} />
             <SourceStatusPill label="Xbox" status={sourceStatus.xbox} />
+            <SourceStatusPill label="Local Games" status={sourceStatus.local} />
           </div>
 
           <GamingLayoutToggle value={layoutMode} onChange={onLayoutModeChange} />
@@ -272,11 +273,9 @@ function SourceStatusPill({ label, status }) {
         ...tone,
       }}
     >
-      {label === "Steam" ? (
-        <SteamGlyph color={tone.color} />
-      ) : (
-        <XboxGlyph color={tone.color} />
-      )}
+      {label === "Steam" ? <SteamGlyph color={tone.color} /> : null}
+      {label === "Xbox" ? <XboxGlyph color={tone.color} /> : null}
+      {label === "Local Games" ? <Monitor size={17} color={tone.color} /> : null}
     </div>
   );
 }
