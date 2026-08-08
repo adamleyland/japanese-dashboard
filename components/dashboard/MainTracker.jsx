@@ -204,13 +204,6 @@ export default function MainTracker({
   const mobileTrackerMetrics = useMemo(
     () => [
       {
-        key: "listening",
-        label: metricConfig.listening.label,
-        icon: metricConfig.listening.icon,
-        accent: metricConfig.listening.accent,
-        onAdjust: () => setSelectedMetric("listening"),
-      },
-      {
         key: "reading",
         label: metricConfig.reading.label,
         icon: metricConfig.reading.icon,
@@ -237,6 +230,13 @@ export default function MainTracker({
         icon: metricConfig.gaming.icon,
         accent: metricConfig.gaming.accent,
         onAdjust: () => setSelectedMetric("gaming"),
+      },
+      {
+        key: "listening",
+        label: metricConfig.listening.label,
+        icon: metricConfig.listening.icon,
+        accent: metricConfig.listening.accent,
+        onAdjust: () => setSelectedMetric("listening"),
       },
     ],
     [metricConfig],
@@ -285,7 +285,7 @@ export default function MainTracker({
                     key={metric.key}
                     type="button"
                     onClick={metric.onAdjust}
-                    style={mobileStyles.metricDashboardCard()}
+                    style={mobileStyles.metricDashboardCard(metric.key === "listening")}
                     aria-label={`Adjust ${metric.label}`}
                     title={metric.label}
                   >
@@ -523,14 +523,17 @@ const mobileStyles = {
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "10px",
     minHeight: 0,
-    alignContent: "start",
+    alignContent: "end",
   },
-  metricDashboardCard: () => ({
+  metricDashboardCard: (isPrimaryAction = false) => ({
     width: "100%",
-    minHeight: "88px",
+    minHeight: isPrimaryAction ? "92px" : "88px",
+    gridColumn: isPrimaryAction ? "1 / -1" : "auto",
     borderRadius: "20px",
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card-muted)",
+    border: isPrimaryAction ? "1px solid rgba(234,179,8,0.32)" : "1px solid var(--app-border-soft)",
+    background: isPrimaryAction
+      ? "linear-gradient(135deg, rgba(254,249,195,0.96), rgba(254,243,199,0.88))"
+      : "var(--app-card-muted)",
     display: "grid",
     gap: "10px",
     textAlign: "left",
