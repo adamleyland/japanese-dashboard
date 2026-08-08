@@ -9,7 +9,8 @@
     "lint": "eslint",
     "enrich:books": "node ./scripts/enrich-books.js",
     "enrich:audiobooks": "node ./scripts/enrich-audiobooks.js",
-    "sync:audiobooks": "node ./scripts/sync-audiobooks.js"
+    "sync:audiobooks": "node ./scripts/sync-audiobooks.js",
+    "sync:steam-local": "node ./scripts/sync-steam-local-games.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

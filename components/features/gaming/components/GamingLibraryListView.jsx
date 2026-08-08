@@ -84,7 +84,7 @@ function DesktopRow({ styles, game, onToggleInclude }) {
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <IncludeToggleButton game={game} onClick={() => onToggleInclude(game)} />
-            <MetaBadge label={getDeviceLabel(game)} tone="neutral" />
+            {game.source !== "local" ? <MetaBadge label={getDeviceLabel(game)} tone="neutral" /> : null}
             <MetaBadge label={getSourceLabel(game.source)} tone={game.source} />
           </div>
 
@@ -190,7 +190,7 @@ function CompactRow({ styles, game, onToggleInclude }) {
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <IncludeToggleButton game={game} onClick={() => onToggleInclude(game)} />
-            <MetaBadge label={getDeviceLabel(game)} tone="neutral" />
+            {game.source !== "local" ? <MetaBadge label={getDeviceLabel(game)} tone="neutral" /> : null}
             <MetaBadge label={getSourceLabel(game.source)} tone={game.source} />
           </div>
 

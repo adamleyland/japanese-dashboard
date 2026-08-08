@@ -35,7 +35,7 @@ export default function GamingLibraryPanel({
       return <EmptyState label="Loading your gaming library..." />;
     }
 
-    if (error) {
+    if (error && !games.length) {
       return <EmptyState label={error} tone="error" />;
     }
 

@@ -79,6 +79,14 @@ const MOBILE_SWIPE_IGNORE_SELECTOR = [
   "[data-swipe-ignore='true']",
 ].join(", ");
 
+// Intended only for local UI work. This does not create an authenticated Supabase session.
+const isLocalDevelopmentAuthBypass =
+  process.env.NODE_ENV !== "production" &&
+  process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === "true";
+const localDevelopmentUserId = isLocalDevelopmentAuthBypass
+  ? String(process.env.NEXT_PUBLIC_DEV_BYPASS_USER_ID || "").trim()
+  : "";
+
 function getMobileBottomInset(hasPinnedTracker) {
   return hasPinnedTracker ? 136 : 136;
 }
@@ -149,7 +157,7 @@ export default function Home() {
     title: "",
   });
   const prefersReducedMotion = useReducedMotion();
-  const authUserId = authUser?.id || "";
+  const authUserId = authUser?.id || localDevelopmentUserId;
   const listeningHoursRef = useRef(listeningHours);
   const shadowingHoursRef = useRef(shadowingHours);
   const gamingHoursRef = useRef(gamingHours);
@@ -1631,7 +1639,7 @@ export default function Home() {
     writingTotals.totalWords,
   ]);
 
-  if (!authUserId) {
+  if (!authUserId && !isLocalDevelopmentAuthBypass) {
     return <AuthGate isLoading={authLoading} />;
   }
 
