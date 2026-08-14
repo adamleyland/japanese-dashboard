@@ -1,7 +1,19 @@
 "use client";
 
+import { useState } from "react";
+
 export default function NumberField({ label, value, onChange, step = 1, mobileOptimized = false }) {
   const allowsDecimal = stepAllowsDecimal(step);
+  const [draft, setDraft] = useState(String(value ?? ""));
+
+  const handleChange = (event) => {
+    const nextValue = event.target.value;
+    setDraft(nextValue);
+    if (nextValue === "") return;
+
+    const parsedValue = Number(nextValue);
+    if (Number.isFinite(parsedValue)) onChange(Math.max(0, parsedValue));
+  };
 
   return (
     <label style={styles.inputCard}>
@@ -12,8 +24,11 @@ export default function NumberField({ label, value, onChange, step = 1, mobileOp
         step={step}
         inputMode={mobileOptimized ? (allowsDecimal ? "decimal" : "numeric") : undefined}
         enterKeyHint={mobileOptimized ? "done" : undefined}
-        value={value}
-        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+        value={draft}
+        onBlur={() => {
+          if (draft === "") setDraft(String(value ?? ""));
+        }}
+        onChange={handleChange}
         style={styles.input(mobileOptimized)}
       />
     </label>

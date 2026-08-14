@@ -14,6 +14,7 @@ import {
   Pause,
   Sparkles,
   SlidersHorizontal,
+  Trophy,
   Volume2,
   X,
 } from "lucide-react";
@@ -106,6 +107,48 @@ function readStoredTotalReps(userId = "") {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
+function readStoredStreak(userId = "") {
+  if (typeof window === "undefined") return { count: 0, lastCompletedDate: "" };
+  try {
+    const value = JSON.parse(window.localStorage.getItem(getScopedStorageKey(SHADOWING_STORAGE_KEYS.streak, userId)) || "{}");
+    return { count: Math.max(0, Math.floor(Number(value?.count) || 0)), lastCompletedDate: String(value?.lastCompletedDate || "") };
+  } catch {
+    return { count: 0, lastCompletedDate: "" };
+  }
+}
+
+function getLocalDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function updateStreak(currentStreak) {
+  const today = getLocalDateKey();
+  const yesterday = getLocalDateKey(new Date(Date.now() - 86_400_000));
+  if (currentStreak.lastCompletedDate === today) return currentStreak;
+  return { count: currentStreak.lastCompletedDate === yesterday ? currentStreak.count + 1 : 1, lastCompletedDate: today };
+}
+
+function playCompletionJingle() {
+  if (typeof window === "undefined") return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  const context = new AudioContext();
+  const startAt = context.currentTime + 0.03;
+  [523.25, 659.25, 783.99].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, startAt + index * 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.12, startAt + index * 0.12 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + index * 0.12 + 0.22);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(startAt + index * 0.12);
+    oscillator.stop(startAt + index * 0.12 + 0.24);
+  });
+  window.setTimeout(() => void context.close(), 700);
+}
+
 function formatSeconds(value) {
   const totalSeconds = Math.max(0, Number(value) || 0);
   if (totalSeconds >= 60) {
@@ -113,6 +156,12 @@ function formatSeconds(value) {
   }
 
   return `${totalSeconds.toFixed(totalSeconds % 1 === 0 ? 0 : 1)}s`;
+}
+
+function formatSessionDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const minutes = Math.floor(seconds / 60);
+  return minutes ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
 }
 
 function clampIndex(value, maxLength) {
@@ -516,6 +565,9 @@ export default function ShadowingWorkspace({
     readStoredBoolean(SHADOWING_STORAGE_KEYS.vocabularyOpen, authUserId, false),
   );
   const [totalReps, setTotalReps] = useState(() => readStoredTotalReps(authUserId));
+  const [streak, setStreak] = useState(() => readStoredStreak(authUserId));
+  const [sessionReps, setSessionReps] = useState(0);
+  const [completionSummary, setCompletionSummary] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentRepetition, setCurrentRepetition] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -551,6 +603,7 @@ export default function ShadowingWorkspace({
     startedAt: 0,
   });
   const sessionCommitRef = useRef(false);
+  const sessionRepsRef = useRef(0);
 
   const selectedDeck = useMemo(() => {
     const baseDeck = decks.find((deck) => deck.id === selectedDeckId) || null;
@@ -763,7 +816,7 @@ export default function ShadowingWorkspace({
     const elapsedMs = getElapsedSessionMs();
     const elapsedHours = elapsedMs / 3_600_000;
     const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
-    const completedReps = queueLength * repetitions;
+    const completedReps = sessionRepsRef.current;
 
     playbackRef.current = {
       phase: "completed",
@@ -791,7 +844,21 @@ export default function ShadowingWorkspace({
       });
     }
 
-    setTotalReps((currentValue) => currentValue + completedReps);
+    const nextStreak = updateStreak(streak);
+    setStreak(nextStreak);
+    playCompletionJingle();
+
+    if (isMobile) {
+      window.setTimeout(() => {
+        setIsMobileSessionOpen(false);
+        setCompletionSummary({
+          sentences: queueLength,
+          reps: completedReps,
+          elapsedSeconds,
+          streak: nextStreak.count,
+        });
+      }, 650);
+    }
 
     if (authUserId) {
       try {
@@ -819,6 +886,8 @@ export default function ShadowingWorkspace({
     selectedDeck?.id,
     selectedDeck?.name,
     setShadowingHours,
+    isMobile,
+    streak,
   ]);
 
   const playSentenceAt = useCallback(
@@ -901,6 +970,8 @@ export default function ShadowingWorkspace({
     setCurrentRepetition(1);
     setSessionCompleted(false);
     setSessionNotice("");
+    setSessionReps(0);
+    sessionRepsRef.current = 0;
     sessionCommitRef.current = false;
     playbackRef.current = {
       phase: "idle",
@@ -928,6 +999,10 @@ export default function ShadowingWorkspace({
     const { index, repetition } = playbackRef.current;
     const queueLength = queueRef.current.length;
     const repetitions = settingsRef.current.repetitions;
+
+    sessionRepsRef.current += 1;
+    setSessionReps(sessionRepsRef.current);
+    setTotalReps((currentValue) => currentValue + 1);
 
     if (repetition < repetitions) {
       startGap("repeat", settingsRef.current.repeatGapSeconds * 1000, () => {
@@ -1569,6 +1644,14 @@ export default function ShadowingWorkspace({
   }, [authUserId, totalReps]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      getScopedStorageKey(SHADOWING_STORAGE_KEYS.streak, authUserId),
+      JSON.stringify(streak),
+    );
+  }, [authUserId, streak]);
+
+  useEffect(() => {
     if (!authUserId) {
       skipNextGoalPersistRef.current = false;
       setGoalHydrated(true);
@@ -1893,6 +1976,7 @@ export default function ShadowingWorkspace({
               <span style={localStyles.metaPill}>
                 Rep {currentRepetition}/{settings.repetitions}
               </span>
+              <span style={localStyles.metaPill}> {sessionReps} reps logged</span>
               {currentCard?.isAudioAvailable ? (
                 <span style={localStyles.metaPill}>Audio ready</span>
               ) : currentCard ? (
@@ -1965,6 +2049,7 @@ export default function ShadowingWorkspace({
             <div style={localStyles.mobileLauncherPill}>
               {settings.repetitions} rep{settings.repetitions === 1 ? "" : "s"}
             </div>
+            <div style={localStyles.mobileLauncherPill}><Trophy size={13} /> {streak.count} day streak</div>
           </div>
 
           {decksError ? <div style={localStyles.errorBox}>{decksError}</div> : null}
@@ -2632,6 +2717,26 @@ export default function ShadowingWorkspace({
               <div style={localStyles.mobileSessionSheet(isMobileSessionOpen)}>
                 {renderSessionSection(false, { isMobileSheet: true })}
               </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {hasMounted && isMobile && completionSummary
+        ? createPortal(
+            <div style={localStyles.completionOverlay}>
+              <section role="dialog" aria-modal="true" aria-label="Shadowing session complete" style={localStyles.completionCard}>
+                <div style={localStyles.completionIcon}><Trophy size={28} /></div>
+                <div style={localStyles.completionTitle}>Session complete!</div>
+                <div style={localStyles.completionSubtitle}>Great work — your reps have been logged.</div>
+                <div style={localStyles.completionStats}>
+                  <div style={localStyles.completionStat}><strong>{completionSummary.sentences}</strong><span>sentences</span></div>
+                  <div style={localStyles.completionStat}><strong>{completionSummary.reps}</strong><span>reps</span></div>
+                  <div style={localStyles.completionStat}><strong>{formatSessionDuration(completionSummary.elapsedSeconds)}</strong><span>time</span></div>
+                </div>
+                <div style={localStyles.streakCelebrate}><Trophy size={15} /> {completionSummary.streak} day streak</div>
+                <button type="button" style={localStyles.completionButton} onClick={() => setCompletionSummary(null)}>Nice!</button>
+              </section>
             </div>,
             document.body,
           )
@@ -3604,6 +3709,38 @@ const localStyles = {
     transform: open ? "translateY(0%)" : "translateY(100%)",
     transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
   }),
+  completionOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 1260,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px",
+    background: "rgba(2, 6, 23, 0.46)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+  },
+  completionCard: {
+    width: "min(350px, 100%)",
+    borderRadius: "26px",
+    padding: "26px 20px 20px",
+    display: "grid",
+    justifyItems: "center",
+    gap: "12px",
+    textAlign: "center",
+    border: "1px solid rgba(250, 204, 21, 0.32)",
+    background: "linear-gradient(150deg, #172554 0%, #1e3a8a 100%)",
+    boxShadow: "0 28px 70px rgba(2,6,23,0.42)",
+    color: "#fff",
+  },
+  completionIcon: { width: "56px", height: "56px", borderRadius: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fef08a", background: "rgba(250,204,21,0.16)" },
+  completionTitle: { fontSize: "22px", fontWeight: 800, letterSpacing: "-0.03em" },
+  completionSubtitle: { color: "rgba(255,255,255,0.74)", fontSize: "13px" },
+  completionStats: { width: "100%", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginTop: "4px" },
+  completionStat: { display: "grid", gap: "3px", padding: "10px 4px", borderRadius: "12px", background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.72)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em" },
+  streakCelebrate: { display: "inline-flex", alignItems: "center", gap: "6px", color: "#fef08a", fontSize: "13px", fontWeight: 700 },
+  completionButton: { width: "100%", minHeight: "46px", border: "none", borderRadius: "14px", background: "#facc15", color: "#422006", fontWeight: 800, fontSize: "14px", cursor: "pointer" },
   focusBackdrop: {
     position: "absolute",
     inset: 0,
