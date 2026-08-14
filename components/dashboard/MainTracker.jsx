@@ -264,6 +264,9 @@ export default function MainTracker({
             <section style={mobileStyles.overallCard}>
               <div style={mobileStyles.overallHeaderRow}>
                 <div style={mobileStyles.overallEyebrow}>Tracker dashboard</div>
+                <span style={mobileStyles.overallIcon} aria-hidden="true">
+                  <Blocks size={19} strokeWidth={2.2} />
+                </span>
               </div>
 
               <div style={mobileStyles.overallValue}>{overallHoursLabel}</div>
@@ -500,9 +503,9 @@ const mobileStyles = {
   },
   overallCard: {
     borderRadius: "22px",
-    border: "1px solid rgba(255,255,255,0.82)",
-    background: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.76) 100%)",
-    boxShadow: "0 16px 32px rgba(15,23,42,0.1)",
+    border: "1px solid rgba(255,255,255,0.2)",
+    background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+    boxShadow: "0 16px 32px rgba(185,28,28,0.28)",
     padding: "14px",
     display: "grid",
     gap: "10px",
@@ -519,14 +522,25 @@ const mobileStyles = {
     fontWeight: 700,
     letterSpacing: "0.08em",
     textTransform: "uppercase",
-    color: "var(--app-text-muted)",
+    color: "rgba(255,255,255,0.72)",
+  },
+  overallIcon: {
+    width: "36px",
+    height: "36px",
+    borderRadius: "12px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    background: "rgba(255,255,255,0.16)",
+    border: "1px solid rgba(255,255,255,0.2)",
   },
   overallValue: {
     fontSize: "34px",
     fontWeight: 800,
     letterSpacing: "-0.05em",
     lineHeight: 1,
-    color: "var(--app-text)",
+    color: "#fff",
   },
   metricCardGrid: {
     display: "grid",
