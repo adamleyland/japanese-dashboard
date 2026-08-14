@@ -588,6 +588,7 @@ export default function ShadowingWorkspace({
   const [completionSummary, setCompletionSummary] = useState(null);
   const [sessionOffset, setSessionOffset] = useState(0);
   const [completedDates, setCompletedDates] = useState(() => readStoredCompletedDates(authUserId));
+  const [gardenPreviewStage, setGardenPreviewStage] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentRepetition, setCurrentRepetition] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2065,9 +2066,6 @@ export default function ShadowingWorkspace({
           <div style={styles.sectionHeader}>
             <div style={{ minWidth: 0 }}>
               <h2 style={styles.sectionTitle}>Shadowing session</h2>
-              <p style={styles.sectionText}>
-                {selectedDeck?.name ? `${selectedDeck.name} ready to run.` : deckSummary}
-              </p>
             </div>
           </div>
 
@@ -2235,6 +2233,10 @@ export default function ShadowingWorkspace({
               </label>
             </div>
           ) : null}
+
+          <button type="button" style={localStyles.gardenPreviewButton} onClick={() => setGardenPreviewStage(0)}>
+            Preview garden stages
+          </button>
 
           <button
             type="button"
@@ -2772,11 +2774,27 @@ export default function ShadowingWorkspace({
             document.body,
           )
         : null}
+
+      {hasMounted && isMobile && gardenPreviewStage !== null
+        ? createPortal(
+            <div style={localStyles.completionOverlay} onClick={() => setGardenPreviewStage(null)}>
+              <section role="dialog" aria-modal="true" aria-label="Garden stage preview" style={localStyles.previewCard} onClick={(event) => event.stopPropagation()}>
+                <div style={localStyles.completionTitle}>Garden preview</div>
+                <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} previewStage={gardenPreviewStage} />
+                <div style={localStyles.previewControls}>
+                  <button type="button" style={localStyles.compactSecondaryButton} disabled={!gardenPreviewStage} onClick={() => setGardenPreviewStage((stage) => Math.max(0, stage - 1))}>Back</button>
+                  <span>{gardenPreviewStage + 1}/6</span>
+                  <button type="button" style={localStyles.completionButton} disabled={gardenPreviewStage === 5} onClick={() => setGardenPreviewStage((stage) => Math.min(5, stage + 1))}>Next</button>
+                </div>
+              </section>
+            </div>, document.body,
+          )
+        : null}
     </div>
   );
 }
 
-function ShadowingHabitGarden({ completedDates, streak, totalReps }) {
+function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage = null }) {
   const completedSet = new Set(completedDates);
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
@@ -2787,7 +2805,7 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps }) {
   });
   const weeklySessions = days.filter((day) => day.completed).length;
   const growthDays = completedDates.length;
-  const stage = growthDays < 1 ? 0 : growthDays < 3 ? 1 : growthDays < 7 ? 2 : growthDays < 14 ? 3 : growthDays < 30 ? 4 : 5;
+  const stage = previewStage ?? (growthDays < 1 ? 0 : growthDays < 3 ? 1 : growthDays < 7 ? 2 : growthDays < 14 ? 3 : growthDays < 30 ? 4 : 5);
   const stages = ["Empty pot", "Seed unlocked", "Tiny sprout", "First leaves", "Young bonsai", "Pot upgrade"];
   const nextThresholds = [1, 3, 7, 14, 30, 60];
   const growth = Math.min(100, Math.round((growthDays / nextThresholds[stage]) * 100));
@@ -2800,7 +2818,10 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps }) {
         <span style={localStyles.habitGardenStreak}><Trophy size={14} /> {streak} day streak</span>
       </div>
       <div style={localStyles.habitGardenBody}>
-        <img src={isStarterStage ? "/images/shadowing/bonsai-starter-pot.png" : "/images/shadowing/bonsai-tree.png"} alt={stages[stage]} style={localStyles.bonsaiImage} />
+        <div style={localStyles.bonsaiVisual(stage)}>
+          <img key={stage} src={isStarterStage ? "/images/shadowing/bonsai-starter-pot.png" : "/images/shadowing/bonsai-tree.png"} alt={stages[stage]} style={localStyles.bonsaiImage(stage)} />
+          {stage === 1 ? <span style={localStyles.seedWiggle} aria-hidden="true" /> : null}
+        </div>
         <div style={localStyles.growthInfo}>
           <div style={localStyles.growthLabel}>{stages[stage]}</div>
           <strong>{growthDays ? `${growth}% to the next stage` : "Complete today to unlock your seed"}</strong>
@@ -3780,12 +3801,15 @@ const localStyles = {
     transform: open ? "translateY(0%)" : "translateY(100%)",
     transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
   }),
+  gardenPreviewButton: { width: "100%", minHeight: "42px", borderRadius: "13px", border: "1px solid rgba(34,197,94,0.25)", background: "rgba(34,197,94,0.08)", color: "#15803d", fontWeight: 700, cursor: "pointer" },
   habitGarden: { display: "grid", gap: "12px", padding: "14px", borderRadius: "20px", border: "1px solid rgba(34,197,94,0.2)", background: "linear-gradient(135deg, rgba(20,83,45,0.12), rgba(14,165,233,0.07))", overflow: "hidden" },
   habitGardenHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", color: "var(--app-text)", fontSize: "13px" },
   habitGardenEyebrow: { marginBottom: "3px", color: "var(--app-text-muted)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" },
   habitGardenStreak: { display: "inline-flex", alignItems: "center", gap: "5px", color: "#ca8a04", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap" },
   habitGardenBody: { display: "flex", alignItems: "center", gap: "4px", minHeight: "104px" },
-  bonsaiImage: { width: "116px", height: "116px", objectFit: "contain", margin: "-14px -4px -16px -12px", filter: "drop-shadow(0 12px 12px rgba(15,23,42,0.18))", animation: "bonsai-breathe 4.8s ease-in-out infinite", transformOrigin: "50% 82%" },
+  bonsaiVisual: (stage) => ({ position: "relative", width: "116px", height: "116px", flexShrink: 0, margin: "-14px -4px -16px -12px", transform: `scale(${stage < 2 ? 0.72 + stage * 0.08 : 0.8 + Math.min(stage - 2, 3) * 0.07})`, transformOrigin: "50% 82%", transition: "transform 600ms cubic-bezier(0.22, 1, 0.36, 1)" }),
+  bonsaiImage: (stage) => ({ width: "116px", height: "116px", objectFit: "contain", filter: "drop-shadow(0 12px 12px rgba(15,23,42,0.18))", animation: stage < 2 ? "bonsai-settle 3.8s ease-in-out infinite" : "bonsai-breathe 4.8s ease-in-out infinite", transformOrigin: "50% 82%" }),
+  seedWiggle: { position: "absolute", width: "12px", height: "12px", left: "52px", top: "52px", borderRadius: "50% 50% 45% 45%", background: "linear-gradient(135deg, #fde68a, #d97706)", boxShadow: "0 3px 6px rgba(120,53,15,0.28)", animation: "seed-wiggle 2.2s ease-in-out infinite" },
   growthInfo: { display: "grid", flex: 1, gap: "6px", minWidth: 0, color: "var(--app-text)", fontSize: "13px" },
   growthLabel: { fontSize: "11px", color: "var(--app-text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" },
   growthTrack: { height: "8px", borderRadius: "999px", overflow: "hidden", background: "rgba(34,197,94,0.15)" },
@@ -3817,6 +3841,8 @@ const localStyles = {
     boxShadow: "0 28px 70px rgba(2,6,23,0.42)",
     color: "#fff",
   },
+  previewCard: { width: "min(390px, 100%)", borderRadius: "26px", padding: "22px", display: "grid", gap: "16px", background: "var(--app-surface-strong)", boxShadow: "0 28px 70px rgba(2,6,23,0.42)", color: "var(--app-text)" },
+  previewControls: { display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "10px", color: "var(--app-text-muted)", fontSize: "12px", fontWeight: 700 },
   completionIcon: { width: "56px", height: "56px", borderRadius: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fef08a", background: "rgba(250,204,21,0.16)" },
   completionTitle: { fontSize: "22px", fontWeight: 800, letterSpacing: "-0.03em" },
   completionSubtitle: { color: "rgba(255,255,255,0.74)", fontSize: "13px" },

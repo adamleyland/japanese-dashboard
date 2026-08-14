@@ -114,6 +114,18 @@ body {
   50% { transform: translateY(-5px) rotate(1deg); }
 }
 
+@keyframes bonsai-settle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  55% { transform: translateY(-2px) rotate(0.6deg); }
+}
+
+@keyframes seed-wiggle {
+  0%, 72%, 100% { transform: translateY(0) rotate(0deg); }
+  78% { transform: translateY(-3px) rotate(-9deg); }
+  84% { transform: translateY(0) rotate(8deg); }
+  90% { transform: translateY(-1px) rotate(-4deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   [style*="bonsai-breathe"] { animation: none !important; }
 }
