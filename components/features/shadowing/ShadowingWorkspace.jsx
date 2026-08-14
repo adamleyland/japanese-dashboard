@@ -36,6 +36,11 @@ import {
 } from "@/lib/profiles";
 
 const DEFAULT_SHADOWING_GOAL = 250;
+const SOIL_TO_POT_FRAME_DURATION_MS = 100;
+const SOIL_TO_POT_FRAMES = Array.from(
+  { length: 10 },
+  (_, index) => `/images/shadowing/soil-to-pot/frame-${String(index + 1).padStart(2, "0")}.png`,
+);
 const KANA_CHARACTER_REGEX = /[ぁ-ゖゝゞァ-ヺー]/;
 const KANJI_CHARACTER_REGEX = /[一-龯々〆ヵヶ]/;
 
@@ -588,6 +593,7 @@ export default function ShadowingWorkspace({
   const [completionSummary, setCompletionSummary] = useState(null);
   const [sessionOffset, setSessionOffset] = useState(0);
   const [completedDates, setCompletedDates] = useState(() => readStoredCompletedDates(authUserId));
+  const [gardenEvolutionId, setGardenEvolutionId] = useState(null);
   const [gardenPreviewStage, setGardenPreviewStage] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentRepetition, setCurrentRepetition] = useState(1);
@@ -838,6 +844,8 @@ export default function ShadowingWorkspace({
     const elapsedHours = elapsedMs / 3_600_000;
     const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
     const completedReps = sessionRepsRef.current;
+    const completionDate = getLocalDateKey();
+    const unlocksBatteredPot = completedDates.length === 0 && !completedDates.includes(completionDate);
 
     setSessionOffset((currentOffset) => currentOffset + queueLength);
 
@@ -869,7 +877,10 @@ export default function ShadowingWorkspace({
 
     const nextStreak = updateStreak(streak);
     setStreak(nextStreak);
-    setCompletedDates((dates) => [...new Set([...dates, getLocalDateKey()])].slice(-90));
+    setCompletedDates((dates) => [...new Set([...dates, completionDate])].slice(-90));
+    if (unlocksBatteredPot) {
+      setGardenEvolutionId(`soil-to-pot-${completionDate}-${Date.now()}`);
+    }
     playCompletionJingle();
 
     if (isMobile) {
@@ -911,6 +922,7 @@ export default function ShadowingWorkspace({
     selectedDeck?.name,
     setShadowingHours,
     isMobile,
+    completedDates,
     streak,
   ]);
 
@@ -2580,7 +2592,7 @@ export default function ShadowingWorkspace({
           </section>
         )}
 
-        {isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} /> : null}
+        {isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} evolutionId={gardenEvolutionId} /> : null}
       </div>
 
       <audio ref={audioRef} preload="auto" />
@@ -2780,7 +2792,7 @@ export default function ShadowingWorkspace({
             <div style={localStyles.completionOverlay} onClick={() => setGardenPreviewStage(null)}>
               <section role="dialog" aria-modal="true" aria-label="Garden stage preview" style={localStyles.previewCard} onClick={(event) => event.stopPropagation()}>
                 <div style={localStyles.completionTitle}>Garden preview</div>
-                <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} previewStage={gardenPreviewStage} />
+                <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} previewStage={gardenPreviewStage} evolutionId={gardenPreviewStage === 1 ? "soil-to-pot-preview" : null} />
                 <div style={localStyles.previewControls}>
                   <button type="button" style={localStyles.compactSecondaryButton} disabled={!gardenPreviewStage} onClick={() => setGardenPreviewStage((stage) => Math.max(0, stage - 1))}>Back</button>
                   <span>{gardenPreviewStage + 1}/6</span>
@@ -2794,7 +2806,7 @@ export default function ShadowingWorkspace({
   );
 }
 
-function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage = null }) {
+function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage = null, evolutionId = null }) {
   const completedSet = new Set(completedDates);
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
@@ -2806,10 +2818,77 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage 
   const weeklySessions = days.filter((day) => day.completed).length;
   const growthDays = completedDates.length;
   const stage = previewStage ?? (growthDays < 1 ? 0 : growthDays < 3 ? 1 : growthDays < 7 ? 2 : growthDays < 14 ? 3 : growthDays < 30 ? 4 : 5);
-  const stages = ["Empty pot", "Seed unlocked", "Tiny sprout", "First leaves", "Young bonsai", "Pot upgrade"];
+  const stages = ["Fresh soil", "Battered pot", "Seed unlocked", "Tiny sprout", "First leaves", "Young bonsai"];
   const nextThresholds = [1, 3, 7, 14, 30, 60];
   const growth = Math.min(100, Math.round((growthDays / nextThresholds[stage]) * 100));
-  const isStarterStage = stage < 3;
+  const restingFrameIndex = stage >= 1 ? 9 : 0;
+  const [activeFrameIndex, setActiveFrameIndex] = useState(restingFrameIndex);
+  const [framesReady, setFramesReady] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const playedEvolutionRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const preloadFrame = (src) => new Promise((resolve) => {
+      const image = new Image();
+      image.onload = resolve;
+      image.onerror = resolve;
+      image.src = src;
+    });
+
+    Promise.all(SOIL_TO_POT_FRAMES.map(preloadFrame)).then(() => {
+      if (!cancelled) {
+        setFramesReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncPreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    syncPreference();
+    mediaQuery.addEventListener("change", syncPreference);
+    return () => mediaQuery.removeEventListener("change", syncPreference);
+  }, []);
+
+  useEffect(() => {
+    if (!evolutionId || !framesReady || playedEvolutionRef.current === evolutionId) {
+      return undefined;
+    }
+
+    playedEvolutionRef.current = evolutionId;
+    if (prefersReducedMotion) {
+      const frameRequest = window.requestAnimationFrame(() => setActiveFrameIndex(9));
+      return () => window.cancelAnimationFrame(frameRequest);
+    }
+
+    let frameIndex = 0;
+    let timer = null;
+    const frameRequest = window.requestAnimationFrame(() => {
+      setActiveFrameIndex(frameIndex);
+      timer = window.setInterval(() => {
+        frameIndex += 1;
+        if (frameIndex >= SOIL_TO_POT_FRAMES.length) {
+          window.clearInterval(timer);
+          setActiveFrameIndex(SOIL_TO_POT_FRAMES.length - 1);
+          return;
+        }
+        setActiveFrameIndex(frameIndex);
+      }, SOIL_TO_POT_FRAME_DURATION_MS);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameRequest);
+      if (timer) {
+        window.clearInterval(timer);
+      }
+    };
+  }, [evolutionId, framesReady, prefersReducedMotion]);
+  const displayedFrameIndex = evolutionId ? activeFrameIndex : restingFrameIndex;
 
   return (
     <section style={localStyles.habitGarden} aria-label="Shadowing garden progress">
@@ -2819,8 +2898,9 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage 
       </div>
       <div style={localStyles.habitGardenBody}>
         <div style={localStyles.bonsaiVisual(stage)}>
-          <img key={stage} src={isStarterStage ? "/images/shadowing/bonsai-starter-pot.png" : "/images/shadowing/bonsai-tree.png"} alt={stages[stage]} style={localStyles.bonsaiImage(stage)} />
-          {stage === 1 ? <span style={localStyles.seedWiggle} aria-hidden="true" /> : null}
+          <div className="garden-stage-art" aria-label={stages[stage]}>
+            <img className="garden-stage-art__sequence" src={SOIL_TO_POT_FRAMES[displayedFrameIndex]} alt="" aria-hidden="true" draggable="false" />
+          </div>
         </div>
         <div style={localStyles.growthInfo}>
           <div style={localStyles.growthLabel}>{stages[stage]}</div>
@@ -3807,7 +3887,7 @@ const localStyles = {
   habitGardenEyebrow: { marginBottom: "3px", color: "var(--app-text-muted)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" },
   habitGardenStreak: { display: "inline-flex", alignItems: "center", gap: "5px", color: "#ca8a04", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap" },
   habitGardenBody: { display: "flex", alignItems: "center", gap: "4px", minHeight: "104px" },
-  bonsaiVisual: (stage) => ({ position: "relative", width: "116px", height: "116px", flexShrink: 0, margin: "-14px -4px -16px -12px", transform: `scale(${stage < 2 ? 0.72 + stage * 0.08 : 0.8 + Math.min(stage - 2, 3) * 0.07})`, transformOrigin: "50% 82%", transition: "transform 600ms cubic-bezier(0.22, 1, 0.36, 1)" }),
+  bonsaiVisual: () => ({ position: "relative", width: "116px", height: "116px", flexShrink: 0, margin: "-14px -4px -16px -12px", transform: "scale(.8)", transformOrigin: "50% 82%" }),
   bonsaiImage: (stage) => ({ width: "116px", height: "116px", objectFit: "contain", filter: "drop-shadow(0 12px 12px rgba(15,23,42,0.18))", animation: stage < 2 ? "bonsai-settle 3.8s ease-in-out infinite" : "bonsai-breathe 4.8s ease-in-out infinite", transformOrigin: "50% 82%" }),
   seedWiggle: { position: "absolute", width: "12px", height: "12px", left: "52px", top: "52px", borderRadius: "50% 50% 45% 45%", background: "linear-gradient(135deg, #fde68a, #d97706)", boxShadow: "0 3px 6px rgba(120,53,15,0.28)", animation: "seed-wiggle 2.2s ease-in-out infinite" },
   growthInfo: { display: "grid", flex: 1, gap: "6px", minWidth: 0, color: "var(--app-text)", fontSize: "13px" },

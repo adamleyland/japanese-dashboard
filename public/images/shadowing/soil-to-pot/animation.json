@@ -1,0 +1,24 @@
+{
+  "id": "soil-to-pot",
+  "fps": 10,
+  "durationMs": 1000,
+  "loop": false,
+  "frameSize": {
+    "width": 1024,
+    "height": 1024
+  },
+  "frames": [
+    "transparent/frame-01.png",
+    "transparent/frame-02.png",
+    "transparent/frame-03.png",
+    "transparent/frame-04.png",
+    "transparent/frame-05.png",
+    "transparent/frame-06.png",
+    "transparent/frame-07.png",
+    "transparent/frame-08.png",
+    "transparent/frame-09.png",
+    "transparent/frame-10.png"
+  ],
+  "restingStateBefore": "transparent/frame-01.png",
+  "restingStateAfter": "transparent/frame-10.png"
+}
