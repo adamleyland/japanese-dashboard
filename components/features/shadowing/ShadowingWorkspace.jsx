@@ -6,6 +6,7 @@ import {
   AudioLines,
   BarChart3,
   ChevronDown,
+  Cog,
   CloudUpload,
   Languages,
   Maximize2,
@@ -845,7 +846,7 @@ export default function ShadowingWorkspace({
     const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
     const completedReps = sessionRepsRef.current;
     const completionDate = getLocalDateKey();
-    const unlocksBatteredPot = completedDates.length === 0 && !completedDates.includes(completionDate);
+    const unlocksBatteredPot = completedDates.length === 1 && !completedDates.includes(completionDate);
 
     setSessionOffset((currentOffset) => currentOffset + queueLength);
 
@@ -2079,6 +2080,16 @@ export default function ShadowingWorkspace({
             <div style={{ minWidth: 0 }}>
               <h2 style={styles.sectionTitle}>Shadowing session</h2>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsAdvancedSettingsOpen((currentValue) => !currentValue)}
+              style={localStyles.mobileSettingsCog(isAdvancedSettingsOpen)}
+              aria-label={isAdvancedSettingsOpen ? "Close session settings" : "Open session settings"}
+              aria-expanded={isAdvancedSettingsOpen}
+              title="Session settings"
+            >
+              <Cog size={18} strokeWidth={2.2} />
+            </button>
           </div>
 
           <div style={localStyles.mobileLauncherMetaRow}>
@@ -2136,16 +2147,6 @@ export default function ShadowingWorkspace({
           {!selectedDeck && !decks.length && !decksLoading ? (
             <div style={localStyles.infoBox}>Upload decks on desktop, then run your session here.</div>
           ) : null}
-
-          <div style={localStyles.settingsActionRow}>
-            <button
-              type="button"
-              onClick={() => setIsAdvancedSettingsOpen((currentValue) => !currentValue)}
-              style={localStyles.compactSecondaryButton}
-            >
-              {isAdvancedSettingsOpen ? "Hide more settings" : "More settings"}
-            </button>
-          </div>
 
           {isAdvancedSettingsOpen ? (
             <div style={localStyles.advancedSettingsPanel}>
@@ -2592,7 +2593,7 @@ export default function ShadowingWorkspace({
           </section>
         )}
 
-        {isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} evolutionId={gardenEvolutionId} /> : null}
+        {isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} evolutionId={gardenEvolutionId} onEvolutionDismiss={() => setGardenEvolutionId(null)} /> : null}
       </div>
 
       <audio ref={audioRef} preload="auto" />
@@ -2792,7 +2793,7 @@ export default function ShadowingWorkspace({
             <div style={localStyles.completionOverlay} onClick={() => setGardenPreviewStage(null)}>
               <section role="dialog" aria-modal="true" aria-label="Garden stage preview" style={localStyles.previewCard} onClick={(event) => event.stopPropagation()}>
                 <div style={localStyles.completionTitle}>Garden preview</div>
-                <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} previewStage={gardenPreviewStage} evolutionId={gardenPreviewStage === 1 ? "soil-to-pot-preview" : null} />
+                <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} previewStage={gardenPreviewStage} />
                 <div style={localStyles.previewControls}>
                   <button type="button" style={localStyles.compactSecondaryButton} disabled={!gardenPreviewStage} onClick={() => setGardenPreviewStage((stage) => Math.max(0, stage - 1))}>Back</button>
                   <span>{gardenPreviewStage + 1}/6</span>
@@ -2806,7 +2807,7 @@ export default function ShadowingWorkspace({
   );
 }
 
-function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage = null, evolutionId = null }) {
+function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage = null, evolutionId = null, onEvolutionDismiss }) {
   const completedSet = new Set(completedDates);
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
@@ -2817,10 +2818,24 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage 
   });
   const weeklySessions = days.filter((day) => day.completed).length;
   const growthDays = completedDates.length;
-  const stage = previewStage ?? (growthDays < 1 ? 0 : growthDays < 3 ? 1 : growthDays < 7 ? 2 : growthDays < 14 ? 3 : growthDays < 30 ? 4 : 5);
+  const stage = previewStage ?? (growthDays < 2 ? 0 : growthDays < 3 ? 1 : growthDays < 7 ? 2 : growthDays < 14 ? 3 : growthDays < 30 ? 4 : 5);
   const stages = ["Fresh soil", "Battered pot", "Seed unlocked", "Tiny sprout", "First leaves", "Young bonsai"];
-  const nextThresholds = [1, 3, 7, 14, 30, 60];
-  const growth = Math.min(100, Math.round((growthDays / nextThresholds[stage]) * 100));
+  const nextUnlocks = ["battered pot", "seed", "tiny sprout", "first leaves", "young bonsai", "monthly bonsai upgrade"];
+  const stageStarts = [0, 2, 3, 7, 14, 30];
+  const nextThresholds = [2, 3, 7, 14, 30, 60];
+  const stageStart = stageStarts[stage];
+  const nextThreshold = nextThresholds[stage];
+  const completedTowardNext = Math.max(0, Math.min(nextThreshold - stageStart, growthDays - stageStart));
+  const neededForNext = nextThreshold - stageStart;
+  const remainingDays = Math.max(0, nextThreshold - growthDays);
+  const growth = Math.round((completedTowardNext / neededForNext) * 100);
+  const nextUnlockMessage = growthDays === 0
+    ? "Complete a shadowing session today to prepare the soil."
+    : stage === 0
+      ? "Complete a session tomorrow to uncover the battered pot."
+      : remainingDays === 1
+        ? `Complete one more day to unlock the ${nextUnlocks[stage]}.`
+        : `${remainingDays} more completed days unlock the ${nextUnlocks[stage]}.`;
   const restingFrameIndex = stage >= 1 ? 9 : 0;
   const [activeFrameIndex, setActiveFrameIndex] = useState(restingFrameIndex);
   const [framesReady, setFramesReady] = useState(false);
@@ -2891,6 +2906,7 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage 
   const displayedFrameIndex = evolutionId ? activeFrameIndex : restingFrameIndex;
 
   return (
+    <>
     <section style={localStyles.habitGarden} aria-label="Shadowing garden progress">
       <div style={localStyles.habitGardenHeader}>
         <div><div style={localStyles.habitGardenEyebrow}>Shadowing garden</div><strong>{weeklySessions}/7 days this week</strong></div>
@@ -2904,15 +2920,33 @@ function ShadowingHabitGarden({ completedDates, streak, totalReps, previewStage 
         </div>
         <div style={localStyles.growthInfo}>
           <div style={localStyles.growthLabel}>{stages[stage]}</div>
-          <strong>{growthDays ? `${growth}% to the next stage` : "Complete today to unlock your seed"}</strong>
+          <strong>{completedTowardNext}/{neededForNext} days towards {nextUnlocks[stage]}</strong>
           <div style={localStyles.growthTrack}><div style={localStyles.growthFill(growth)} /></div>
-          <span>{stage >= 5 ? "Your bonsai is ready for its next monthly upgrade." : "Hit your daily target to grow it."}</span>
+          <span>{nextUnlockMessage}</span>
         </div>
       </div>
       <div style={localStyles.weekStrip}>
         {days.map((day) => <div key={day.key} style={localStyles.weekDay(day.completed, day.today)}><span>{day.label}</span><i>{day.completed ? "●" : "·"}</i></div>)}
       </div>
     </section>
+    {evolutionId && typeof document !== "undefined"
+      ? createPortal(
+          <div style={localStyles.gardenEvolutionOverlay}>
+            <section role="dialog" aria-modal="true" aria-label="Battered pot unlocked" style={localStyles.gardenEvolutionCard}>
+              <span style={localStyles.gardenEvolutionEyebrow}>Garden evolution</span>
+              <strong style={localStyles.gardenEvolutionTitle}>A battered pot emerges</strong>
+              <div style={localStyles.gardenEvolutionArt}>
+                <img src={SOIL_TO_POT_FRAMES[displayedFrameIndex]} alt="Soil becoming a battered bonsai pot" draggable="false" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              </div>
+              {displayedFrameIndex === SOIL_TO_POT_FRAMES.length - 1 ? (
+                <button type="button" style={localStyles.completionButton} onClick={onEvolutionDismiss}>Nice!</button>
+              ) : <span style={localStyles.gardenEvolutionHint}>Your garden is taking shape…</span>}
+            </section>
+          </div>,
+          document.body,
+        )
+      : null}
+    </>
   );
 }
 
@@ -3754,6 +3788,19 @@ const localStyles = {
     display: "flex",
     justifyContent: "flex-start",
   },
+  mobileSettingsCog: (open) => ({
+    width: "38px",
+    height: "38px",
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "12px",
+    border: `1px solid ${open ? "rgba(56,189,248,0.5)" : "var(--app-border-soft)"}`,
+    background: open ? "rgba(56,189,248,0.13)" : "var(--app-surface-elevated)",
+    color: open ? "#0284c7" : "var(--app-text-muted)",
+    cursor: "pointer",
+  }),
   advancedSettingsPanel: {
     display: "grid",
     gap: "12px",
@@ -3908,6 +3955,29 @@ const localStyles = {
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
   },
+  gardenEvolutionOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 1300,
+    display: "grid",
+    placeItems: "center",
+    padding: "20px",
+    background: "radial-gradient(circle at 50% 42%, rgba(74, 222, 128, 0.2), rgba(2, 6, 23, 0.92) 68%)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+  },
+  gardenEvolutionCard: {
+    width: "min(520px, 100%)",
+    display: "grid",
+    justifyItems: "center",
+    gap: "12px",
+    textAlign: "center",
+    color: "#f8fafc",
+  },
+  gardenEvolutionEyebrow: { color: "#bef264", fontSize: "11px", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" },
+  gardenEvolutionTitle: { fontSize: "clamp(27px, 8vw, 42px)", letterSpacing: "-0.045em" },
+  gardenEvolutionArt: { width: "min(420px, 96vw)", aspectRatio: "1", display: "grid", placeItems: "center" },
+  gardenEvolutionHint: { color: "rgba(226,232,240,0.78)", fontSize: "13px", minHeight: "46px", display: "grid", placeItems: "center" },
   completionCard: {
     width: "min(350px, 100%)",
     borderRadius: "26px",
