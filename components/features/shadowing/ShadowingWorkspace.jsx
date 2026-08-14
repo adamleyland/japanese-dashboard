@@ -576,6 +576,7 @@ export default function ShadowingWorkspace({
   const [streak, setStreak] = useState(() => readStoredStreak(authUserId));
   const [sessionReps, setSessionReps] = useState(0);
   const [completionSummary, setCompletionSummary] = useState(null);
+  const [sessionOffset, setSessionOffset] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentRepetition, setCurrentRepetition] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -654,8 +655,8 @@ export default function ShadowingWorkspace({
     ],
   );
   const sessionQueue = useMemo(
-    () => buildShadowingQueue(selectedDeck?.cards || [], queueSettings),
-    [queueSettings, selectedDeck?.cards],
+    () => buildShadowingQueue(selectedDeck?.cards || [], queueSettings, sessionOffset),
+    [queueSettings, selectedDeck?.cards, sessionOffset],
   );
   const displayCards = selectedDeck?.cards || [];
   const currentCard =
@@ -825,6 +826,8 @@ export default function ShadowingWorkspace({
     const elapsedHours = elapsedMs / 3_600_000;
     const elapsedSeconds = Math.max(1, Math.round(elapsedMs / 1000));
     const completedReps = sessionRepsRef.current;
+
+    setSessionOffset((currentOffset) => currentOffset + queueLength);
 
     playbackRef.current = {
       phase: "completed",
@@ -1985,9 +1988,7 @@ export default function ShadowingWorkspace({
                 Rep {currentRepetition}/{settings.repetitions}
               </span>
               <span style={localStyles.metaPill}> {sessionReps} reps logged</span>
-              {currentCard?.isAudioAvailable ? (
-                <span style={localStyles.metaPill}>Audio ready</span>
-              ) : currentCard ? (
+              {currentCard && !currentCard?.isAudioAvailable ? (
                 <span style={localStyles.metaPillMuted}>Text-only</span>
               ) : null}
             </div>
@@ -2905,6 +2906,7 @@ const localStyles = {
   mobileLauncherPill: {
     display: "inline-flex",
     alignItems: "center",
+    gap: "5px",
     padding: "6px 10px",
     borderRadius: "999px",
     background: "rgba(56,189,248,0.12)",
