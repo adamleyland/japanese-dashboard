@@ -117,6 +117,16 @@ function readStoredStreak(userId = "") {
   }
 }
 
+function readStoredCompletedDates(userId = "") {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(window.localStorage.getItem(getScopedStorageKey(SHADOWING_STORAGE_KEYS.completedDates, userId)) || "[]");
+    return Array.isArray(value) ? [...new Set(value.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)))].slice(-90) : [];
+  } catch {
+    return [];
+  }
+}
+
 function getLocalDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -577,6 +587,7 @@ export default function ShadowingWorkspace({
   const [sessionReps, setSessionReps] = useState(0);
   const [completionSummary, setCompletionSummary] = useState(null);
   const [sessionOffset, setSessionOffset] = useState(0);
+  const [completedDates, setCompletedDates] = useState(() => readStoredCompletedDates(authUserId));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentRepetition, setCurrentRepetition] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -857,6 +868,7 @@ export default function ShadowingWorkspace({
 
     const nextStreak = updateStreak(streak);
     setStreak(nextStreak);
+    setCompletedDates((dates) => [...new Set([...dates, getLocalDateKey()])].slice(-90));
     playCompletionJingle();
 
     if (isMobile) {
@@ -1661,6 +1673,14 @@ export default function ShadowingWorkspace({
       JSON.stringify(streak),
     );
   }, [authUserId, streak]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      getScopedStorageKey(SHADOWING_STORAGE_KEYS.completedDates, authUserId),
+      JSON.stringify(completedDates),
+    );
+  }, [authUserId, completedDates]);
 
   useEffect(() => {
     if (!authUserId) {
@@ -2557,6 +2577,8 @@ export default function ShadowingWorkspace({
             </div>
           </section>
         )}
+
+        {isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} /> : null}
       </div>
 
       <audio ref={audioRef} preload="auto" />
@@ -2751,6 +2773,45 @@ export default function ShadowingWorkspace({
           )
         : null}
     </div>
+  );
+}
+
+function ShadowingHabitGarden({ completedDates, streak, totalReps }) {
+  const completedSet = new Set(completedDates);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    const key = getLocalDateKey(date);
+    return { key, label: new Intl.DateTimeFormat(undefined, { weekday: "narrow" }).format(date), completed: completedSet.has(key), today: index === 6 };
+  });
+  const weeklySessions = days.filter((day) => day.completed).length;
+  const growthDays = completedDates.length;
+  const stage = growthDays < 1 ? 0 : growthDays < 3 ? 1 : growthDays < 7 ? 2 : growthDays < 14 ? 3 : growthDays < 30 ? 4 : 5;
+  const stages = ["Empty pot", "Seed unlocked", "Tiny sprout", "First leaves", "Young bonsai", "Pot upgrade"];
+  const nextThresholds = [1, 3, 7, 14, 30, 60];
+  const growth = Math.min(100, Math.round((growthDays / nextThresholds[stage]) * 100));
+  const isStarterStage = stage < 3;
+
+  return (
+    <section style={localStyles.habitGarden} aria-label="Shadowing garden progress">
+      <div style={localStyles.habitGardenHeader}>
+        <div><div style={localStyles.habitGardenEyebrow}>Shadowing garden</div><strong>{weeklySessions}/7 days this week</strong></div>
+        <span style={localStyles.habitGardenStreak}><Trophy size={14} /> {streak} day streak</span>
+      </div>
+      <div style={localStyles.habitGardenBody}>
+        <img src={isStarterStage ? "/images/shadowing/bonsai-starter-pot.png" : "/images/shadowing/bonsai-tree.png"} alt={stages[stage]} style={localStyles.bonsaiImage} />
+        <div style={localStyles.growthInfo}>
+          <div style={localStyles.growthLabel}>{stages[stage]}</div>
+          <strong>{growthDays ? `${growth}% to the next stage` : "Complete today to unlock your seed"}</strong>
+          <div style={localStyles.growthTrack}><div style={localStyles.growthFill(growth)} /></div>
+          <span>{stage >= 5 ? "Your bonsai is ready for its next monthly upgrade." : "Hit your daily target to grow it."}</span>
+        </div>
+      </div>
+      <div style={localStyles.weekStrip}>
+        {days.map((day) => <div key={day.key} style={localStyles.weekDay(day.completed, day.today)}><span>{day.label}</span><i>{day.completed ? "●" : "·"}</i></div>)}
+      </div>
+    </section>
   );
 }
 
@@ -3719,6 +3780,18 @@ const localStyles = {
     transform: open ? "translateY(0%)" : "translateY(100%)",
     transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
   }),
+  habitGarden: { display: "grid", gap: "12px", padding: "14px", borderRadius: "20px", border: "1px solid rgba(34,197,94,0.2)", background: "linear-gradient(135deg, rgba(20,83,45,0.12), rgba(14,165,233,0.07))", overflow: "hidden" },
+  habitGardenHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", color: "var(--app-text)", fontSize: "13px" },
+  habitGardenEyebrow: { marginBottom: "3px", color: "var(--app-text-muted)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" },
+  habitGardenStreak: { display: "inline-flex", alignItems: "center", gap: "5px", color: "#ca8a04", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap" },
+  habitGardenBody: { display: "flex", alignItems: "center", gap: "4px", minHeight: "104px" },
+  bonsaiImage: { width: "116px", height: "116px", objectFit: "contain", margin: "-14px -4px -16px -12px", filter: "drop-shadow(0 12px 12px rgba(15,23,42,0.18))", animation: "bonsai-breathe 4.8s ease-in-out infinite", transformOrigin: "50% 82%" },
+  growthInfo: { display: "grid", flex: 1, gap: "6px", minWidth: 0, color: "var(--app-text)", fontSize: "13px" },
+  growthLabel: { fontSize: "11px", color: "var(--app-text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" },
+  growthTrack: { height: "8px", borderRadius: "999px", overflow: "hidden", background: "rgba(34,197,94,0.15)" },
+  growthFill: (value) => ({ width: `${value}%`, height: "100%", borderRadius: "inherit", background: "linear-gradient(90deg, #22c55e, #84cc16)", transition: "width 300ms ease" }),
+  weekStrip: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px" },
+  weekDay: (completed, today) => ({ display: "grid", justifyItems: "center", gap: "3px", padding: "5px 2px", borderRadius: "9px", background: completed ? "rgba(34,197,94,0.16)" : "rgba(148,163,184,0.08)", outline: today ? "1px solid rgba(14,165,233,0.45)" : "none", color: completed ? "#16a34a" : "var(--app-text-faint)", fontSize: "10px", fontWeight: 700 }),
   completionOverlay: {
     position: "fixed",
     inset: 0,

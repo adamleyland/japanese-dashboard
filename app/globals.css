@@ -109,6 +109,15 @@ body {
   background: var(--app-page-bg);
 }
 
+@keyframes bonsai-breathe {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-5px) rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="bonsai-breathe"] { animation: none !important; }
+}
+
 html,
 body,
 #root,
