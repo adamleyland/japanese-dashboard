@@ -130,6 +130,14 @@ function updateStreak(currentStreak) {
 
 function playCompletionJingle() {
   if (typeof window === "undefined") return;
+
+  const completionAudio = new Audio("/sounds/shadowing-session-complete.mp3");
+  completionAudio.volume = 0.7;
+  completionAudio.play().catch(() => playSynthesizedCompletionJingle());
+}
+
+function playSynthesizedCompletionJingle() {
+  if (typeof window === "undefined") return;
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
   const context = new AudioContext();
