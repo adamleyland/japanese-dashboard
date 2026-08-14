@@ -1713,6 +1713,7 @@ export default function Home() {
                 wordsWrittenLabel={formatWords(wordsWritten)}
                 wordsWritten={wordsWritten}
                 onAdjustMetric={adjustMetricByDelta}
+                authUserId={authUserId}
                 isMobile={isMobile}
                 isCompact={isCompact}
                 isVisible={showDashboard}
@@ -1866,7 +1867,9 @@ const styles = {
   },
   mobilePageSafeArea: (hasPinnedTracker) => ({
     paddingTop: "16px",
-    paddingBottom: hasPinnedTracker ? "236px" : "136px",
+    paddingBottom: hasPinnedTracker ? "16px" : "136px",
+    height: hasPinnedTracker ? "100dvh" : "auto",
+    overflowY: hasPinnedTracker ? "hidden" : "visible",
   }),
   bgOrb1: {
     position: "absolute",

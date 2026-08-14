@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Blocks, Ear, BookOpenText, Gamepad2, Mic2, PenLine } from "lucide-react";
+import { Blocks, Ear, BookOpenText, Clock3, Gamepad2, Mic2, PenLine } from "lucide-react";
 import ExpandedTrackerOverview from "@/components/dashboard/ExpandedTrackerOverview";
 import MetricCard from "@/components/dashboard/MetricCard";
 import MetricAdjustmentModal from "@/components/dashboard/MetricAdjustmentModal";
+import ListeningHistoryModal from "@/components/dashboard/ListeningHistoryModal";
 import SubMetricCard from "@/components/dashboard/SubMetricCard";
 import TrackerFocusToggle from "@/components/dashboard/TrackerFocusToggle";
 
@@ -25,6 +26,7 @@ export default function MainTracker({
   wordsWrittenLabel,
   wordsWritten,
   authControl,
+  authUserId,
   onAdjustMetric,
   isMobile,
   isCompact,
@@ -36,6 +38,7 @@ export default function MainTracker({
   styles,
 }) {
   const [selectedMetric, setSelectedMetric] = useState(null);
+  const [isListeningHistoryOpen, setIsListeningHistoryOpen] = useState(false);
 
   const metricConfig = useMemo(
     () => ({
@@ -301,6 +304,11 @@ export default function MainTracker({
                 );
               })}
             </div>
+
+            <button type="button" onClick={() => setIsListeningHistoryOpen(true)} style={mobileStyles.listeningHistoryButton} aria-label="View manual listening history">
+              <Clock3 size={17} strokeWidth={2.1} />
+              <span>Listening history</span>
+            </button>
           </div>
         ) : (
           <>
@@ -439,6 +447,8 @@ export default function MainTracker({
           onClose={() => setSelectedMetric(null)}
         />
       )}
+
+      {isMobile && <ListeningHistoryModal open={isListeningHistoryOpen} userId={authUserId} onClose={() => setIsListeningHistoryOpen(false)} />}
     </>
   );
 }
@@ -482,7 +492,7 @@ const mobileStyles = {
   },
   dashboardGrid: {
     display: "grid",
-    gridTemplateRows: "auto 1fr",
+    gridTemplateRows: "auto minmax(0, 1fr) auto",
     gap: "12px",
     width: "100%",
     height: "100%",
@@ -571,5 +581,20 @@ const mobileStyles = {
     letterSpacing: "-0.04em",
     lineHeight: 1,
     color: "var(--app-text)",
+  },
+  listeningHistoryButton: {
+    width: "100%",
+    minHeight: "46px",
+    borderRadius: "14px",
+    border: "1px solid rgba(234,179,8,0.3)",
+    background: "rgba(234,179,8,0.1)",
+    color: "#92400e",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "pointer",
   },
 };
