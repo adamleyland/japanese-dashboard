@@ -37,6 +37,7 @@ import {
 } from "@/lib/profiles";
 
 const DEFAULT_SHADOWING_GOAL = 250;
+const SHOW_SHADOWING_GARDEN = false;
 const SOIL_TO_POT_FRAME_DURATION_MS = 100;
 const SOIL_TO_POT_FRAMES = Array.from(
   { length: 10 },
@@ -2247,9 +2248,11 @@ export default function ShadowingWorkspace({
             </div>
           ) : null}
 
-          <button type="button" style={localStyles.gardenPreviewButton} onClick={() => setGardenPreviewStage(0)}>
-            Preview garden stages
-          </button>
+          {SHOW_SHADOWING_GARDEN ? (
+            <button type="button" style={localStyles.gardenPreviewButton} onClick={() => setGardenPreviewStage(0)}>
+              Preview garden stages
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -2593,7 +2596,7 @@ export default function ShadowingWorkspace({
           </section>
         )}
 
-        {isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} evolutionId={gardenEvolutionId} onEvolutionDismiss={() => setGardenEvolutionId(null)} /> : null}
+        {SHOW_SHADOWING_GARDEN && isMobile ? <ShadowingHabitGarden completedDates={completedDates} streak={streak.count} totalReps={totalReps} evolutionId={gardenEvolutionId} onEvolutionDismiss={() => setGardenEvolutionId(null)} /> : null}
       </div>
 
       <audio ref={audioRef} preload="auto" />
@@ -2788,7 +2791,7 @@ export default function ShadowingWorkspace({
           )
         : null}
 
-      {hasMounted && isMobile && gardenPreviewStage !== null
+      {SHOW_SHADOWING_GARDEN && hasMounted && isMobile && gardenPreviewStage !== null
         ? createPortal(
             <div style={localStyles.completionOverlay} onClick={() => setGardenPreviewStage(null)}>
               <section role="dialog" aria-modal="true" aria-label="Garden stage preview" style={localStyles.previewCard} onClick={(event) => event.stopPropagation()}>
