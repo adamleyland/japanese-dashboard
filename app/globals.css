@@ -270,3 +270,117 @@ body {
     transform: translateX(0);
   }
 }
+
+.achievement-modal-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .gaming-expanded-overlay {
+    padding: 0 !important;
+    place-items: stretch !important;
+  }
+
+  .gaming-expanded-modal {
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .gaming-expanded-hero {
+    height: 205px !important;
+  }
+
+  .gaming-expanded-actions {
+    inset: max(12px, env(safe-area-inset-top)) 12px auto !important;
+  }
+
+  .gaming-expanded-brand {
+    right: 18px !important;
+    bottom: 16px !important;
+    left: 18px !important;
+  }
+
+  .gaming-expanded-brand img {
+    width: min(280px, 72vw) !important;
+    max-height: 66px !important;
+  }
+
+  .gaming-expanded-brand h2 {
+    font-size: 27px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.035em !important;
+  }
+
+  .gaming-expanded-content {
+    gap: 14px !important;
+    padding: 14px 14px calc(24px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .gaming-expanded-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .gaming-expanded-stat {
+    min-width: 0 !important;
+    gap: 6px !important;
+    padding: 11px 12px !important;
+    border-radius: 13px !important;
+  }
+
+  .gaming-expanded-stat small {
+    gap: 5px !important;
+    font-size: 9px !important;
+    letter-spacing: 0.045em !important;
+  }
+
+  .gaming-expanded-stat strong {
+    overflow: hidden !important;
+    font-size: 18px !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .gaming-expanded-content > div:last-child {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .gaming-expanded-content > div:last-child > article {
+    min-height: 70px !important;
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 9px !important;
+    border-radius: 12px !important;
+  }
+
+  .gaming-expanded-content > div:last-child > article > img {
+    width: 52px !important;
+    height: 52px !important;
+    border-radius: 8px !important;
+  }
+
+  .gaming-expanded-content > div:last-child > article strong {
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+  }
+
+  .gaming-expanded-content > div:last-child > article p {
+    margin-top: 3px !important;
+    font-size: 10.5px !important;
+    line-height: 1.3 !important;
+  }
+
+  .gaming-expanded-content > div:last-child > article small {
+    padding-top: 4px !important;
+    font-size: 9.5px !important;
+  }
+}
+
+.gaming-library-scroll::-webkit-scrollbar {
+  display: none;
+}

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Play, ToggleLeft, ToggleRight } from "lucide-react";
+import { ToggleLeft, ToggleRight, Trophy } from "lucide-react";
 import GameArtworkImage from "@/components/features/gaming/components/GameArtworkImage";
-import { openGameLauncher } from "@/lib/gaming/launchers";
 import {
   getDeviceLabel,
   formatPlaytimeHours,
@@ -17,6 +16,8 @@ export default function GamingLibraryListView({
   games,
   isCompact,
   onToggleInclude,
+  achievementSummaries,
+  onOpenAchievements,
 }) {
   return (
     <div
@@ -44,9 +45,9 @@ export default function GamingLibraryListView({
           }}
         >
           {isCompact ? (
-            <CompactRow styles={styles} game={game} onToggleInclude={onToggleInclude} />
+            <CompactRow styles={styles} game={game} onToggleInclude={onToggleInclude} achievementSummary={achievementSummaries[`${game.source}:${game.sourceGameId}`]} onOpenAchievements={onOpenAchievements} />
           ) : (
-            <DesktopRow styles={styles} game={game} onToggleInclude={onToggleInclude} />
+            <DesktopRow styles={styles} game={game} onToggleInclude={onToggleInclude} achievementSummary={achievementSummaries[`${game.source}:${game.sourceGameId}`]} onOpenAchievements={onOpenAchievements} />
           )}
         </div>
       ))}
@@ -54,7 +55,7 @@ export default function GamingLibraryListView({
   );
 }
 
-function DesktopRow({ styles, game, onToggleInclude }) {
+function DesktopRow({ styles, game, onToggleInclude, achievementSummary, onOpenAchievements }) {
   const canShowTrackedHours = supportsTrackedPlaytime(game);
   const playtimeLabel = canShowTrackedHours ? formatPlaytimeHours(game.minutesPlayedTotal) : "0h";
 
@@ -68,7 +69,7 @@ function DesktopRow({ styles, game, onToggleInclude }) {
           alignItems: "start",
         }}
       >
-        <ArtworkCell game={game} compact={false} />
+        <ArtworkCell game={game} compact={false} onOpenAchievements={onOpenAchievements} />
 
         <div style={{ minWidth: 0, display: "grid", gap: "8px", paddingTop: "2px" }}>
           <div
@@ -86,6 +87,7 @@ function DesktopRow({ styles, game, onToggleInclude }) {
             <IncludeToggleButton game={game} onClick={() => onToggleInclude(game)} />
             {game.source !== "local" ? <MetaBadge label={getDeviceLabel(game)} tone="neutral" /> : null}
             <MetaBadge label={getSourceLabel(game.source)} tone={game.source} />
+            <AchievementButton summary={achievementSummary} onClick={() => onOpenAchievements(game)} />
           </div>
 
           <div style={{ ...styles.playerSub, margin: 0 }}>
@@ -129,7 +131,7 @@ function DesktopRow({ styles, game, onToggleInclude }) {
   );
 }
 
-function CompactRow({ styles, game, onToggleInclude }) {
+function CompactRow({ styles, game, onToggleInclude, achievementSummary, onOpenAchievements }) {
   const canShowTrackedHours = supportsTrackedPlaytime(game);
   const playtimeLabel = canShowTrackedHours ? formatPlaytimeHours(game.minutesPlayedTotal) : "0h";
 
@@ -143,7 +145,7 @@ function CompactRow({ styles, game, onToggleInclude }) {
           alignItems: "start",
         }}
       >
-        <ArtworkCell game={game} compact />
+        <ArtworkCell game={game} compact onOpenAchievements={onOpenAchievements} />
 
         <div style={{ minWidth: 0, display: "grid", gap: "8px" }}>
           <div
@@ -192,6 +194,7 @@ function CompactRow({ styles, game, onToggleInclude }) {
             <IncludeToggleButton game={game} onClick={() => onToggleInclude(game)} />
             {game.source !== "local" ? <MetaBadge label={getDeviceLabel(game)} tone="neutral" /> : null}
             <MetaBadge label={getSourceLabel(game.source)} tone={game.source} />
+            <AchievementButton summary={achievementSummary} onClick={() => onOpenAchievements(game)} />
           </div>
 
           <div style={{ ...styles.playerSub, margin: 0 }}>
@@ -204,31 +207,29 @@ function CompactRow({ styles, game, onToggleInclude }) {
   );
 }
 
-function ArtworkCell({ game, compact }) {
+function AchievementButton({ summary, onClick }) {
+  return <button type="button" onClick={onClick} title="View achievements" style={{ border:"1px solid rgba(202,138,4,.24)", borderRadius:"999px", background:"rgba(202,138,4,.1)", color:"#a16207", padding:"4px 8px", fontSize:"10px", fontWeight:800, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"5px" }}><Trophy size={12}/>{summary ? `${summary.unlocked}/${summary.total}` : "Achievements"}</button>;
+}
+
+function ArtworkCell({ game, compact, onOpenAchievements }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
     <div
         role="button"
-        tabIndex={game.launchUrl ? 0 : -1}
-        aria-label={game.launchUrl ? `Launch ${game.title}` : `${game.title} artwork`}
+        tabIndex={0}
+        aria-label={`View ${game.title} achievements`}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onFocus={() => setIsHovered(true)}
         onBlur={() => setIsHovered(false)}
         onClick={() => {
-          if (game.launchUrl) {
-            openGameLauncher(game);
-          }
+          onOpenAchievements(game);
         }}
         onKeyDown={(event) => {
-          if (!game.launchUrl) {
-            return;
-          }
-
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            openGameLauncher(game);
+            onOpenAchievements(game);
           }
         }}
         style={{
@@ -240,13 +241,9 @@ function ArtworkCell({ game, compact }) {
           background: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(15,23,42,0.08))",
           flexShrink: 0,
           position: "relative",
-          cursor: game.launchUrl ? "pointer" : "default",
-          boxShadow: game.launchUrl
-            ? isHovered
-              ? "0 14px 28px rgba(15,23,42,0.18)"
-              : "0 8px 18px rgba(15,23,42,0.08)"
-            : "none",
-          transform: game.launchUrl && isHovered ? "translateY(-1px)" : "translateY(0)",
+          cursor: "pointer",
+          boxShadow: isHovered ? "0 14px 28px rgba(15,23,42,0.18)" : "0 8px 18px rgba(15,23,42,0.08)",
+          transform: isHovered ? "translateY(-1px)" : "translateY(0)",
           transition: "transform 180ms ease, box-shadow 180ms ease",
           outline: "none",
         }}
@@ -277,7 +274,7 @@ function ArtworkCell({ game, compact }) {
           }}
         />
 
-        {game.launchUrl && !compact ? (
+        {!compact ? (
           <div
             style={{
               position: "absolute",
@@ -302,7 +299,7 @@ function ArtworkCell({ game, compact }) {
               transition: "transform 180ms ease, box-shadow 180ms ease",
             }}
           >
-            <Play size={compact ? 11 : 12} fill="currentColor" />
+              <Trophy size={14} />
           </div>
         ) : null}
     </div>

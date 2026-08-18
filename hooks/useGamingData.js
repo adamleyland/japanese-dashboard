@@ -14,6 +14,7 @@ import { getGameStorageKey } from "@/lib/gaming/gaming-utils";
 import { useSteamGames } from "@/hooks/useSteamGames";
 import { useXboxGames } from "@/hooks/useXboxGames";
 import { useLocalGames } from "@/hooks/useLocalGames";
+import { useAchievementSummaries } from "@/hooks/useAchievementSummaries";
 
 const GAMING_INCLUDE_STORAGE_KEY = "jp_gaming_include_overrides";
 
@@ -37,6 +38,7 @@ export function useGamingData(options = {}) {
   const steamGames = useSteamGames({ enabled: hasAuthenticatedUser });
   const xboxGames = useXboxGames({ enabled: hasAuthenticatedUser });
   const localGames = useLocalGames({ authUserId, authResolved });
+  const achievementSummaries = useAchievementSummaries({ enabled: hasAuthenticatedUser });
   const [includeOverrides, setIncludeOverrides] = useState(() => {
     if (typeof window === "undefined") {
       return {};
@@ -221,6 +223,17 @@ export function useGamingData(options = {}) {
     localGames.refresh();
   }, [localGames, steamGames, xboxGames]);
 
+  const updateLocalArtwork = useCallback(async (game, { coverImageUrl, heroArtworkUrl, logoArtworkUrl }) => {
+    if (game?.source !== "local") return;
+    const response = await fetch("/api/gaming/local/games", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId: game.sourceGameId, name: game.title, coverImageUrl, metadataProvider: game.metadataProvider || "manual", metadata: { ...(game.raw?.metadata || {}), heroArtworkUrl, logoArtworkUrl } }) });
+    const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Unable to save artwork."); localGames.refresh();
+  }, [localGames]);
+  const deleteLocalGame = useCallback(async (game) => {
+    if (game?.source !== "local") return;
+    const response = await fetch(`/api/gaming/local/games?gameId=${encodeURIComponent(game.sourceGameId)}`, { method: "DELETE" });
+    const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Unable to delete local game."); localGames.refresh();
+  }, [localGames]);
+
   return {
     games,
     hasHydrated: typeof window !== "undefined",
@@ -234,6 +247,9 @@ export function useGamingData(options = {}) {
       xbox: xboxGames,
       local: localGames,
     },
+    achievementSummaries: achievementSummaries.summaries,
+    updateLocalArtwork,
+    deleteLocalGame,
   };
 }
 

@@ -1052,6 +1052,8 @@ export default function Home() {
             gamingData={gamingData}
             isMobile={isMobile}
             isCompact={isCompact}
+            authUserId={authUser?.id || ""}
+            authResolved={!authLoading}
           />
         );
       }
@@ -1066,6 +1068,7 @@ export default function Home() {
       audiobooksError,
       audiobooksLoading,
       authLoading,
+      authUser?.id,
       authUserId,
       gamingData,
       gamingHours,

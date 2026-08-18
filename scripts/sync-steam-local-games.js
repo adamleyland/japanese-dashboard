@@ -166,7 +166,7 @@ async function fetchSteamGridJson(endpoint, apiKey) {
   return payload?.data || [];
 }
 
-async function findSteamGridCover(title, apiKey) {
+async function findSteamGridArtwork(title, apiKey) {
   if (!apiKey) return null;
 
   try {
@@ -180,11 +180,22 @@ async function findSteamGridCover(title, apiKey) {
     const game = matches.find((match) => normalizeTitle(match?.name) === normalizedTitle) || matches[0];
     if (!game?.id) return null;
 
-    const grids = await fetchSteamGridJson(`/grids/game/${game.id}?dimensions=600x900`, apiKey);
+    const [grids, heroes] = await Promise.all([
+      fetchSteamGridJson(`/grids/game/${game.id}?dimensions=600x900`, apiKey),
+      fetchSteamGridJson(`/heroes/game/${game.id}`, apiKey),
+    ]);
     const portraitGrids = grids.filter((grid) => Number(grid?.height) > Number(grid?.width));
     const cover = portraitGrids[0] || grids[0];
-    return cover?.url
-      ? { url: cover.url, gameId: game.id, gameName: game.name || title, gridId: cover.id || null }
+    const hero = heroes.find((item) => Number(item?.width) > Number(item?.height)) || heroes[0];
+    return (cover?.url || hero?.url)
+      ? {
+          coverUrl: cover?.url || null,
+          heroUrl: hero?.url || null,
+          gameId: game.id,
+          gameName: game.name || title,
+          gridId: cover?.id || null,
+          heroId: hero?.id || null,
+        }
       : null;
   } catch (error) {
     console.warn(`Artwork lookup skipped for ${title}: ${error.message}`);
@@ -247,13 +258,13 @@ async function syncGames(games) {
 
   for (const game of games) {
     const existingGame = existingById.get(game.client_game_id);
-    const artwork = existingGame?.cover_image_url
+    const artwork = existingGame?.cover_image_url && existingGame?.metadata?.heroArtworkUrl
       ? null
-      : await findSteamGridCover(game.game_name, steamGridDbKey);
+      : await findSteamGridArtwork(game.game_name, steamGridDbKey);
     rows.push({
       ...game,
       user_id: userId,
-      cover_image_url: existingGame?.cover_image_url || artwork?.url || null,
+      cover_image_url: existingGame?.cover_image_url || artwork?.coverUrl || null,
       metadata: {
         ...(existingGame?.metadata || {}),
         ...game.metadata,
@@ -262,6 +273,8 @@ async function syncGames(games) {
               steamgriddb_game_id: artwork.gameId,
               steamgriddb_game_name: artwork.gameName,
               steamgriddb_grid_id: artwork.gridId,
+              steamgriddb_hero_id: artwork.heroId,
+              heroArtworkUrl: existingGame?.metadata?.heroArtworkUrl || artwork.heroUrl || null,
             }
           : {}),
       },

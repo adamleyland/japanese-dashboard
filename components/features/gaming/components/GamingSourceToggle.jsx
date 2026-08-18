@@ -9,9 +9,14 @@ export default function GamingSourceToggle({
   onChange,
   isCompact,
   isMobile = false,
+  sourceStatus = {},
   showExcludedOnly,
   onToggleExcludedView,
+  fillWidth = false,
 }) {
+  const isConnected = (source) => Boolean(sourceStatus[source]?.configured && !sourceStatus[source]?.loading && !sourceStatus[source]?.error);
+  const statusLabel = (source) => sourceStatus[source]?.loading ? "loading" : isConnected(source) ? "connected" : sourceStatus[source]?.error ? "connection issue" : "not connected";
+
   return (
     <div
       style={{
@@ -22,7 +27,9 @@ export default function GamingSourceToggle({
         gap: "10px",
         flexWrap: "wrap",
         overflow: "visible",
-        padding: isMobile ? "1px 0 0 1px" : 0,
+        padding: isMobile ? "1px 0" : 0,
+        boxSizing: "border-box",
+        width: fillWidth ? "100%" : "auto",
       }}
     >
       <PillSliderToggle
@@ -34,26 +41,28 @@ export default function GamingSourceToggle({
             value: "steam",
             label: "Steam",
             icon: function SteamFilterIcon() {
-              return <SteamGlyph color="currentColor" size={14} />;
+              return <SteamGlyph color={isConnected("steam") ? "#1b8fd8" : "currentColor"} size={14} />;
             },
-            ariaLabel: "Steam games",
+            ariaLabel: `Steam games · ${statusLabel("steam")}`,
           },
           {
             value: "xbox",
             label: "Xbox",
             icon: function XboxFilterIcon() {
-              return <XboxGlyph color="currentColor" size={14} />;
+              return <XboxGlyph color={isConnected("xbox") ? "#107c10" : "currentColor"} size={14} />;
             },
-            ariaLabel: "Xbox games",
+            ariaLabel: `Xbox games · ${statusLabel("xbox")}`,
           },
           {
             value: "local",
             label: "Local",
-            icon: Monitor,
-            ariaLabel: "Local games",
+            icon: function LocalFilterIcon() {
+              return <Monitor color={isConnected("local") ? "#8b5cf6" : "currentColor"} size={14} />;
+            },
+            ariaLabel: `Local games · ${statusLabel("local")}`,
           },
         ]}
-        width={isMobile ? 160 : isCompact ? 372 : 420}
+        width={isMobile ? (fillWidth ? "calc(100% - 48px)" : 160) : isCompact ? 372 : 420}
         size="sm"
         iconOnly={isMobile}
       />

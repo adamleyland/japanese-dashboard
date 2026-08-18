@@ -62,3 +62,15 @@ export async function POST(request) {
     return jsonError(500, error instanceof Error ? error.message : "Unable to save local game metadata.");
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const { user, error: authError } = await getRequestUser(request);
+    if (authError || !user?.id) return jsonError(401, "Sign in is required to delete a local game.");
+    const gameId = text(new URL(request.url).searchParams.get("gameId"), 255);
+    if (!gameId) return jsonError(400, "gameId is required.");
+    const { error } = await getSupabaseAdminClient().from("local_games").delete().eq("user_id", user.id).eq("client_game_id", gameId);
+    if (error) throw error;
+    return NextResponse.json({ ok: true });
+  } catch (error) { return jsonError(500, error instanceof Error ? error.message : "Unable to delete local game."); }
+}

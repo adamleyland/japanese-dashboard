@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Gamepad2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Gamepad2 } from "lucide-react";
 import GameArtworkImage from "@/components/features/gaming/components/GameArtworkImage";
-import { openGameLauncher } from "@/lib/gaming/launchers";
+import { formatPlaytimeCompact } from "@/lib/gaming/gaming-utils";
 
 export default function GamingLibraryArtworkView({
   games,
   isCompact,
-  onToggleInclude,
+  onOpenAchievements,
 }) {
   const columns = useMemo(() => {
     if (isCompact) {
@@ -30,35 +30,27 @@ export default function GamingLibraryArtworkView({
         <ArtworkCard
           key={`${game.source}:${game.sourceGameId}`}
           game={game}
-          onToggleInclude={onToggleInclude}
+          onOpenAchievements={onOpenAchievements}
         />
       ))}
     </div>
   );
 }
 
-function ArtworkCard({ game, onToggleInclude }) {
+function ArtworkCard({ game, onOpenAchievements }) {
   const [isHovered, setIsHovered] = useState(false);
-  const isLaunchable = Boolean(game.launchUrl);
-
   return (
     <div
-      role={isLaunchable ? "button" : undefined}
-      tabIndex={isLaunchable ? 0 : -1}
-      aria-label={isLaunchable ? `Launch ${game.title}` : game.title}
+      role="button"
+      tabIndex={0}
+      aria-label={`View ${game.title} achievements`}
       onClick={() => {
-        if (isLaunchable) {
-          openGameLauncher(game);
-        }
+        onOpenAchievements(game);
       }}
       onKeyDown={(event) => {
-        if (!isLaunchable) {
-          return;
-        }
-
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          openGameLauncher(game);
+          onOpenAchievements(game);
         }
       }}
       onMouseEnter={() => setIsHovered(true)}
@@ -76,7 +68,7 @@ function ArtworkCard({ game, onToggleInclude }) {
             ? "1px solid rgba(148,163,184,0.32)"
             : "1px solid var(--app-border-soft)",
         background: "linear-gradient(180deg, rgba(139,92,246,0.16), rgba(15,23,42,0.06))",
-        cursor: isLaunchable ? "pointer" : "default",
+        cursor: "pointer",
         padding: 0,
         textAlign: "left",
         boxShadow: isHovered ? "0 18px 40px rgba(15,23,42,0.18)" : "0 8px 22px rgba(15,23,42,0.1)",
@@ -98,35 +90,9 @@ function ArtworkCard({ game, onToggleInclude }) {
         placeholder={<ArtworkPlaceholder title={game.title} />}
       />
 
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleInclude(game);
-        }}
-        aria-label={game.includeInOverallTotal === false ? "Include in total" : "Exclude from total"}
-        style={{
-          position: "absolute",
-          right: "10px",
-          bottom: "10px",
-          width: "34px",
-          height: "34px",
-          borderRadius: "999px",
-          border: "1px solid rgba(255,255,255,0.18)",
-          background: isHovered ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.12)",
-          color: "#f8fafc",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
-          boxShadow: isHovered ? "0 10px 22px rgba(15,23,42,0.2)" : "0 8px 18px rgba(15,23,42,0.16)",
-          transition: "all 180ms ease",
-        }}
-      >
-        {game.includeInOverallTotal === false ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
-      </button>
+      <span style={{ position:"absolute", left:"10px", bottom:"10px", border:"1px solid rgba(255,255,255,.2)", borderRadius:"999px", background:"rgba(15,23,42,.58)", color:"#fff", padding:"6px 9px", fontSize:"11px", fontWeight:800, backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)" }}>
+        {formatPlaytimeCompact(game.minutesPlayedTotal)}
+      </span>
     </div>
   );
 }
