@@ -2,10 +2,10 @@
 
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
-import { Clock3, Monitor, Percent, RefreshCw, Settings, Trophy, X } from "lucide-react";
+import { Clock3, Lock, LockOpen, Monitor, Percent, RefreshCw, Settings, Trophy, X } from "lucide-react";
 import { useAchievements } from "@/hooks/useAchievements";
 import { useGameArtwork } from "@/hooks/useGameArtwork";
-import { formatPlaytimeCompact, getPlatformLabel } from "@/lib/gaming/gaming-utils";
+import { formatBritishOrdinalDate, formatPlaytimeCompact, getPlatformLabel } from "@/lib/gaming/gaming-utils";
 
 export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtwork, onDeleteLocalGame }) {
   const data = useAchievements(game);
@@ -60,7 +60,7 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
           {data.loading && !data.game ? <div style={{ padding: "26px 0", textAlign: "center", color: "var(--app-text-muted)", fontSize: 13 }}>Syncing achievement progress…</div> : null}
           <div style={s.collectionHeader}><h3 style={s.collectionTitle}>Achievements</h3><span style={s.collectionCount}>{unlocked} / {achievements.length}</span></div>
           <div style={s.completionTrack}><div style={{ ...s.completionFill, width: `${achievements.length ? unlocked / achievements.length * 100 : 0}%` }}/></div>
-          <div style={s.grid}>{achievements.map((item) => <article key={item.id} style={{ ...s.card, opacity: item.unlocked ? 1 : .62 }}><img src={(item.unlocked ? item.icon_url : item.icon_locked_url) || item.icon_url || "/window.svg"} alt="" style={{ ...s.achievementImage, filter: item.unlocked ? "none" : "grayscale(1)" }}/><div style={s.achievementBody}><strong style={s.achievementName}>{item.name}</strong><p style={s.achievementDescription}>{item.description || (item.metadata?.hidden ? "Hidden achievement" : "No description provided.")}</p><small style={s.achievementMeta}>{item.unlocked_at ? `Unlocked ${new Date(item.unlocked_at).toLocaleDateString()}` : "Locked"}{item.rarity_percentage != null ? ` · ${Number(item.rarity_percentage).toFixed(1)}% of players` : ""}</small></div></article>)}</div>
+          <div style={s.grid}>{achievements.map((item) => <article key={item.id} style={{ ...s.card, opacity: item.unlocked ? 1 : .62 }}><img src={(item.unlocked ? item.icon_url : item.icon_locked_url) || item.icon_url || "/window.svg"} alt="" style={{ ...s.achievementImage, filter: item.unlocked ? "none" : "grayscale(1)" }}/><div style={s.achievementBody}><div style={s.achievementCopy}><strong style={s.achievementName}>{item.name}</strong><p style={s.achievementDescription}>{item.description || (item.metadata?.hidden ? "Hidden achievement" : "No description provided.")}</p></div><AchievementMeta item={item}/><AchievementProgress item={item}/></div></article>)}</div>
         </main>
       </section>
     </div>,
@@ -69,6 +69,42 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
 }
 
 function Stat({ icon, label, value }) { return <div className="gaming-expanded-stat" style={s.stat}><small style={s.statLabel}>{icon}{label}</small><strong style={s.statValue}>{value}</strong></div>; }
+function AchievementMeta({ item }) {
+  const unlockedAt = formatBritishOrdinalDate(item.unlocked_at);
+  const statusLabel = unlockedAt ? `Unlocked ${unlockedAt}` : "Locked";
+
+  return <small className="gaming-achievement-meta" style={s.achievementMeta} aria-label={statusLabel} title={statusLabel}>
+    <span style={s.achievementMetaRow}>{unlockedAt ? <LockOpen size={12} aria-hidden="true"/> : <Lock size={12} aria-hidden="true"/>}{unlockedAt ? <span>{unlockedAt}</span> : null}</span>
+    {item.rarity_percentage != null ? <span style={s.achievementMetaRow}>{Number(item.rarity_percentage).toFixed(1)}% players</span> : null}
+  </small>;
+}
+function AchievementProgress({ item }) {
+  const current = Number(item.progress_current);
+  const target = Number(item.progress_target);
+  if (item.unlocked || !Number.isFinite(current) || !Number.isFinite(target) || current <= 0 || target <= 1) return null;
+
+  const safeCurrent = Math.max(0, current);
+  const percent = Math.min(100, safeCurrent / target * 100);
+  const valueLabel = `${formatProgressValue(safeCurrent)} / ${formatProgressValue(target)}`;
+
+  return <div style={s.achievementProgress}>
+    <div
+      style={s.achievementProgressTrack}
+      role="progressbar"
+      aria-label={`${item.name} progress`}
+      aria-valuemin={0}
+      aria-valuemax={target}
+      aria-valuenow={Math.min(safeCurrent, target)}
+      aria-valuetext={valueLabel}
+    >
+      <div style={{ ...s.achievementProgressFill, width: `${percent}%` }}/>
+    </div>
+    <span style={s.achievementProgressValue}>{valueLabel}</span>
+  </div>;
+}
+function formatProgressValue(value) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
+}
 function LocalSettings({ game, save, remove }) {
   const metadata = game.raw?.metadata || {};
   const artwork = useGameArtwork(game);
@@ -103,7 +139,7 @@ function ArtworkUrlField({ label, value, onChange }) {
 const s = {
   overlay: { position: "fixed", inset: 0, zIndex: 10020, padding: 20, display: "grid", placeItems: "center" },
   backdrop: { position: "absolute", inset: 0, background: "rgba(2,6,23,.72)", backdropFilter: "blur(14px)" },
-  modal: { position: "relative", width: "min(940px,100%)", maxHeight: "calc(100vh - 28px)", overflowY: "auto", scrollbarWidth: "none", msOverflowStyle: "none", borderRadius: 26, border: "1px solid var(--app-border-strong)", background: "var(--app-surface-strong)", color: "var(--app-text)", fontFamily: "Inter, system-ui, -apple-system, sans-serif", boxShadow: "0 28px 80px rgba(2,6,23,.32)" },
+  modal: { position: "relative", width: "min(940px,100%)", maxHeight: "min(760px,calc(100vh - 72px))", overflowY: "auto", scrollbarWidth: "none", msOverflowStyle: "none", borderRadius: 26, border: "1px solid var(--app-border-strong)", background: "var(--app-surface-strong)", color: "var(--app-text)", fontFamily: "Inter, system-ui, -apple-system, sans-serif", boxShadow: "0 28px 80px rgba(2,6,23,.32)" },
   hero: { height: 270, position: "relative", overflow: "hidden" },
   heroImage: { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" },
   shade: { position: "absolute", inset: 0, background: "linear-gradient(0deg,rgba(2,6,23,.78),transparent 72%)" },
@@ -130,9 +166,15 @@ const s = {
   grid: { display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 10 },
   card: { display: "grid", gridTemplateColumns: "62px minmax(0,1fr)", alignItems: "start", gap: 11, minHeight: 84, padding: 11, border: "1px solid var(--app-border-soft)", borderRadius: 13, background: "linear-gradient(145deg,var(--app-card),var(--app-surface-soft))", boxShadow: "0 3px 12px rgba(2,6,23,.06)" },
   achievementImage: { width: 62, height: 62, objectFit: "cover", borderRadius: 9, boxShadow: "0 2px 7px rgba(2,6,23,.22)" },
-  achievementBody: { minWidth: 0, display: "grid", height: "100%", gridTemplateColumns: "minmax(0,1fr) auto", gridTemplateRows: "auto auto", alignContent: "center", columnGap: 18 },
+  achievementBody: { minWidth: 0, display: "grid", height: "100%", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", columnGap: 18 },
+  achievementCopy: { minWidth: 0, display: "grid", alignContent: "center" },
   achievementName: { gridColumn: 1, fontFamily: "inherit", fontSize: 14, lineHeight: 1.25, fontWeight: 800, letterSpacing: "-.01em", color: "var(--app-text)" },
   achievementDescription: { gridColumn: 1, display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden", margin: "4px 0 0", fontSize: 11.5, lineHeight: 1.4, color: "var(--app-text-muted)" },
-  achievementMeta: { gridColumn: 2, gridRow: "1 / span 2", alignSelf: "center", textAlign: "right", whiteSpace: "nowrap", fontSize: 10.5, lineHeight: 1.25, color: "var(--app-text-muted)", fontWeight: 600 },
+  achievementMeta: { gridColumn: 2, alignSelf: "center", display: "grid", justifyItems: "end", gap: 5, whiteSpace: "nowrap", fontSize: 10.5, lineHeight: 1.2, color: "var(--app-text-muted)", fontWeight: 600 },
+  achievementMetaRow: { display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 4 },
+  achievementProgress: { gridColumn: "1 / -1", width: "100%", display: "flex", alignItems: "center", gap: 8, marginTop: 7 },
+  achievementProgressTrack: { flex: 1, minWidth: 36, height: 5, overflow: "hidden", borderRadius: 999, background: "var(--app-surface-soft)", border: "1px solid var(--app-border-soft)" },
+  achievementProgressFill: { height: "100%", minWidth: 2, borderRadius: 999, background: "linear-gradient(90deg,#2563eb,#60a5fa)", transition: "width .25s ease" },
+  achievementProgressValue: { flex: "0 0 auto", fontSize: 9.5, lineHeight: 1, color: "var(--app-text-muted)", fontWeight: 800, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" },
   settings: { display: "grid", gap: 10, padding: 14, border: "1px solid var(--app-border)", borderRadius: 16, background: "var(--app-surface-soft)" },
 };

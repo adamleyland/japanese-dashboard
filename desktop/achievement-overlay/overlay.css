@@ -1,0 +1,75 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+body { display: grid; align-items: start; }
+
+.toast {
+  position: relative;
+  width: calc(100% - 40px);
+  min-height: 118px;
+  margin: 10px 20px 0;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 17px 15px 15px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 18px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(11, 18, 34, .97), rgba(27, 36, 58, .94));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255,255,255,.07);
+  opacity: 0;
+  transform: translateX(38px) scale(.97);
+}
+
+.toast.show { animation: toast-in .46s cubic-bezier(.2,.9,.2,1) forwards; }
+.toast.hide { animation: toast-out .32s ease-in forwards; }
+.accent { position: absolute; inset: 0 auto 0 0; width: 4px; background: linear-gradient(#facc15, #f59e0b); }
+
+.icon-shell {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border-radius: 13px;
+  background: rgba(250, 204, 21, .12);
+  border: 1px solid rgba(250, 204, 21, .22);
+}
+
+#achievement-icon { width: 100%; height: 100%; object-fit: cover; display: none; border-radius: 2px; }
+.icon-shell.has-art { background: transparent; border-color: transparent; }
+.icon-shell.has-art #achievement-icon { display: block; }
+#lock-icon { width: 29px; height: 29px; overflow: visible; fill: none; stroke: #facc15; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.icon-shell.has-art #lock-icon { position: absolute; right: -5px; bottom: -5px; width: 27px; height: 27px; padding: 5px; border: 1px solid rgba(250,204,21,.38); border-radius: 999px; background: #111827; box-shadow: 0 3px 10px rgba(0,0,0,.42); }
+.toast.show .lock-shackle { transform-origin: 8px 11px; animation: unlock .72s 1s cubic-bezier(.2,.9,.2,1) both; }
+.copy { min-width: 0; display: grid; gap: 4px; }
+.eyebrow { color: #facc15; font-size: 10px; line-height: 1; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; }
+.name { overflow: hidden; font-size: 16px; line-height: 1.18; font-weight: 800; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.game { overflow: hidden; color: rgba(255,255,255,.66); font-size: 11px; line-height: 1.2; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.rarity { align-self: end; color: rgba(255,255,255,.56); font-size: 10px; font-weight: 700; white-space: nowrap; }
+
+@keyframes toast-in {
+  0% { opacity: 0; transform: translateX(38px) scale(.97); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes toast-out {
+  to { opacity: 0; transform: translateX(28px) scale(.98); }
+}
+
+@keyframes unlock {
+  0% { transform: rotate(0deg) translateY(0); }
+  52% { transform: rotate(-25deg) translate(-1px, -2px); }
+  100% { transform: rotate(-18deg) translate(-1px, -1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast.show, .toast.hide, .toast.show .lock-shackle { animation-duration: .01ms; }
+}

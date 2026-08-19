@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; media-src 'self'; style-src 'self'; script-src 'self'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="overlay.css" />
+    <title>Achievement unlocked</title>
+  </head>
+  <body>
+    <div id="toast" class="toast" aria-live="polite">
+      <div class="accent"></div>
+      <div class="icon-shell">
+        <img id="achievement-icon" alt="" />
+        <svg id="lock-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="lock-shackle" d="M8 11V7a4 4 0 0 1 7.7-1.5" />
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M12 15v2" />
+        </svg>
+      </div>
+      <div class="copy">
+        <div class="eyebrow">Achievement unlocked</div>
+        <div id="achievement-name" class="name"></div>
+        <div id="game-title" class="game"></div>
+      </div>
+      <div id="rarity" class="rarity"></div>
+    </div>
+    <audio id="achievement-sound" src="assets/achievement-unlocked.mp3" preload="auto"></audio>
+    <script src="overlay.js"></script>
+  </body>
+</html>

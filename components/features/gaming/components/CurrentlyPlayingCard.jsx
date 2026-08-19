@@ -6,6 +6,7 @@ import GameArtworkImage from "@/components/features/gaming/components/GameArtwor
 import { useGameArtwork } from "@/hooks/useGameArtwork";
 import { useAchievements } from "@/hooks/useAchievements";
 import {
+  formatBritishOrdinalDate,
   formatLastPlayedDate,
   formatPlaytimeCompact,
   getDeviceLabel,
@@ -29,7 +30,7 @@ export default function CurrentlyPlayingCard({
     loadedAchievementGameRef.current = achievementGameKey;
     loadAchievements();
   }, [achievementGameKey, loadAchievements]);
-  const recentAchievements = useMemo(() => (achievementGame?.achievements || []).filter((achievement) => achievement.unlocked && achievement.unlocked_at).sort((a, b) => new Date(b.unlocked_at) - new Date(a.unlocked_at)).slice(0, 3), [achievementGame]);
+  const recentAchievements = useMemo(() => (achievementGame?.achievements || []).filter((achievement) => achievement.unlocked && achievement.unlocked_at).sort((a, b) => new Date(b.unlocked_at) - new Date(a.unlocked_at)).slice(0, isMobile ? 2 : 3), [achievementGame, isMobile]);
   const canShowTrackedPlaytime = supportsTrackedPlaytime(currentGame);
   const cardStyle = {
     ...styles.sideCard,
@@ -187,7 +188,7 @@ export default function CurrentlyPlayingCard({
                       <strong style={{ fontSize: "12px", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{achievement.name}</strong>
                       <span style={{ fontSize: "10.5px", lineHeight: 1.25, color: "var(--app-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{achievement.description || (achievement.metadata?.hidden ? "Hidden achievement" : "Achievement unlocked")}</span>
                     </div>
-                    <span style={{ fontSize: "10px", color: "var(--app-text-muted)", whiteSpace: "nowrap" }}>{new Date(achievement.unlocked_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                    <span style={{ fontSize: "10px", color: "var(--app-text-muted)", whiteSpace: "nowrap" }}>{formatBritishOrdinalDate(achievement.unlocked_at)}</span>
                   </div>
                 ))}
               </div>

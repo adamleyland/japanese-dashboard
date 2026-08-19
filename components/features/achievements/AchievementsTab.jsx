@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Award, RefreshCcw, Trophy, X } from "lucide-react";
 import { useAchievements } from "@/hooks/useAchievements";
-import { formatPlaytimeCompact, getPlatformLabel, getPreferredArtworkUrl } from "@/lib/gaming/gaming-utils";
+import { formatBritishOrdinalDate, formatPlaytimeCompact, getPlatformLabel, getPreferredArtworkUrl } from "@/lib/gaming/gaming-utils";
 import { summarizeAchievementGame } from "@/lib/achievements/providers";
 
 function AchievementDetail({ game, onClose }) {
@@ -14,7 +14,7 @@ function AchievementDetail({ game, onClose }) {
     {!achievementData.game && !achievementData.loading ? <button onClick={achievementData.load} style={ui.primaryButton}>Sync {game.source === "steam" ? "Steam" : game.source} achievements</button> : null}
     {achievementData.loading ? <p style={ui.muted}>Syncing and reading the local cache…</p> : null}
     {achievementData.error ? <p style={ui.error}>{achievementData.error}{game.source !== "steam" ? " This provider is modelled and ready for its connector; Steam is the first live sync." : ""}</p> : null}
-    {achievements.length ? <div style={ui.achievementGrid}>{achievements.map((achievement) => <article key={achievement.id} style={{...ui.achievement, opacity: achievement.unlocked ? 1 : .5}}><img src={(achievement.unlocked ? achievement.icon_url : achievement.icon_locked_url) || achievement.icon_url || "/window.svg"} alt="" style={ui.achievementIcon}/><div style={ui.achievementCopy}><strong>{achievement.name}</strong><p>{achievement.description || "No description provided."}</p><small>{achievement.unlocked_at ? `Unlocked ${new Date(achievement.unlocked_at).toLocaleDateString()}` : "Locked"}{achievement.rarity_percentage != null ? ` · ${Number(achievement.rarity_percentage).toFixed(1)}%` : ""}{achievement.gamerscore ? ` · ${achievement.gamerscore}G` : ""}</small></div></article>)}</div> : null}
+    {achievements.length ? <div style={ui.achievementGrid}>{achievements.map((achievement) => <article key={achievement.id} style={{...ui.achievement, opacity: achievement.unlocked ? 1 : .5}}><img src={(achievement.unlocked ? achievement.icon_url : achievement.icon_locked_url) || achievement.icon_url || "/window.svg"} alt="" style={ui.achievementIcon}/><div style={ui.achievementCopy}><strong>{achievement.name}</strong><p>{achievement.description || "No description provided."}</p><small>{achievement.unlocked_at ? `Unlocked ${formatBritishOrdinalDate(achievement.unlocked_at)}` : "Locked"}{achievement.rarity_percentage != null ? ` · ${Number(achievement.rarity_percentage).toFixed(1)}%` : ""}{achievement.gamerscore ? ` · ${achievement.gamerscore}G` : ""}</small></div></article>)}</div> : null}
   </div>;
 }
 

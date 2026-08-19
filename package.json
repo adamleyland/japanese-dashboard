@@ -12,7 +12,12 @@
     "sync:audiobooks": "node ./scripts/sync-audiobooks.js",
     "sync:steam-local": "node ./scripts/sync-steam-local-games.js",
     "sync:local-achievements": "node ./scripts/watch-local-achievements.js",
-    "watch:local-achievements": "node ./scripts/watch-local-achievements.js --watch"
+    "watch:local-achievements": "node ./scripts/watch-local-achievements.js --watch",
+    "audit:local-achievements": "node ./scripts/audit-local-achievement-sources.js",
+    "overlay:achievements": "node ./desktop/achievement-overlay/launch.cjs",
+    "overlay:achievements:demo": "node ./desktop/achievement-overlay/launch.cjs --demo",
+    "overlay:install-startup": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-achievement-overlay-startup.ps1",
+    "overlay:remove-startup": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-achievement-overlay-startup.ps1 -Remove"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
@@ -30,6 +35,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "electron": "^43.4.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4"
