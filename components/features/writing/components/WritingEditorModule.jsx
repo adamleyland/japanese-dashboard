@@ -58,18 +58,12 @@ export default function WritingEditorModule({
         boxShadow: isMobile ? "var(--reading-mobile-top-card-shadow)" : styles.largeCard.boxShadow,
         padding: isMobile ? "18px" : styles.largeCard.padding,
         display: "grid",
-        gridTemplateRows: "auto minmax(0, 1fr)",
+        gridTemplateRows: "minmax(0, 1fr)",
         gap: "18px",
         minHeight: 0,
         height: "100%",
       }}
     >
-      <div style={styles.sectionHeader}>
-        <div style={{ minWidth: 0 }}>
-          <h2 style={styles.sectionTitle}>Writing</h2>
-        </div>
-      </div>
-
       <div style={localStyles.editorShell}>
         <div style={localStyles.entryMetaRow}>
           <div style={localStyles.entryDateLabel}>{entryDateLabel}</div>

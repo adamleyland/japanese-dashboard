@@ -181,7 +181,7 @@ export async function POST(request) {
   } catch {
     if (action === "prompt") {
       return NextResponse.json({
-        prompt: buildFallbackPrompt(payload?.jlptLevel),
+        prompt: buildFallbackPrompt(payload?.jlptLevel, payload?.grammarTarget),
         model: getOptionalServerEnv("OPENROUTER_MODEL") || DEFAULT_MODEL,
         fallback: true,
       });
@@ -284,11 +284,12 @@ function buildOpenRouterHeaders({ apiKey, appName, siteUrl }) {
 function buildOpenRouterRequest(action, payload, model) {
   if (action === "prompt") {
     const jlptLevel = normalizeJlptLevel(payload?.jlptLevel);
+    const grammarTarget = normalizeGrammarTarget(payload?.grammarTarget, jlptLevel);
 
     return {
       model,
       temperature: 0.85,
-      max_tokens: 750,
+      max_tokens: 1200,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -317,7 +318,9 @@ function buildOpenRouterRequest(action, payload, model) {
             "- topicEnglish and topicJapanese must be natural translations of the same topic.",
             "- Topic must concern an easy everyday experience, preference, memory, plan, object, person, place, game, food, or routine.",
             "- Task should invite 1-4 sentences, making one tiny sentence acceptable.",
-            `- Select one useful grammar point specifically associated with JLPT ${jlptLevel}.`,
+            grammarTarget
+              ? `- You MUST use this exact target grammar point: ${grammarTarget.japanese} (${grammarTarget.meaning}). Do not substitute a different grammar point.`
+              : `- Select one useful grammar point specifically associated with JLPT ${jlptLevel}.`,
             "- grammarPointFurigana must repeat grammarPoint using safe annotation like 漢字[かんじ]. Add readings only where kanji appear.",
             "- grammarHintJapanese must explain the grammar in one very short, very simple Japanese sentence suitable for the selected level.",
             `- grammarHintJapaneseFurigana must repeat grammarHintJapanese and annotate difficult kanji for JLPT ${jlptLevel} using 漢字[かんじ].`,
@@ -382,12 +385,19 @@ function buildOpenRouterRequest(action, payload, model) {
     const topicEnglish = String(payload?.coachPrompt?.topicEnglish || "").trim();
     const topicJapanese = String(payload?.coachPrompt?.topicJapanese || "").trim();
     const grammarPoint = String(payload?.coachPrompt?.grammarPoint || "").trim();
+    const grammarPointId = String(payload?.coachPrompt?.grammarPointId || "").trim();
+    const grammarCandidates = Array.isArray(payload?.grammarCandidates)
+      ? payload.grammarCandidates
+          .map((candidate) => normalizeGrammarTarget(candidate, candidate?.level))
+          .filter(Boolean)
+          .slice(0, 12)
+      : [];
     const hasPrompt = Boolean(topicEnglish || topicJapanese || grammarPoint);
 
     return {
       model,
       temperature: 0.2,
-      max_tokens: 700,
+      max_tokens: 1000,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -407,6 +417,8 @@ function buildOpenRouterRequest(action, payload, model) {
             "promptScore (integer from 0 to 25)",
             "grammarScore (integer from 0 to 25)",
             "naturalnessScore (integer from 0 to 15)",
+            "grammarAssessment (an object with attempted, used, correctnessScore, naturalnessScore, qualityScore, evidence, and feedback)",
+            "detectedGrammar (an array of objects with grammarPointId, attempted, used, correctnessScore, naturalnessScore, qualityScore, evidence, and feedback)",
             "strength (one short English phrase)",
             "nextFocus (one short English phrase)",
             "",
@@ -417,9 +429,20 @@ function buildOpenRouterRequest(action, payload, model) {
             "- Naturalness: 15 points for natural phrasing and appropriate particles/forms.",
             "- score must equal the four component scores added together.",
             "- Be generous with understandable learner Japanese while remaining honest.",
+            "- grammarAssessment.attempted and grammarAssessment.used must be booleans.",
+            "- grammarAssessment correctnessScore, naturalnessScore, and qualityScore must each be integers from 0 to 100.",
+            "- If the target grammar is absent, set used false and qualityScore to 0.",
+            "- evidence must quote only the shortest relevant part of the learner entry, or be empty if absent.",
+            "- feedback must be one short actionable English sentence about this grammar point.",
+            "- Only include a detectedGrammar item when one of the supplied candidate grammar patterns is genuinely used with that grammatical meaning.",
+            "- Do not count an incidental character or matching text that serves a different grammatical function.",
             `Prompt supplied: ${hasPrompt ? "yes" : "no"}`,
             `Topic: ${topicEnglish || topicJapanese || "None"}`,
+            `Grammar catalogue ID: ${grammarPointId || "None"}`,
             `Target grammar: ${grammarPoint || "None"}`,
+            `Possible additional grammar candidates: ${grammarCandidates.length
+              ? grammarCandidates.map((item) => `${item.id}: ${item.japanese} (${item.meaning})`).join(" | ")
+              : "None"}`,
             "",
             "Learner entry:",
             entryBody,
@@ -620,6 +643,32 @@ function sanitizeAssessmentPayload(payload) {
   const grammarScore = clampInteger(payload?.grammarScore, 0, 25);
   const naturalnessScore = clampInteger(payload?.naturalnessScore, 0, 15);
   const calculatedScore = communicationScore + promptScore + grammarScore + naturalnessScore;
+  const grammarAssessment = payload?.grammarAssessment && typeof payload.grammarAssessment === "object"
+    ? {
+        attempted: sanitizeBoolean(payload.grammarAssessment.attempted),
+        used: sanitizeBoolean(payload.grammarAssessment.used),
+        correctnessScore: clampInteger(payload.grammarAssessment.correctnessScore, 0, 100),
+        naturalnessScore: clampInteger(payload.grammarAssessment.naturalnessScore, 0, 100),
+        qualityScore: clampInteger(payload.grammarAssessment.qualityScore, 0, 100),
+        evidence: sanitizeString(payload.grammarAssessment.evidence),
+        feedback: sanitizeString(payload.grammarAssessment.feedback),
+      }
+    : null;
+  const detectedGrammar = Array.isArray(payload?.detectedGrammar)
+    ? payload.detectedGrammar
+        .map((item) => ({
+          grammarPointId: sanitizeString(item?.grammarPointId),
+          attempted: sanitizeBoolean(item?.attempted),
+          used: sanitizeBoolean(item?.used),
+          correctnessScore: clampInteger(item?.correctnessScore, 0, 100),
+          naturalnessScore: clampInteger(item?.naturalnessScore, 0, 100),
+          qualityScore: clampInteger(item?.qualityScore, 0, 100),
+          evidence: sanitizeString(item?.evidence),
+          feedback: sanitizeString(item?.feedback),
+        }))
+        .filter((item) => item.grammarPointId && item.used)
+        .slice(0, 12)
+    : [];
 
   return {
     score: calculatedScore || clampInteger(payload?.score, 0, 100),
@@ -630,6 +679,8 @@ function sanitizeAssessmentPayload(payload) {
     promptScore,
     grammarScore,
     naturalnessScore,
+    grammarAssessment,
+    detectedGrammar,
     strength: sanitizeString(payload?.strength, "You communicated a clear idea"),
     nextFocus: sanitizeString(payload?.nextFocus, "Keep building one natural sentence at a time"),
   };
@@ -684,12 +735,23 @@ function isFeedbackTooThin(feedback) {
   );
 }
 
-function buildFallbackPrompt(jlptLevel = "N4") {
+function buildFallbackPrompt(jlptLevel = "N4", requestedGrammarTarget = null) {
   const topic = pickRandom(FALLBACK_TOPICS);
   const normalizedLevel = normalizeJlptLevel(jlptLevel);
-  const grammar = pickRandom(
+  const grammarTarget = normalizeGrammarTarget(requestedGrammarTarget, normalizedLevel);
+  const fallbackGrammar = pickRandom(
     FALLBACK_GRAMMAR_POINTS.filter((item) => item.level === normalizedLevel),
   ) || pickRandom(FALLBACK_GRAMMAR_POINTS);
+  const grammar = grammarTarget
+    ? {
+        level: grammarTarget.level,
+        grammarPoint: grammarTarget.japanese,
+        grammarPointFurigana: grammarTarget.japanese,
+        grammarHint: grammarTarget.meaning,
+        example: `今日は「${grammarTarget.japanese}」を使って文を書きます。`,
+        exampleFurigana: `今日[きょう]は「${grammarTarget.japanese}」を使[つか]って文[ぶん]を書[か]きます。`,
+      }
+    : fallbackGrammar;
 
   return {
     topicEnglish: topic.topicEnglish,
@@ -769,6 +831,18 @@ function pickRandom(values) {
 function sanitizeString(value, fallback = "") {
   const text = typeof value === "string" ? value.trim() : "";
   return text || fallback;
+}
+
+function normalizeGrammarTarget(value, fallbackLevel = "N4") {
+  if (!value || typeof value !== "object") return null;
+  const japanese = sanitizeString(value.japanese);
+  if (!japanese) return null;
+  return {
+    id: sanitizeString(value.id),
+    level: normalizeJlptLevel(value.level || fallbackLevel),
+    japanese,
+    meaning: sanitizeString(value.meaning, "use this grammar naturally"),
+  };
 }
 
 function sanitizeFuriganaString(value, fallback = "") {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpenCheck, PenLine } from "lucide-react";
 import WritingEditorModule from "@/components/features/writing/components/WritingEditorModule";
+import GrammarLibraryModule from "@/components/features/writing/components/GrammarLibraryModule";
 import GrammarExplanationModal from "@/components/features/writing/components/GrammarExplanationModal";
 import WritingCompletionModal from "@/components/features/writing/components/WritingCompletionModal";
 import WritingLibraryModule from "@/components/features/writing/components/WritingLibraryModule";
@@ -22,8 +24,18 @@ import {
   removeWritingEntry,
   upsertWritingEntry,
 } from "@/components/features/writing/utils/writingStorage";
+import {
+  deleteGrammarAttemptsForEntry,
+  persistGrammarAttempt,
+  readGrammarAttempts,
+} from "@/components/features/writing/utils/grammarStorage";
+import {
+  buildGrammarProgress,
+  chooseAdaptiveGrammar,
+  findGrammarCandidates,
+} from "@/components/features/writing/utils/grammarProgress";
 
-const WRITING_PROMPT_CACHE_KEY = "jp-writing-coach-prompt-v3";
+const WRITING_PROMPT_CACHE_KEY = "jp-writing-coach-prompt-v4";
 
 export default function WritingSection({
   styles,
@@ -54,6 +66,10 @@ export default function WritingSection({
   const [loadingGrammarExplanation, setLoadingGrammarExplanation] = useState(false);
   const [isGrammarExplanationOpen, setIsGrammarExplanationOpen] = useState(false);
   const [writingCompletion, setWritingCompletion] = useState(null);
+  const [writingView, setWritingView] = useState("write");
+  const [grammarAttempts, setGrammarAttempts] = useState([]);
+  const [loadingGrammarAttempts, setLoadingGrammarAttempts] = useState(Boolean(authUserId));
+  const [grammarSyncNotice, setGrammarSyncNotice] = useState("");
 
   useEffect(() => {
     const savedLevel = window.localStorage.getItem("writing-coach-jlpt-level");
@@ -70,6 +86,7 @@ export default function WritingSection({
       const validCachedPrompt =
         cachedPrompt &&
         typeof cachedPrompt === "object" &&
+        cachedPrompt.grammarPointId &&
         cachedPrompt.grammarHintJapanese &&
         cachedPrompt.grammarHintJapaneseFurigana;
       setCoachPrompt(validCachedPrompt ? cachedPrompt : null);
@@ -125,6 +142,37 @@ export default function WritingSection({
   }, [authUserId]);
 
   useEffect(() => {
+    let isActive = true;
+
+    const loadAttempts = async () => {
+      if (!authUserId) {
+        if (isActive) {
+          setGrammarAttempts([]);
+          setLoadingGrammarAttempts(false);
+        }
+        return;
+      }
+
+      setLoadingGrammarAttempts(true);
+      const { attempts, error, fromCache } = await readGrammarAttempts(authUserId);
+      if (!isActive) return;
+
+      setGrammarAttempts(attempts);
+      setLoadingGrammarAttempts(false);
+      setGrammarSyncNotice(error
+        ? fromCache
+          ? "Showing locally cached grammar progress while Supabase is unavailable."
+          : "Apply the grammar progress Supabase migration to sync progress between devices."
+        : "");
+    };
+
+    void loadAttempts();
+    return () => {
+      isActive = false;
+    };
+  }, [authUserId]);
+
+  useEffect(() => {
     if (!statusMessage) {
       return undefined;
     }
@@ -144,6 +192,10 @@ export default function WritingSection({
   );
   const draftMetrics = useMemo(() => buildWritingMetrics(entryBody), [entryBody]);
   const writingSummary = useMemo(() => buildWritingSummary(entries), [entries]);
+  const grammarProgress = useMemo(
+    () => buildGrammarProgress(grammarAttempts),
+    [grammarAttempts],
+  );
   const filteredEntries = useMemo(
     () => filterWritingEntries(entries, libraryFilter),
     [entries, libraryFilter],
@@ -200,12 +252,16 @@ export default function WritingSection({
     resetCoachFeedback();
   }, [resetCoachFeedback]);
 
-  const handleGenerateCoachPrompt = useCallback(async () => {
+  const handleGenerateCoachPrompt = useCallback(async (requestedPoint = null) => {
     setLoadingCoachPrompt(true);
     setCoachError("");
     setCoachNotice("");
 
     try {
+      const targetLevel = requestedPoint?.id ? requestedPoint.level : grammarLevel;
+      const grammarTarget = requestedPoint?.id
+        ? requestedPoint
+        : chooseAdaptiveGrammar(grammarProgress, targetLevel, coachPrompt?.grammarPointId);
       const response = await fetch("/api/writing/coach", {
         method: "POST",
         headers: {
@@ -213,7 +269,15 @@ export default function WritingSection({
         },
         body: JSON.stringify({
           action: "prompt",
-          jlptLevel: grammarLevel,
+          jlptLevel: targetLevel,
+          grammarTarget: grammarTarget
+            ? {
+                id: grammarTarget.id,
+                level: grammarTarget.level,
+                japanese: grammarTarget.japanese,
+                meaning: grammarTarget.meaning,
+              }
+            : null,
         }),
       });
       const payload = await response.json();
@@ -224,9 +288,12 @@ export default function WritingSection({
 
       const nextPrompt = {
         ...payload.prompt,
+        grammarPointId: grammarTarget?.id || "",
+        grammarPoint: grammarTarget?.japanese || payload.prompt.grammarPoint,
+        grammarMeaning: grammarTarget?.meaning || payload.prompt.grammarHint,
         source: payload?.fallback ? "fallback" : "ai",
         model: payload?.model || "",
-        jlptLevel: grammarLevel,
+        jlptLevel: targetLevel,
       };
       setCoachPrompt(nextPrompt);
       window.localStorage.setItem(getPromptCacheKey(authUserId), JSON.stringify(nextPrompt));
@@ -235,15 +302,17 @@ export default function WritingSection({
     } finally {
       setLoadingCoachPrompt(false);
     }
-  }, [authUserId, grammarLevel]);
+  }, [authUserId, coachPrompt?.grammarPointId, grammarLevel, grammarProgress]);
 
   const handleGrammarLevelChange = useCallback((nextLevel) => {
     setGrammarLevel(nextLevel);
     window.localStorage.setItem("writing-coach-jlpt-level", nextLevel);
   }, []);
 
-  const handleExplainGrammar = useCallback(async () => {
-    if (!coachPrompt?.grammarPoint) {
+  const openGrammarExplanation = useCallback(async (point) => {
+    const grammarPoint = point?.grammarPoint || point?.japanese;
+    const level = point?.jlptLevel || point?.level || grammarLevel;
+    if (!grammarPoint) {
       return;
     }
 
@@ -251,8 +320,8 @@ export default function WritingSection({
     setGrammarExplanationError("");
 
     if (
-      grammarExplanation?.grammarPoint === coachPrompt.grammarPoint &&
-      grammarExplanation?.level === (coachPrompt.jlptLevel || grammarLevel)
+      grammarExplanation?.grammarPoint === grammarPoint &&
+      grammarExplanation?.level === level
     ) {
       return;
     }
@@ -268,8 +337,8 @@ export default function WritingSection({
         },
         body: JSON.stringify({
           action: "explanation",
-          grammarPoint: coachPrompt.grammarPoint,
-          jlptLevel: coachPrompt.jlptLevel || grammarLevel,
+          grammarPoint,
+          jlptLevel: level,
         }),
       });
       const payload = await response.json();
@@ -284,7 +353,19 @@ export default function WritingSection({
     } finally {
       setLoadingGrammarExplanation(false);
     }
-  }, [coachPrompt, grammarExplanation, grammarLevel]);
+  }, [grammarExplanation, grammarLevel]);
+
+  const handleExplainGrammar = useCallback(
+    () => openGrammarExplanation(coachPrompt),
+    [coachPrompt, openGrammarExplanation],
+  );
+
+  const handlePractiseGrammar = useCallback((point) => {
+    setWritingView("write");
+    setGrammarLevel(point.level);
+    window.localStorage.setItem("writing-coach-jlpt-level", point.level);
+    window.setTimeout(() => void handleGenerateCoachPrompt(point), 0);
+  }, [handleGenerateCoachPrompt]);
 
   const handleGetCoachFeedback = useCallback(async () => {
     const nextBody = entryBody.trim();
@@ -395,6 +476,10 @@ export default function WritingSection({
 
     let assessment = null;
     try {
+      const grammarCandidates = findGrammarCandidates(
+        nextBody,
+        coachPrompt?.grammarPointId,
+      );
       const assessmentResponse = await fetch("/api/writing/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -402,11 +487,60 @@ export default function WritingSection({
           action: "assessment",
           body: nextBody,
           coachPrompt,
+          grammarCandidates: grammarCandidates.map((point) => ({
+            id: point.id,
+            level: point.level,
+            japanese: point.japanese,
+            meaning: point.meaning,
+          })),
         }),
       });
       const assessmentPayload = await assessmentResponse.json();
       if (assessmentResponse.ok && assessmentPayload?.assessment) {
         assessment = assessmentPayload.assessment;
+        const targetPoint = grammarProgress.points.find(
+          (point) => point.id === coachPrompt?.grammarPointId,
+        );
+        const trackedAssessments = [];
+        if (targetPoint && assessment.grammarAssessment) {
+          trackedAssessments.push({
+            grammarPoint: targetPoint,
+            grammarAssessment: assessment.grammarAssessment,
+            source: "prompted",
+          });
+        }
+
+        (assessment.detectedGrammar || []).forEach((detected) => {
+          const grammarPoint = grammarProgress.points.find(
+            (point) => point.id === detected.grammarPointId,
+          );
+          if (grammarPoint && grammarPoint.id !== targetPoint?.id) {
+            trackedAssessments.push({ grammarPoint, grammarAssessment: detected, source: "detected" });
+          }
+        });
+
+        const progressResults = await Promise.all(trackedAssessments.map((item) =>
+          persistGrammarAttempt({
+            userId: authUserId,
+            entryId: persistedEntry.id,
+            grammarPoint: item.grammarPoint,
+            assessment: item.grammarAssessment,
+            source: item.source,
+          })));
+        const savedAttempts = progressResults.map((result) => result.attempt).filter(Boolean);
+
+        if (savedAttempts.length) {
+          setGrammarAttempts((current) => [
+            ...savedAttempts,
+            ...current.filter((item) => !savedAttempts.some((saved) => (
+              item.entryId === saved.entryId && item.grammarPointId === saved.grammarPointId
+            ))),
+          ]);
+        }
+
+        if (progressResults.some((result) => result.error)) {
+          setGrammarSyncNotice("Grammar progress is cached locally. Apply the Supabase migration to sync it between devices.");
+        }
       }
     } catch {
       assessment = null;
@@ -422,7 +556,7 @@ export default function WritingSection({
       preview: persistedEntry.preview,
     });
     playWritingCompletionJingle();
-  }, [authUserId, coachPrompt, entries, entryBody, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
+  }, [authUserId, coachPrompt, entries, entryBody, grammarProgress.points, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
 
   const handleDeleteEntry = useCallback(async () => {
     if (!selectedEntry) {
@@ -447,6 +581,8 @@ export default function WritingSection({
     }
 
     setEntries((currentEntries) => removeWritingEntry(currentEntries, selectedEntry.id));
+    setGrammarAttempts((current) => current.filter((attempt) => attempt.entryId !== selectedEntry.id));
+    void deleteGrammarAttemptsForEntry(authUserId, selectedEntry.id);
     setSelectedEntryId(null);
     setEntryBody("");
     setStatusMessage("Entry deleted.");
@@ -466,6 +602,36 @@ export default function WritingSection({
 
   return (
     <>
+      <div style={viewStyles.switcherWrap}>
+        <div style={viewStyles.switcher}>
+          <button
+            type="button"
+            onClick={() => setWritingView("write")}
+            style={viewStyles.switchButton(writingView === "write")}
+          >
+            <PenLine size={15} /> Write
+          </button>
+          <button
+            type="button"
+            onClick={() => setWritingView("grammar")}
+            style={viewStyles.switchButton(writingView === "grammar")}
+          >
+            <BookOpenCheck size={15} /> Grammar library
+            <span style={viewStyles.count}>{grammarProgress.practiced}/{grammarProgress.total}</span>
+          </button>
+        </div>
+      </div>
+
+      {writingView === "grammar" ? (
+        <GrammarLibraryModule
+          progress={grammarProgress}
+          attemptsLoading={loadingGrammarAttempts}
+          syncNotice={grammarSyncNotice}
+          isMobile={isMobile}
+          onExplain={openGrammarExplanation}
+          onPractise={handlePractiseGrammar}
+        />
+      ) : (
       <div
       style={{
         ...styles.listeningMainGrid,
@@ -544,6 +710,7 @@ export default function WritingSection({
         />
       ) : null}
       </div>
+      )}
 
       <GrammarExplanationModal
         open={isGrammarExplanationOpen}
@@ -560,6 +727,44 @@ export default function WritingSection({
     </>
   );
 }
+
+const viewStyles = {
+  switcherWrap: {
+    display: "flex",
+    justifyContent: "center",
+    marginBottom: "14px",
+  },
+  switcher: {
+    display: "inline-flex",
+    gap: "5px",
+    padding: "5px",
+    borderRadius: "999px",
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-pill-track)",
+  },
+  switchButton: (active) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "7px",
+    minHeight: "38px",
+    padding: "0 13px",
+    border: 0,
+    borderRadius: "999px",
+    background: active ? "var(--app-selected-surface)" : "transparent",
+    color: active ? "var(--app-selected-text)" : "var(--app-text-muted)",
+    boxShadow: active ? "0 7px 18px rgba(15,23,42,.08)" : "none",
+    fontSize: "12px",
+    fontWeight: 750,
+    cursor: "pointer",
+  }),
+  count: {
+    padding: "3px 6px",
+    borderRadius: "999px",
+    background: "rgba(16,185,129,.1)",
+    color: "#047857",
+    fontSize: "9px",
+  },
+};
 
 function getPromptCacheKey(userId = "") {
   return `${WRITING_PROMPT_CACHE_KEY}:${userId || "local"}`;
