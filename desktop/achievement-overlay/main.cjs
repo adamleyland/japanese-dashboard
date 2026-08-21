@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } = require("electron");
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 const readline = require("node:readline");
 
@@ -7,14 +8,31 @@ const EVENT_PREFIX = "ACHIEVEMENT_OVERLAY_EVENT:";
 const rootDirectory = path.resolve(__dirname, "..", "..");
 let overlayWindow = null;
 let watcher = null;
+let watcherRestartTimer = null;
+let librarySync = null;
+let librarySyncRestartTimer = null;
 let tray = null;
+
+const logDirectory = path.join(process.env.LOCALAPPDATA || rootDirectory, "JapaneseDashboard", "AchievementOverlay");
+const logPath = path.join(logDirectory, "overlay.log");
+
+function writeLog(message) {
+  const line = `[${new Date().toISOString()}] ${message}`;
+  console.log(line);
+  try {
+    fs.mkdirSync(logDirectory, { recursive: true });
+    fs.appendFileSync(logPath, `${line}\n`, "utf8");
+  } catch (error) {
+    console.error(`Could not write achievement overlay log: ${error.message}`);
+  }
+}
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 if (!app.requestSingleInstanceLock()) app.quit();
 
 function positionOverlay() {
   if (!overlayWindow) return;
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const display = screen.getPrimaryDisplay();
   const { x, y, width } = display.workArea;
   const [windowWidth] = overlayWindow.getSize();
   overlayWindow.setPosition(x + width - windowWidth - 4, y + 14, false);
@@ -78,6 +96,7 @@ function showAchievement(payload) {
 }
 
 function startWatcher() {
+  if (app.isQuitting || watcher) return;
   const watcherPath = path.join(rootDirectory, "scripts", "watch-local-achievements.js");
   watcher = spawn(process.env.ACHIEVEMENT_OVERLAY_NODE_PATH || "node", [watcherPath, "--watch"], {
     cwd: rootDirectory,
@@ -87,19 +106,51 @@ function startWatcher() {
 
   readline.createInterface({ input: watcher.stdout }).on("line", (line) => {
     if (!line.startsWith(EVENT_PREFIX)) {
-      console.log(line);
+      writeLog(line);
       return;
     }
     try {
       showAchievement(JSON.parse(line.slice(EVENT_PREFIX.length)));
     } catch (error) {
-      console.error(`Could not read achievement overlay event: ${error.message}`);
+      writeLog(`Could not read achievement overlay event: ${error.message}`);
     }
   });
-  readline.createInterface({ input: watcher.stderr }).on("line", (line) => console.error(line));
-  watcher.on("exit", (code) => {
-    if (!app.isQuitting && code) console.error(`Achievement watcher stopped with code ${code}.`);
+  readline.createInterface({ input: watcher.stderr }).on("line", (line) => writeLog(line));
+  watcher.on("error", (error) => writeLog(`Achievement watcher could not start: ${error.message}`));
+  watcher.on("close", (code) => {
+    watcher = null;
+    if (app.isQuitting) return;
+    writeLog(`Achievement watcher stopped with code ${code}; restarting in 5 seconds.`);
+    clearTimeout(watcherRestartTimer);
+    watcherRestartTimer = setTimeout(startWatcher, 5_000);
   });
+  writeLog(`Achievement watcher started. Log: ${logPath}`);
+}
+
+function startLibrarySync() {
+  if (app.isQuitting || librarySync) return;
+  const syncPath = path.join(rootDirectory, "scripts", "sync-steam-local-games.js");
+  librarySync = spawn(process.env.ACHIEVEMENT_OVERLAY_NODE_PATH || "node", [syncPath, "--watch"], {
+    cwd: rootDirectory,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  readline.createInterface({ input: librarySync.stdout }).on("line", (line) => writeLog(line));
+  readline.createInterface({ input: librarySync.stderr }).on("line", (line) => writeLog(line));
+  librarySync.on("error", (error) => writeLog(`Steam shortcut sync could not start: ${error.message}`));
+  librarySync.on("close", (code) => {
+    librarySync = null;
+    if (app.isQuitting) return;
+    writeLog(`Steam shortcut sync stopped with code ${code}; restarting in 15 seconds.`);
+    clearTimeout(librarySyncRestartTimer);
+    librarySyncRestartTimer = setTimeout(startLibrarySync, 15_000);
+  });
+  writeLog("Steam shortcut title sync started.");
+}
+
+function startCompanions() {
+  startWatcher();
+  startLibrarySync();
 }
 
 ipcMain.on("achievement-overlay-idle", () => {
@@ -108,6 +159,7 @@ ipcMain.on("achievement-overlay-idle", () => {
 
 app.whenReady().then(() => {
   createOverlayWindow();
+  screen.on("display-metrics-changed", positionOverlay);
   createTray();
   if (process.argv.includes("--demo")) {
     overlayWindow.webContents.once("did-finish-load", () => {
@@ -115,13 +167,16 @@ app.whenReady().then(() => {
       setTimeout(() => app.quit(), 6500);
     });
   } else {
-    overlayWindow.webContents.once("did-finish-load", startWatcher);
+    overlayWindow.webContents.once("did-finish-load", startCompanions);
   }
 });
 
 app.on("before-quit", () => {
   app.isQuitting = true;
+  clearTimeout(watcherRestartTimer);
+  clearTimeout(librarySyncRestartTimer);
   if (watcher && !watcher.killed) watcher.kill();
+  if (librarySync && !librarySync.killed) librarySync.kill();
 });
 
 app.on("window-all-closed", () => {});

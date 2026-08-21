@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local reverse-engineering tools and captures
+/.tools/
+/.diagnostics/
+/uas.log

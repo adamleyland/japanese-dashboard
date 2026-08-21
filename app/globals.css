@@ -276,6 +276,10 @@ body {
 }
 
 @media (max-width: 700px) {
+  .gaming-expanded-play-button {
+    display: none !important;
+  }
+
   .gaming-expanded-overlay {
     padding: 0 !important;
     place-items: stretch !important;

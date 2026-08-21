@@ -13,7 +13,8 @@ const { createClient } = require("@supabase/supabase-js");
 // Resolve from the project rather than the terminal's current folder so this also works in Task Scheduler.
 loadEnvFile(path.resolve(__dirname, "..", ".env.local"));
 
-const writeChanges = process.argv.includes("--write");
+const watchChanges = process.argv.includes("--watch");
+const writeChanges = process.argv.includes("--write") || watchChanges;
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -203,13 +204,20 @@ async function findSteamGridArtwork(title, apiKey) {
   }
 }
 
-function readSteamShortcuts() {
+function getSteamDataFiles() {
   const steamRoot = getSteamRoot();
   if (!steamRoot) throw new Error("Steam was not found. Set STEAM_ROOT in .env.local if it is installed elsewhere.");
 
   const userDataDirectory = getSteamUserDataDirectory(steamRoot);
-  const shortcuts = parseBinaryVdf(fs.readFileSync(path.join(userDataDirectory, "config", "shortcuts.vdf")));
-  const localConfig = parseTextVdf(fs.readFileSync(path.join(userDataDirectory, "config", "localconfig.vdf"), "utf8"));
+  return {
+    shortcutsPath: path.join(userDataDirectory, "config", "shortcuts.vdf"),
+    localConfigPath: path.join(userDataDirectory, "config", "localconfig.vdf"),
+  };
+}
+
+function readSteamShortcuts(files = getSteamDataFiles()) {
+  const shortcuts = parseBinaryVdf(fs.readFileSync(files.shortcutsPath));
+  const localConfig = parseTextVdf(fs.readFileSync(files.localConfigPath, "utf8"));
 
   return Object.values(shortcuts)
     .filter((shortcut) => shortcut && typeof shortcut === "object")
@@ -237,6 +245,24 @@ function readSteamShortcuts() {
     .filter((game) => game.game_name);
 }
 
+function normalizedExecutablePath(value) {
+  const source = String(value || "").trim();
+  const quoted = source.match(/^"([^"]+\.exe)"/i);
+  const plain = source.match(/^(.+?\.exe)(?:\s|$)/i);
+  const executable = quoted?.[1] || plain?.[1] || source.replace(/^"|"$/g, "");
+  try {
+    return path.resolve(executable).toLowerCase();
+  } catch {
+    return executable.toLowerCase();
+  }
+}
+
+function findExistingLocalGame(game, existingById, existingByExecutable) {
+  return existingById.get(game.client_game_id)
+    || existingByExecutable.get(normalizedExecutablePath(game.metadata?.executable_path))
+    || null;
+}
+
 async function syncGames(games) {
   const userId = requiredEnv("LOCAL_GAMES_USER_ID");
   const supabase = createClient(
@@ -244,25 +270,30 @@ async function syncGames(games) {
     requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
-  const ids = games.map((game) => game.client_game_id);
   const { data: existing, error: existingError } = await supabase
     .from("local_games")
     .select("client_game_id, cover_image_url, metadata")
-    .eq("user_id", userId)
-    .in("client_game_id", ids);
+    .eq("user_id", userId);
   if (existingError) throw existingError;
 
   const existingById = new Map((existing || []).map((game) => [game.client_game_id, game]));
+  const existingByExecutable = new Map((existing || []).flatMap((game) => {
+    const executable = normalizedExecutablePath(game.metadata?.executable_path);
+    return executable ? [[executable, game]] : [];
+  }));
   const steamGridDbKey = String(process.env.STEAMGRIDDB_API_KEY || "").trim();
   const rows = [];
 
   for (const game of games) {
-    const existingGame = existingById.get(game.client_game_id);
+    const existingGame = findExistingLocalGame(game, existingById, existingByExecutable);
     const artwork = existingGame?.cover_image_url && existingGame?.metadata?.heroArtworkUrl
       ? null
       : await findSteamGridArtwork(game.game_name, steamGridDbKey);
     rows.push({
       ...game,
+      // Keep the existing dashboard identity when a Steam shortcut is renamed.
+      // Steam may generate a new shortcut AppID from its title and executable.
+      client_game_id: existingGame?.client_game_id || game.client_game_id,
       user_id: userId,
       cover_image_url: existingGame?.cover_image_url || artwork?.coverUrl || null,
       metadata: {
@@ -284,27 +315,63 @@ async function syncGames(games) {
   if (error) throw error;
 }
 
-async function main() {
+async function syncOnce({ verbose = true } = {}) {
   const games = readSteamShortcuts();
   if (!games.length) throw new Error("No Steam non-Steam shortcuts were found.");
 
-  console.table(games.map((game) => ({
-    title: game.game_name,
-    steamAppId: game.metadata.steam_app_id,
-    minutesPlayed: game.total_playtime_seconds / 60,
-    lastPlayed: game.last_played_at || "Never",
-  })));
+  if (verbose) {
+    console.table(games.map((game) => ({
+      title: game.game_name,
+      steamAppId: game.metadata.steam_app_id,
+      minutesPlayed: game.total_playtime_seconds / 60,
+      lastPlayed: game.last_played_at || "Never",
+    })));
+  }
 
   if (!writeChanges) {
     console.log("Preview only. Run `npm run sync:steam-local -- --write` to save these games to Supabase.");
-    return;
+    return games;
   }
 
   await syncGames(games);
   console.log(`Synced ${games.length} Steam shortcut game(s) to Supabase.`);
+  return games;
 }
 
-main().catch((error) => {
-  console.error(`Steam local-game sync failed: ${error.message}`);
-  process.exitCode = 1;
-});
+async function main() {
+  await syncOnce({ verbose: !watchChanges });
+  if (!watchChanges) return;
+
+  const files = getSteamDataFiles();
+  let pendingSync = null;
+  let activeSync = Promise.resolve();
+  const scheduleSync = (reason) => {
+    clearTimeout(pendingSync);
+    pendingSync = setTimeout(() => {
+      activeSync = activeSync.catch(() => {}).then(() => syncOnce({ verbose: false }));
+      activeSync.catch((error) => console.error(`Steam local-game ${reason} sync failed: ${error.message}`));
+    }, 1_500);
+  };
+
+  for (const filePath of [files.shortcutsPath, files.localConfigPath]) {
+    fs.watchFile(filePath, { interval: 2_000 }, (current, previous) => {
+      if (current.mtimeMs !== previous.mtimeMs || current.size !== previous.size) scheduleSync("file-change");
+    });
+  }
+  setInterval(() => scheduleSync("periodic"), 5 * 60_000);
+  console.log(`Watching Steam shortcuts for title and library changes: ${files.shortcutsPath}`);
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`Steam local-game sync failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  findExistingLocalGame,
+  normalizedExecutablePath,
+  parseBinaryVdf,
+  readSteamShortcuts,
+};

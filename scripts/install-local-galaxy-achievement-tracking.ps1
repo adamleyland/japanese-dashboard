@@ -1,5 +1,6 @@
 param(
   [switch]$Restore,
+  [switch]$EnableTracing,
   [ValidateSet("All", "God of War", "SILENT HILL 2")]
   [string]$TargetGame = "All"
 )
@@ -155,8 +156,8 @@ foreach ($game in $selectedGames) {
       "ServerDataPath = UniverseLANServerData",
       "",
       "[Tracing]",
-      "CallTracing = 0",
-      "UnhandledExceptionLogging = 0"
+      "CallTracing = $(if ($EnableTracing) { 1 } else { 0 })",
+      "UnhandledExceptionLogging = $(if ($EnableTracing) { 1 } else { 0 })"
     )
     Set-Content -LiteralPath (Join-Path $location "UniverseLAN.ini") -Value $pointer -Encoding UTF8
   }

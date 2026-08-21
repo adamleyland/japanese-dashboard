@@ -14,6 +14,7 @@
     "sync:local-achievements": "node ./scripts/watch-local-achievements.js",
     "watch:local-achievements": "node ./scripts/watch-local-achievements.js --watch",
     "audit:local-achievements": "node ./scripts/audit-local-achievement-sources.js",
+    "test:local-achievements": "node --test ./scripts/watch-local-achievements.test.js ./scripts/sync-steam-local-games.test.js",
     "overlay:achievements": "node ./desktop/achievement-overlay/launch.cjs",
     "overlay:achievements:demo": "node ./desktop/achievement-overlay/launch.cjs --demo",
     "overlay:install-startup": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-achievement-overlay-startup.ps1",

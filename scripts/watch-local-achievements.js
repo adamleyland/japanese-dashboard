@@ -17,15 +17,28 @@ loadEnvFile(path.resolve(__dirname, "..", ".env.local"));
 const watchMode = process.argv.includes("--watch");
 const watchedFiles = new Map();
 const pendingSyncs = new Map();
+const activeSyncs = new Map();
+const retryAttemptsByFile = new Map();
+const observedUnlocksByGame = new Map();
+const achievementMetadataByGame = new Map();
 const steamAppIdsByTitle = new Map();
 const localConfigurationFilesByExecutable = new Map();
 const OVERLAY_EVENT_PREFIX = "ACHIEVEMENT_OVERLAY_EVENT:";
 const GOG_GALAXY_STORAGE_DB = path.join(process.env.ProgramData || "C:\\ProgramData", "GOG.com", "Galaxy", "storage", "galaxy-2.0.db");
 const GOG_GALAXY_APPLICATIONS_ROOT = path.join(process.env.LOCALAPPDATA || "", "GOG.com", "Galaxy", "Applications");
+const GOG_STABILITY_POLL_MS = 150;
+const GOG_STABILITY_MAX_WAIT_MS = 3_000;
 const UPLAY_SAVE_IDS_BY_TITLE = new Map([
   [normalizedGameTitle("Assassin's Creed Black Flag Resynced"), "66088"],
 ]);
+const DEFINITION_APP_IDS_BY_TITLE = new Map([
+  // This release ships with Sins of a Solar Empire II's AppID in steam_emu.ini.
+  // Keep reading its existing RUNE folder, but use Edith Finch's real schema.
+  [normalizedGameTitle("What Remains of Edith Finch"), "501300"],
+]);
 let liveNotificationsEnabled = false;
+let gogDiscoveryWatcher = null;
+let pendingGogDiscovery = null;
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -121,9 +134,9 @@ function achievementDefinitionFileForGame(game) {
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
 }
 
-function readSteamAppId(game, gameDirectory) {
+function readSteamAppId(game, gameDirectory, options = {}) {
   const configured = String(game?.metadata?.achievementProviderGameId || "").trim();
-  if (/^\d+$/.test(configured)) return configured;
+  if (!options.skipConfigured && /^\d+$/.test(configured)) return configured;
   const appIdFiles = [
     path.join(gameDirectory, "steam_appid.txt"),
     path.join(gameDirectory, "steam_settings", "steam_appid.txt"),
@@ -151,10 +164,20 @@ function readSteamAppId(game, gameDirectory) {
   return "";
 }
 
+function definitionAppIdForGame(game, progressAppId, localDefinitionAppId = "") {
+  const override = DEFINITION_APP_IDS_BY_TITLE.get(normalizedGameTitle(game?.game_name));
+  if (override) return override;
+  if (/^\d+$/.test(String(localDefinitionAppId || ""))) return String(localDefinitionAppId);
+  const configured = String(game?.metadata?.achievementProviderGameId || "").trim();
+  if (/^\d+$/.test(configured)) return configured;
+  return String(progressAppId || "");
+}
+
 function achievementSourceForGame(game, fallbackAppId = "") {
   const configuredProgress = String(game?.metadata?.achievement_progress_file || "").trim();
   const exe = executablePath(game?.metadata?.executable_path);
   if (!exe || !fs.existsSync(exe)) return null;
+  const nativeProfileSource = nativeAchievementProfileSourceForGame(game);
   const gogSource = gogGameplaySourceForGame(game);
   if (gogSource) return gogSource;
   const gameDirectory = path.dirname(exe);
@@ -162,19 +185,24 @@ function achievementSourceForGame(game, fallbackAppId = "") {
   const localDefinition = definitionFile && fs.existsSync(definitionFile)
     ? parseAchievementDefinitions(fs.readFileSync(definitionFile, "utf8"))
     : null;
-  const appId = localDefinition?.appId || readSteamAppId(game, gameDirectory) || String(fallbackAppId || "");
+  const configuredAppId = String(game?.metadata?.achievementProviderGameId || "").trim();
+  const progressAppId = localDefinition?.appId
+    || readSteamAppId(game, gameDirectory, { skipConfigured: true })
+    || (/^\d+$/.test(configuredAppId) ? configuredAppId : "")
+    || String(fallbackAppId || "");
+  const appId = definitionAppIdForGame(game, progressAppId, localDefinition?.appId);
   const providerHint = localAchievementProviderHint(game);
   const steamDataFile = path.join(gameDirectory, "SteamData", "user_stats.ini");
   const publicDirectory = process.env.PUBLIC || path.join(path.parse(gameDirectory).root, "Users", "Public");
-  const runeFile = appId
-    ? path.join(publicDirectory, "Documents", "Steam", "RUNE", appId, "achievements.ini")
+  const runeFile = progressAppId
+    ? path.join(publicDirectory, "Documents", "Steam", "RUNE", progressAppId, "achievements.ini")
     : "";
-  const gseDirectory = appId && process.env.APPDATA
-    ? path.join(process.env.APPDATA, "GSE Saves", appId)
+  const gseDirectory = progressAppId && process.env.APPDATA
+    ? path.join(process.env.APPDATA, "GSE Saves", progressAppId)
     : "";
   const gseFile = gseDirectory ? path.join(gseDirectory, "achievements.json") : "";
-  const goldbergDirectory = appId && process.env.APPDATA
-    ? path.join(process.env.APPDATA, "Goldberg SteamEmu Saves", appId)
+  const goldbergDirectory = progressAppId && process.env.APPDATA
+    ? path.join(process.env.APPDATA, "Goldberg SteamEmu Saves", progressAppId)
     : "";
   const goldbergFile = goldbergDirectory ? path.join(goldbergDirectory, "achievements.json") : "";
   const uplaySaveId = UPLAY_SAVE_IDS_BY_TITLE.get(normalizedGameTitle(game?.game_name)) || "";
@@ -182,8 +210,10 @@ function achievementSourceForGame(game, fallbackAppId = "") {
     ? path.join(process.env.APPDATA, "Goldberg UplayEmu Saves", uplaySaveId, "achievements.json")
     : "";
   const universeLanFile = universeLanAchievementFileForGame(game);
+  const useUniverseLan = !nativeProfileSource || localGalaxyWrapperActiveForGame(game);
   const candidates = [
-    universeLanFile && { progressFile: universeLanFile, format: "universelan-achievements-ini" },
+    universeLanFile && useUniverseLan && { progressFile: universeLanFile, format: "universelan-achievements-ini" },
+    nativeProfileSource,
     configuredProgress && { progressFile: configuredProgress, format: game?.metadata?.achievement_progress_format || "auto" },
     fs.existsSync(steamDataFile) && { progressFile: steamDataFile, format: "steamdata-user-stats" },
     runeFile && (fs.existsSync(runeFile) || providerHint === "rune") && { progressFile: runeFile, format: "rune-achievements-ini" },
@@ -192,7 +222,46 @@ function achievementSourceForGame(game, fallbackAppId = "") {
     uplayFile && providerHint === "uplay" && { progressFile: uplayFile, format: "uplay-achievements-json" },
   ].filter(Boolean);
   if (!candidates.length) return null;
-  return { ...candidates[0], definitionFile, appId };
+  return { ...candidates[0], definitionFile, appId, progressAppId };
+}
+
+function localGalaxyWrapperActiveForGame(game) {
+  if (normalizedGameTitle(game?.game_name) !== "silent hill 2") return false;
+  const exe = executablePath(game?.metadata?.executable_path);
+  const galaxyDll = path.join(
+    path.dirname(exe),
+    "SHProto",
+    "Plugins",
+    "OnlineSubsystemGOG",
+    "Source",
+    "ThirdParty",
+    "GalaxySDK",
+    "Libraries",
+    "Galaxy64.dll",
+  );
+  try {
+    return fs.readFileSync(galaxyDll).includes(Buffer.from("UniverseLAN", "ascii"));
+  } catch {
+    return false;
+  }
+}
+
+function nativeAchievementProfileSourceForGame(game) {
+  if (normalizedGameTitle(game?.game_name) !== "silent hill 2") return null;
+  const progressFile = path.join(
+    process.env.LOCALAPPDATA || "",
+    "SilentHill2",
+    "Saved",
+    "SaveGames",
+    "UcaSave.sav",
+  );
+  if (!fs.existsSync(progressFile)) return null;
+  return {
+    progressFile,
+    format: "silent-hill-2-uca-save",
+    definitionFile: "",
+    appId: "2124490",
+  };
 }
 
 function universeLanAchievementFileForGame(game) {
@@ -222,11 +291,13 @@ function openReadOnlyDatabase(filePath) {
   return new DatabaseSync(filePath, { readOnly: true });
 }
 
-function gogGameplaySourceForGame(game) {
-  if (!fs.existsSync(GOG_GALAXY_STORAGE_DB) || !fs.existsSync(GOG_GALAXY_APPLICATIONS_ROOT)) return null;
+function gogGameplaySourceForGame(game, options = {}) {
+  const storageDbPath = options.storageDbPath || GOG_GALAXY_STORAGE_DB;
+  const applicationsRoot = options.applicationsRoot || GOG_GALAXY_APPLICATIONS_ROOT;
+  if (!fs.existsSync(storageDbPath) || !fs.existsSync(applicationsRoot)) return null;
   let database;
   try {
-    database = openReadOnlyDatabase(GOG_GALAXY_STORAGE_DB);
+    database = openReadOnlyDatabase(storageDbPath);
     const productStatement = database.prepare(`
       SELECT pa.productId, pa.clientId, ibp.installationPath, ld.title
       FROM ProductAuthorizations pa
@@ -242,7 +313,7 @@ function gogGameplaySourceForGame(game) {
       return (installPath && executable.startsWith(installPath)) || normalizedGameTitle(row?.title) === wantedTitle;
     });
     if (!product?.clientId) return null;
-    const gameplayRoot = path.join(GOG_GALAXY_APPLICATIONS_ROOT, String(product.clientId), "Gameplay");
+    const gameplayRoot = path.join(applicationsRoot, String(product.clientId), "Gameplay");
     let users = [];
     try { users = fs.readdirSync(gameplayRoot, { withFileTypes: true }); } catch { return null; }
     for (const user of users) {
@@ -264,6 +335,59 @@ function gogGameplaySourceForGame(game) {
     try { database?.close(); } catch {}
   }
   return null;
+}
+
+function fileRuntimeSignature(filePath) {
+  try {
+    const stats = fs.statSync(filePath);
+    return `${stats.size}:${stats.mtimeMs}`;
+  } catch {
+    return "missing";
+  }
+}
+
+function gogGameplayRuntimeSignature(filePath, achievements = []) {
+  const content = achievements.map((achievement) => [
+    achievement.id,
+    achievement.unlockedAt || "",
+    achievement.rarityPercentage ?? "",
+  ].join(":"));
+  return [
+    fileRuntimeSignature(filePath),
+    fileRuntimeSignature(`${filePath}-wal`),
+    fileRuntimeSignature(`${filePath}-shm`),
+    content.join("|"),
+  ].join("||");
+}
+
+async function readStableGogGameplayAchievements(filePath, options = {}) {
+  const pollMs = Math.max(25, Number(options.pollMs) || GOG_STABILITY_POLL_MS);
+  const maxWaitMs = Math.max(0, Number(options.maxWaitMs) || GOG_STABILITY_MAX_WAIT_MS);
+  const deadline = Date.now() + maxWaitMs;
+  let previousSignature = "";
+  let stableReads = 0;
+  let lastAchievements = [];
+  let lastError = null;
+
+  while (true) {
+    try {
+      lastAchievements = readGogGameplayAchievements(filePath);
+      const signature = gogGameplayRuntimeSignature(filePath, lastAchievements);
+      stableReads = signature === previousSignature ? stableReads + 1 : 1;
+      previousSignature = signature;
+      lastError = null;
+      if (lastAchievements.length && stableReads >= 2) return lastAchievements;
+    } catch (error) {
+      lastError = error;
+      stableReads = 0;
+    }
+
+    if (Date.now() >= deadline) {
+      if (lastError) throw lastError;
+      return lastAchievements;
+    }
+    await wait(pollMs);
+  }
 }
 
 async function findSteamAppIdByTitle(title) {
@@ -490,13 +614,155 @@ function parseProgress(contents, format) {
   return steamData.length || format !== "auto" ? steamData : parseRuneAchievements(contents);
 }
 
+function readUnrealString(buffer, cursor) {
+  if (cursor.offset + 4 > buffer.length) throw new Error("Unexpected end of Unreal save string.");
+  const length = buffer.readInt32LE(cursor.offset);
+  cursor.offset += 4;
+  if (!length || Math.abs(length) > 4096) throw new Error("Invalid Unreal save string length.");
+  const byteLength = length > 0 ? length : Math.abs(length) * 2;
+  if (cursor.offset + byteLength > buffer.length) throw new Error("Unexpected end of Unreal save string data.");
+  const value = buffer.subarray(cursor.offset, cursor.offset + byteLength);
+  cursor.offset += byteLength;
+  return length > 0
+    ? value.subarray(0, Math.max(0, value.length - 1)).toString("utf8")
+    : value.subarray(0, Math.max(0, value.length - 2)).toString("utf16le");
+}
+
+function parseSilentHillUcaSave(buffer, unlockedAt = new Date().toISOString()) {
+  const marker = buffer.indexOf(Buffer.from("VHCA", "ascii"));
+  if (marker < 0) throw new Error("Silent Hill achievement profile marker was not found.");
+  const cursor = { offset: marker + 4 };
+  if (cursor.offset + 8 > buffer.length) throw new Error("Silent Hill achievement profile is truncated.");
+  cursor.offset += 4; // Achievement profile serialization version.
+  const directCount = buffer.readUInt32LE(cursor.offset);
+  cursor.offset += 4;
+  if (directCount > 256) throw new Error("Silent Hill direct achievement count is invalid.");
+
+  const states = [];
+  const counterTargets = new Map([
+    ["FinishEnemiesWithStomp", 50],
+    ["KillEnemiesRanged", 75],
+    ["KillEnemiesMelee", 75],
+    ["TryToOpenClosedDoors", 50],
+    ["SelfLoathing", 50],
+    ["UseAllWeapons", 5],
+    ["FindPhotos", 26],
+    ["Archivist", 68],
+    ["LongSwimInTolucaLake", 600],
+    ["ShootBalloonsWoodsideApart", 11],
+    ["SeeAllCanonEndings", 3],
+    ["FindAllPastLocations", 26],
+  ]);
+  const bitmaskCounters = new Set(["UseAllWeapons", "ShootBalloonsWoodsideApart", "SeeAllCanonEndings"]);
+  const finalize = () => states.map((state) => {
+    const target = counterTargets.get(state.id);
+    if (!target) return state;
+    const rawCurrent = Number(state.progressCurrent || 0);
+    const progressCurrent = bitmaskCounters.has(state.id)
+      ? rawCurrent.toString(2).replace(/0/g, "").length
+      : rawCurrent;
+    return { ...state, progressCurrent, progressTarget: target };
+  });
+  for (let index = 0; index < directCount; index += 1) {
+    readUnrealString(buffer, cursor); // Internal event key.
+    const id = readUnrealString(buffer, cursor);
+    if (cursor.offset + 4 > buffer.length) throw new Error("Silent Hill achievement flag is truncated.");
+    const unlocked = buffer.readUInt32LE(cursor.offset) !== 0;
+    cursor.offset += 4;
+    states.push({ id, unlocked, progressCurrent: unlocked ? 1 : 0, progressTarget: 1, unlockedAt });
+  }
+
+  if (cursor.offset + 4 > buffer.length) return finalize();
+  const readCounterMappings = (progressCurrent) => {
+    if (cursor.offset + 4 > buffer.length) throw new Error("Silent Hill counter mapping is truncated.");
+    const mappedAchievementCount = buffer.readUInt32LE(cursor.offset);
+    cursor.offset += 4;
+    if (mappedAchievementCount > 32) throw new Error("Silent Hill counter mapping count is invalid.");
+    for (let mapping = 0; mapping < mappedAchievementCount; mapping += 1) {
+      const id = readUnrealString(buffer, cursor);
+      if (cursor.offset + 4 > buffer.length) throw new Error("Silent Hill counter achievement flag is truncated.");
+      const unlocked = buffer.readUInt32LE(cursor.offset) !== 0;
+      cursor.offset += 4;
+      states.push({ id, unlocked, progressCurrent, unlockedAt });
+    }
+  };
+
+  const counterCount = buffer.readUInt32LE(cursor.offset);
+  cursor.offset += 4;
+  if (counterCount > 256) throw new Error("Silent Hill achievement counter count is invalid.");
+  for (let index = 0; index < counterCount; index += 1) {
+    readUnrealString(buffer, cursor); // Counter name.
+    if (cursor.offset + 8 > buffer.length) throw new Error("Silent Hill achievement counter is truncated.");
+    const progressCurrent = buffer.readUInt32LE(cursor.offset);
+    cursor.offset += 4;
+    readCounterMappings(progressCurrent);
+  }
+
+  if (cursor.offset + 4 > buffer.length) return finalize();
+  const timedCounterCount = buffer.readUInt32LE(cursor.offset);
+  cursor.offset += 4;
+  if (timedCounterCount > 32) throw new Error("Silent Hill timed counter count is invalid.");
+  for (let index = 0; index < timedCounterCount; index += 1) {
+    readUnrealString(buffer, cursor);
+    if (cursor.offset + 4 > buffer.length) throw new Error("Silent Hill timed counter is truncated.");
+    const progressCurrent = buffer.readFloatLE(cursor.offset);
+    cursor.offset += 4;
+    readCounterMappings(progressCurrent);
+  }
+
+  if (cursor.offset + 4 > buffer.length) return finalize();
+  const collectionCount = buffer.readUInt32LE(cursor.offset);
+  cursor.offset += 4;
+  if (collectionCount > 32) throw new Error("Silent Hill collection counter count is invalid.");
+  for (let index = 0; index < collectionCount; index += 1) {
+    const counterName = readUnrealString(buffer, cursor);
+    if (cursor.offset + 4 > buffer.length) throw new Error("Silent Hill collection counter is truncated.");
+    const progressCurrent = buffer.readUInt32LE(cursor.offset);
+    cursor.offset += 4;
+    if (counterName === "GlimpsesOfPast") {
+      const guidBytes = progressCurrent * 16;
+      if (cursor.offset + guidBytes > buffer.length) throw new Error("Silent Hill collection identifiers are truncated.");
+      cursor.offset += guidBytes;
+    }
+    readCounterMappings(progressCurrent);
+  }
+  return finalize();
+}
+
 function parseProgressFile(source) {
   if (source.format === "gog-galaxy-sqlite") {
     return readGogGameplayAchievements(source.progressFile)
       .filter((achievement) => achievement.unlockedAt)
       .map((achievement) => ({ id: achievement.id, unlockedAt: achievement.unlockedAt }));
   }
+  if (source.format === "silent-hill-2-uca-save") {
+    const stats = fs.statSync(source.progressFile);
+    return parseSilentHillUcaSave(fs.readFileSync(source.progressFile), stats.mtime.toISOString());
+  }
   return parseProgress(fs.readFileSync(source.progressFile, "utf8"), source.format);
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function parseProgressFileWithRetry(source, attempts = 5) {
+  if (source.format === "gog-galaxy-sqlite") {
+    const achievements = await readStableGogGameplayAchievements(source.progressFile);
+    return achievements
+      .filter((achievement) => achievement.unlockedAt)
+      .map((achievement) => ({ id: achievement.id, unlockedAt: achievement.unlockedAt }));
+  }
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return parseProgressFile(source);
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < attempts) await wait(100 * (attempt + 1));
+    }
+  }
+  throw lastError;
 }
 
 function steamIcon(appId, value) {
@@ -535,7 +801,7 @@ async function ensureAchievementDefinitions(admin, userId, game, source) {
     definition = {
       appId: "",
       provider: "gog-galaxy",
-      achievements: readGogGameplayAchievements(source.progressFile),
+      achievements: await readStableGogGameplayAchievements(source.progressFile),
     };
   }
   if (source.format === "uplay-achievements-json" && fs.existsSync(source.progressFile)) {
@@ -582,6 +848,20 @@ async function ensureAchievementDefinitions(admin, userId, game, source) {
   const { error: definitionsError } = await admin.from("achievements")
     .upsert(rows, { onConflict: "achievement_game_id,provider_achievement_id" });
   if (definitionsError) throw definitionsError;
+  const { data: existingDefinitions, error: existingDefinitionsError } = await admin.from("achievements")
+    .select("id, provider_achievement_id")
+    .eq("achievement_game_id", achievementGame.id);
+  if (existingDefinitionsError) throw existingDefinitionsError;
+  const currentDefinitionIds = new Set(rows.map((row) => row.provider_achievement_id.toLowerCase()));
+  const staleDefinitionIds = (existingDefinitions || [])
+    .filter((achievement) => !currentDefinitionIds.has(String(achievement.provider_achievement_id || "").toLowerCase()))
+    .map((achievement) => achievement.id);
+  if (staleDefinitionIds.length) {
+    const { error: staleDefinitionsError } = await admin.from("achievements")
+      .delete()
+      .in("id", staleDefinitionIds);
+    if (staleDefinitionsError) throw staleDefinitionsError;
+  }
   if (definition.appId) {
     const { error: metadataError } = await admin.from("local_games").update({
       metadata: {
@@ -609,54 +889,15 @@ async function ensureAchievementDefinitions(admin, userId, game, source) {
   return { id: achievementGame.id, count: rows.length, appId: definition.appId };
 }
 
-async function syncGame(admin, userId, game, source) {
-  const imported = await ensureAchievementDefinitions(admin, userId, game, source);
-  if (!fs.existsSync(source.progressFile)) {
-    console.log(`${game.game_name}: ${imported?.count || 0} definitions ready; waiting for ${source.format} progress.`);
-    return { updated: 0, newlyUnlocked: 0 };
-  }
-  const unlocks = parseProgressFile(source);
-
-  const { data: achievementGame, error: gameError } = await admin.from("achievement_games")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("provider", "local")
-    .eq("provider_game_id", game.client_game_id)
-    .maybeSingle();
-  if (gameError) throw gameError;
-  if (!achievementGame) {
-    console.warn(`${game.game_name}: no local achievement definitions were found; open its expanded dashboard view to try Steam definitions.`);
-    return { updated: 0, newlyUnlocked: 0 };
-  }
-
-  const unlockById = new Map(unlocks.map((item) => [item.id.toLowerCase(), item]));
-  const { data: achievements, error: achievementsError } = await admin.from("achievements")
-    .select("id, provider_achievement_id, name, description, icon_url, rarity_percentage, unlocked, unlocked_at, progress_target")
-    .eq("achievement_game_id", achievementGame.id);
-  if (achievementsError) throw achievementsError;
-
-  const now = new Date().toISOString();
-  const events = [];
-  const notifications = [];
+function observeUnlocks(game, unlockById, achievements) {
+  const observedKey = String(game.client_game_id);
+  const observedUnlocks = observedUnlocksByGame.get(observedKey) || new Set();
   for (const achievement of achievements || []) {
     const unlock = unlockById.get(achievement.provider_achievement_id.toLowerCase());
-    if (!unlock) continue;
-    const { error } = await admin.from("achievements").update({
-      unlocked: true,
-      unlocked_at: achievement.unlocked_at || unlock.unlockedAt,
-      progress_current: achievement.progress_target || 1,
-      updated_at: now,
-    }).eq("id", achievement.id);
-    if (error) throw error;
-    if (!achievement.unlocked) {
-      events.push({
-        achievement_id: achievement.id,
-        user_id: userId,
-        source: source.format,
-        unlocked_at: unlock.unlockedAt,
-        metadata: { format: source.format },
-      });
-      notifications.push({
+    if (!unlock || unlock.unlocked === false) continue;
+    const normalizedId = achievement.provider_achievement_id.toLowerCase();
+    if (liveNotificationsEnabled && !observedUnlocks.has(normalizedId)) {
+      process.stdout.write(`${OVERLAY_EVENT_PREFIX}${JSON.stringify({
         gameTitle: game.game_name,
         gameArtworkUrl: game.cover_image_url || null,
         achievementName: achievement.name,
@@ -664,6 +905,93 @@ async function syncGame(admin, userId, game, source) {
         iconUrl: achievement.icon_url || null,
         rarityPercentage: achievement.rarity_percentage,
         unlockedAt: unlock.unlockedAt,
+      })}\n`);
+    }
+    observedUnlocks.add(normalizedId);
+  }
+  observedUnlocksByGame.set(observedKey, observedUnlocks);
+}
+
+async function syncGame(admin, userId, game, source) {
+  if (!fs.existsSync(source.progressFile)) {
+    const imported = await ensureAchievementDefinitions(admin, userId, game, source);
+    console.log(`${game.game_name}: ${imported?.count || 0} definitions ready; waiting for ${source.format} progress.`);
+    return { updated: 0, newlyUnlocked: 0 };
+  }
+  const unlocks = await parseProgressFileWithRetry(source);
+  const unlockById = new Map(unlocks.map((item) => [item.id.toLowerCase(), item]));
+  const observedKey = String(game.client_game_id);
+  const cachedAchievements = achievementMetadataByGame.get(observedKey);
+  if (cachedAchievements) observeUnlocks(game, unlockById, cachedAchievements);
+
+  let { data: achievementGame, error: gameError } = await admin.from("achievement_games")
+    .select("id, definition_game_id")
+    .eq("user_id", userId)
+    .eq("provider", "local")
+    .eq("provider_game_id", game.client_game_id)
+    .maybeSingle();
+  if (gameError) throw gameError;
+  let imported = null;
+  if (!achievementGame) {
+    imported = await ensureAchievementDefinitions(admin, userId, game, source);
+    const result = await admin.from("achievement_games")
+      .select("id, definition_game_id")
+      .eq("user_id", userId)
+      .eq("provider", "local")
+      .eq("provider_game_id", game.client_game_id)
+      .maybeSingle();
+    if (result.error) throw result.error;
+    achievementGame = result.data;
+    if (!achievementGame) {
+      console.warn(`${game.game_name}: no local achievement definitions were found; open its expanded dashboard view to try Steam definitions.`);
+      return { updated: 0, newlyUnlocked: 0 };
+    }
+  }
+  const expectedDefinitionGameId = String(source.gogProductId || source.appId || "");
+  if (achievementGame && expectedDefinitionGameId && String(achievementGame.definition_game_id || "") !== expectedDefinitionGameId) {
+    imported = await ensureAchievementDefinitions(admin, userId, game, source);
+  }
+
+  let { data: achievements, error: achievementsError } = await admin.from("achievements")
+    .select("id, provider_achievement_id, name, description, icon_url, rarity_percentage, unlocked, unlocked_at, progress_target")
+    .eq("achievement_game_id", achievementGame.id);
+  if (achievementsError) throw achievementsError;
+  if (!achievements?.length) {
+    imported = await ensureAchievementDefinitions(admin, userId, game, source);
+    const result = await admin.from("achievements")
+      .select("id, provider_achievement_id, name, description, icon_url, rarity_percentage, unlocked, unlocked_at, progress_target")
+      .eq("achievement_game_id", achievementGame.id);
+    if (result.error) throw result.error;
+    achievements = result.data;
+  }
+  achievementMetadataByGame.set(observedKey, achievements || []);
+  observeUnlocks(game, unlockById, achievements);
+
+  const now = new Date().toISOString();
+  const events = [];
+  for (const achievement of achievements || []) {
+    const unlock = unlockById.get(achievement.provider_achievement_id.toLowerCase());
+    if (!unlock) continue;
+    const isUnlocked = unlock.unlocked !== false;
+    const progressTarget = Number(unlock.progressTarget || achievement.progress_target || 1);
+    const progressCurrent = Number.isFinite(Number(unlock.progressCurrent))
+      ? Number(unlock.progressCurrent)
+      : (isUnlocked ? progressTarget : 0);
+    const { error } = await admin.from("achievements").update({
+      unlocked: achievement.unlocked || isUnlocked,
+      unlocked_at: achievement.unlocked_at || (isUnlocked ? unlock.unlockedAt : null),
+      progress_current: isUnlocked ? progressTarget : progressCurrent,
+      progress_target: progressTarget,
+      updated_at: now,
+    }).eq("id", achievement.id);
+    if (error) throw error;
+    if (isUnlocked && !achievement.unlocked) {
+      events.push({
+        achievement_id: achievement.id,
+        user_id: userId,
+        source: source.format,
+        unlocked_at: unlock.unlockedAt,
+        metadata: { format: source.format },
       });
     }
   }
@@ -680,12 +1008,9 @@ async function syncGame(admin, userId, game, source) {
     updated_at: now,
   }).eq("id", achievementGame.id);
 
-  console.log(`${game.game_name}: ${imported?.count || achievements?.length || 0} definitions, ${unlocks.length} unlock(s) found, ${events.length} newly recorded.`);
-  if (liveNotificationsEnabled) {
-    for (const notification of notifications) {
-      process.stdout.write(`${OVERLAY_EVENT_PREFIX}${JSON.stringify(notification)}\n`);
-    }
-  }
+  const unlockedCount = unlocks.filter((item) => item.unlocked !== false).length;
+  const progressCount = unlocks.filter((item) => item.unlocked === false && Number(item.progressCurrent) > 0).length;
+  console.log(`${game.game_name}: ${imported?.count || achievements?.length || 0} definitions, ${unlockedCount} unlocked, ${progressCount} in progress, ${events.length} newly recorded.`);
   return { updated: unlocks.length, newlyUnlocked: events.length };
 }
 
@@ -693,10 +1018,26 @@ function scheduleSync(admin, userId, game, source) {
   clearTimeout(pendingSyncs.get(source.progressFile));
   pendingSyncs.set(source.progressFile, setTimeout(() => {
     pendingSyncs.delete(source.progressFile);
-    syncGame(admin, userId, game, source).catch((error) => {
+    const previous = activeSyncs.get(source.progressFile) || Promise.resolve();
+    const current = previous.catch(() => {}).then(() => syncGame(admin, userId, game, source));
+    activeSyncs.set(source.progressFile, current);
+    current.then(() => {
+      retryAttemptsByFile.delete(source.progressFile);
+    }).catch((error) => {
       console.error(`${game.game_name}: achievement sync failed: ${error.message}`);
+      const attempt = (retryAttemptsByFile.get(source.progressFile) || 0) + 1;
+      retryAttemptsByFile.set(source.progressFile, attempt);
+      const delay = Math.min(60_000, 2_000 * (2 ** Math.min(attempt - 1, 5)));
+      setTimeout(() => scheduleSync(admin, userId, game, source), delay);
+    }).finally(() => {
+      if (activeSyncs.get(source.progressFile) === current) activeSyncs.delete(source.progressFile);
     });
-  }, 500));
+  }, source.format === "silent-hill-2-uca-save" ? 100 : 500));
+}
+
+function watchedPathsForSource(source) {
+  if (source.format !== "gog-galaxy-sqlite") return [source.progressFile];
+  return [source.progressFile, `${source.progressFile}-wal`, `${source.progressFile}-shm`];
 }
 
 async function discoverGames(admin, userId) {
@@ -719,17 +1060,52 @@ async function discoverGames(admin, userId) {
 async function reconcileWatchers(admin, userId, syncNewSources = true) {
   const games = await discoverGames(admin, userId);
   for (const { game, source } of games) {
-    if (watchedFiles.has(source.progressFile)) continue;
-    fs.watchFile(source.progressFile, { interval: 1500 }, (current, previous) => {
-      if (current.mtimeMs !== previous.mtimeMs || current.size !== previous.size) {
-        scheduleSync(admin, userId, game, source);
+    let addedWatcher = false;
+    for (const watchPath of watchedPathsForSource(source)) {
+      if (watchedFiles.has(watchPath)) continue;
+      fs.watchFile(watchPath, {
+        interval: source.format === "silent-hill-2-uca-save" ? 200 : 750,
+      }, (current, previous) => {
+        if (current.mtimeMs !== previous.mtimeMs || current.size !== previous.size) {
+          scheduleSync(admin, userId, game, source);
+        }
+      });
+      watchedFiles.set(watchPath, game.client_game_id);
+      addedWatcher = true;
+    }
+    if (!addedWatcher) continue;
+    console.log(`Watching ${game.game_name}: ${source.progressFile}${source.format === "gog-galaxy-sqlite" ? " (+ SQLite WAL/SHM)" : ""}`);
+    if (liveNotificationsEnabled && syncNewSources && fs.existsSync(source.progressFile)) {
+      try {
+        await syncGame(admin, userId, game, source);
+      } catch (error) {
+        console.error(`${game.game_name}: initial achievement sync failed: ${error.message}`);
       }
-    });
-    watchedFiles.set(source.progressFile, game.client_game_id);
-    console.log(`Watching ${game.game_name}: ${source.progressFile}`);
-    if (liveNotificationsEnabled && syncNewSources) await syncGame(admin, userId, game, source);
+    }
   }
   return games;
+}
+
+function startGogDiscoveryWatcher(admin, userId) {
+  if (gogDiscoveryWatcher || !fs.existsSync(GOG_GALAXY_APPLICATIONS_ROOT)) return;
+  try {
+    gogDiscoveryWatcher = fs.watch(GOG_GALAXY_APPLICATIONS_ROOT, { recursive: true }, (_event, filename) => {
+      const changedPath = String(filename || "").toLowerCase();
+      if (changedPath && !changedPath.includes("gameplay") && !changedPath.endsWith(".db") && !changedPath.endsWith(".db-wal")) return;
+      clearTimeout(pendingGogDiscovery);
+      pendingGogDiscovery = setTimeout(() => {
+        reconcileWatchers(admin, userId).catch((error) => console.error(`GOG watcher discovery failed: ${error.message}`));
+      }, 500);
+    });
+    gogDiscoveryWatcher.on("error", (error) => {
+      console.warn(`GOG live discovery watcher stopped: ${error.message}`);
+      try { gogDiscoveryWatcher?.close(); } catch {}
+      gogDiscoveryWatcher = null;
+    });
+    console.log(`Watching GOG Galaxy discovery root: ${GOG_GALAXY_APPLICATIONS_ROOT}`);
+  } catch (error) {
+    console.warn(`GOG live discovery is using periodic scans: ${error.message}`);
+  }
 }
 
 async function main() {
@@ -744,12 +1120,18 @@ async function main() {
     console.log("No supported local achievement files were found.");
   }
   for (const { game, source } of games) {
-    await syncGame(admin, userId, game, source);
+    try {
+      await syncGame(admin, userId, game, source);
+    } catch (error) {
+      if (!watchMode) throw error;
+      console.error(`${game.game_name}: initial achievement sync failed: ${error.message}`);
+    }
   }
   if (!watchMode) return;
 
   liveNotificationsEnabled = true;
   await reconcileWatchers(admin, userId, false);
+  startGogDiscoveryWatcher(admin, userId);
   setInterval(() => {
     reconcileWatchers(admin, userId).catch((error) => console.error(`Watcher discovery failed: ${error.message}`));
   }, 60_000);
@@ -765,10 +1147,17 @@ if (require.main === module) {
 
 module.exports = {
   achievementSourceForGame,
+  definitionAppIdForGame,
+  gogGameplaySourceForGame,
+  gogGameplayRuntimeSignature,
   parseAchievementDefinitions,
   parseGseAchievements,
   parseUniverseLanAchievements,
   parseRuneAchievements,
+  parseSilentHillUcaSave,
+  parseProgressFileWithRetry,
   parseUserStats,
   readGogGameplayAchievements,
+  readStableGogGameplayAchievements,
+  watchedPathsForSource,
 };
