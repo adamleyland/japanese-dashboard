@@ -6,7 +6,7 @@ import { Clock3, Lock, LockOpen, Monitor, Percent, Play, RefreshCw, Settings, Tr
 import { useAchievements } from "@/hooks/useAchievements";
 import { useGameArtwork } from "@/hooks/useGameArtwork";
 import { formatBritishOrdinalDate, formatPlaytimeCompact, getPlatformLabel } from "@/lib/gaming/gaming-utils";
-import { canLaunchGame, openGameLauncher } from "@/lib/gaming/launchers";
+import { canLaunchGame } from "@/lib/gaming/launchers";
 
 export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtwork, onDeleteLocalGame }) {
   const data = useAchievements(game);
@@ -41,7 +41,7 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
           <div style={s.shade}/>
           <div className="gaming-expanded-actions" style={{ ...s.top, justifyContent: "flex-end" }}>
             <div style={s.actionGroup}>
-              {canLaunchGame(game) ? <button type="button" className="gaming-expanded-play-button" style={{ ...s.icon, ...s.play }} aria-label={`Play ${game.title} through Steam`} title="Play through Steam" onClick={() => openGameLauncher(game)}><Play size={15} fill="currentColor"/>Play</button> : null}
+              {canLaunchGame(game) ? <a className="gaming-expanded-play-button" href={game.launchUrl} style={{ ...s.icon, ...s.play }} aria-label={`Play ${game.title} through Steam`} title="Play through Steam"><Play size={15} fill="currentColor"/>Play</a> : null}
               <button type="button" style={{ ...s.icon, opacity: data.loading ? .62 : 1 }} disabled={data.loading} aria-label="Sync achievements" title="Sync achievements" onClick={data.refresh}><RefreshCw size={16}/></button>
               {game.source === "local" ? <button type="button" style={s.icon} aria-label="Artwork settings" onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={16}/></button> : null}
               <button type="button" style={s.icon} aria-label="Close" onClick={onClose}><X size={18}/></button>
@@ -147,7 +147,7 @@ const s = {
   shade: { position: "absolute", inset: 0, background: "linear-gradient(0deg,rgba(2,6,23,.78),transparent 72%)" },
   top: { position: "absolute", inset: "16px 18px auto", display: "flex", alignItems: "center", justifyContent: "space-between" },
   actionGroup: { display: "flex", alignItems: "center", gap: 8 },
-  play: { width: "auto", padding: "0 13px", display: "inline-flex", alignItems: "center", gap: 7, font: "inherit", fontSize: 12, fontWeight: 800 },
+  play: { width: "auto", padding: "0 13px", display: "inline-flex", alignItems: "center", gap: 7, font: "inherit", fontSize: 12, fontWeight: 800, textDecoration: "none" },
   icon: { width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.25)", background: "rgba(15,23,42,.55)", color: "#fff", display: "grid", placeItems: "center", cursor: "pointer", backdropFilter: "blur(12px)" },
   brand: { position: "absolute", left: 32, bottom: 22, color: "#fff" },
   logo: { width: "min(390px,70vw)", maxHeight: 88, objectFit: "contain", objectPosition: "left" },
