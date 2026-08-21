@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import WritingEditorModule from "@/components/features/writing/components/WritingEditorModule";
+import GrammarExplanationModal from "@/components/features/writing/components/GrammarExplanationModal";
+import WritingCompletionModal from "@/components/features/writing/components/WritingCompletionModal";
 import WritingLibraryModule from "@/components/features/writing/components/WritingLibraryModule";
 import WritingVisualisationModule from "@/components/features/writing/components/WritingVisualisationModule";
 import {
@@ -20,6 +22,8 @@ import {
   removeWritingEntry,
   upsertWritingEntry,
 } from "@/components/features/writing/utils/writingStorage";
+
+const WRITING_PROMPT_CACHE_KEY = "jp-writing-coach-prompt-v3";
 
 export default function WritingSection({
   styles,
@@ -44,6 +48,35 @@ export default function WritingSection({
   const [coachNotice, setCoachNotice] = useState("");
   const [loadingCoachPrompt, setLoadingCoachPrompt] = useState(false);
   const [loadingCoachFeedback, setLoadingCoachFeedback] = useState(false);
+  const [grammarLevel, setGrammarLevel] = useState("N4");
+  const [grammarExplanation, setGrammarExplanation] = useState(null);
+  const [grammarExplanationError, setGrammarExplanationError] = useState("");
+  const [loadingGrammarExplanation, setLoadingGrammarExplanation] = useState(false);
+  const [isGrammarExplanationOpen, setIsGrammarExplanationOpen] = useState(false);
+  const [writingCompletion, setWritingCompletion] = useState(null);
+
+  useEffect(() => {
+    const savedLevel = window.localStorage.getItem("writing-coach-jlpt-level");
+    if (["N5", "N4", "N3", "N2", "N1"].includes(savedLevel)) {
+      setGrammarLevel(savedLevel);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const cachedPrompt = JSON.parse(
+        window.localStorage.getItem(getPromptCacheKey(authUserId)) || "null",
+      );
+      const validCachedPrompt =
+        cachedPrompt &&
+        typeof cachedPrompt === "object" &&
+        cachedPrompt.grammarHintJapanese &&
+        cachedPrompt.grammarHintJapaneseFurigana;
+      setCoachPrompt(validCachedPrompt ? cachedPrompt : null);
+    } catch {
+      setCoachPrompt(null);
+    }
+  }, [authUserId]);
 
   useEffect(() => {
     let isActive = true;
@@ -180,6 +213,7 @@ export default function WritingSection({
         },
         body: JSON.stringify({
           action: "prompt",
+          jlptLevel: grammarLevel,
         }),
       });
       const payload = await response.json();
@@ -188,13 +222,69 @@ export default function WritingSection({
         throw new Error(payload?.error || "Unable to generate a writing prompt.");
       }
 
-      setCoachPrompt(payload.prompt);
+      const nextPrompt = {
+        ...payload.prompt,
+        source: payload?.fallback ? "fallback" : "ai",
+        model: payload?.model || "",
+        jlptLevel: grammarLevel,
+      };
+      setCoachPrompt(nextPrompt);
+      window.localStorage.setItem(getPromptCacheKey(authUserId), JSON.stringify(nextPrompt));
     } catch (error) {
       setCoachError(error?.message || "Unable to generate a writing prompt.");
     } finally {
       setLoadingCoachPrompt(false);
     }
+  }, [authUserId, grammarLevel]);
+
+  const handleGrammarLevelChange = useCallback((nextLevel) => {
+    setGrammarLevel(nextLevel);
+    window.localStorage.setItem("writing-coach-jlpt-level", nextLevel);
   }, []);
+
+  const handleExplainGrammar = useCallback(async () => {
+    if (!coachPrompt?.grammarPoint) {
+      return;
+    }
+
+    setIsGrammarExplanationOpen(true);
+    setGrammarExplanationError("");
+
+    if (
+      grammarExplanation?.grammarPoint === coachPrompt.grammarPoint &&
+      grammarExplanation?.level === (coachPrompt.jlptLevel || grammarLevel)
+    ) {
+      return;
+    }
+
+    setGrammarExplanation(null);
+    setLoadingGrammarExplanation(true);
+
+    try {
+      const response = await fetch("/api/writing/coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "explanation",
+          grammarPoint: coachPrompt.grammarPoint,
+          jlptLevel: coachPrompt.jlptLevel || grammarLevel,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.explanation) {
+        throw new Error(payload?.error || "Unable to explain this grammar point.");
+      }
+
+      setGrammarExplanation(payload.explanation);
+    } catch (error) {
+      setGrammarExplanationError(error?.message || "Unable to explain this grammar point.");
+    } finally {
+      setLoadingGrammarExplanation(false);
+    }
+  }, [coachPrompt, grammarExplanation, grammarLevel]);
 
   const handleGetCoachFeedback = useCallback(async () => {
     const nextBody = entryBody.trim();
@@ -228,7 +318,11 @@ export default function WritingSection({
         throw new Error(payload?.error || "Unable to generate writing feedback.");
       }
 
-      setCoachFeedback(payload.feedback);
+      setCoachFeedback({
+        ...payload.feedback,
+        source: payload?.fallback ? "fallback" : "ai",
+        model: payload?.model || "",
+      });
       setCoachNotice(payload?.notice || "");
     } catch (error) {
       setCoachError(error?.message || "Unable to generate writing feedback.");
@@ -274,9 +368,9 @@ export default function WritingSection({
 
     setSavingEntry(true);
     const { entry: persistedEntry, error } = await persistWritingEntry(nextEntry, authUserId, mode);
-    setSavingEntry(false);
 
     if (error || !persistedEntry) {
+      setSavingEntry(false);
       setStatusMessage(error?.message || "Failed to save writing entry.");
       return;
     }
@@ -298,7 +392,37 @@ export default function WritingSection({
         },
       );
     }
-  }, [authUserId, entries, entryBody, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
+
+    let assessment = null;
+    try {
+      const assessmentResponse = await fetch("/api/writing/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assessment",
+          body: nextBody,
+          coachPrompt,
+        }),
+      });
+      const assessmentPayload = await assessmentResponse.json();
+      if (assessmentResponse.ok && assessmentPayload?.assessment) {
+        assessment = assessmentPayload.assessment;
+      }
+    } catch {
+      assessment = null;
+    }
+
+    setSavingEntry(false);
+    const nextWritingSummary = buildWritingSummary(nextEntries);
+    setWritingCompletion({
+      assessment,
+      estimatedWords: persistedEntry.estimatedWords,
+      characterCount: persistedEntry.characterCount,
+      streak: nextWritingSummary.currentStreak,
+      preview: persistedEntry.preview,
+    });
+    playWritingCompletionJingle();
+  }, [authUserId, coachPrompt, entries, entryBody, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
 
   const handleDeleteEntry = useCallback(async () => {
     if (!selectedEntry) {
@@ -341,7 +465,8 @@ export default function WritingSection({
   }, [authUserId, onWritingTotalsRefresh, selectedEntry, setWordsWritten]);
 
   return (
-    <div
+    <>
+      <div
       style={{
         ...styles.listeningMainGrid,
         gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.55fr) minmax(320px, 1fr)",
@@ -365,8 +490,10 @@ export default function WritingSection({
           coachFeedback={coachFeedback}
           coachError={coachError}
           coachNotice={coachNotice}
+          grammarLevel={grammarLevel}
           isGeneratingPrompt={loadingCoachPrompt}
           isGeneratingFeedback={loadingCoachFeedback}
+          isExplainingGrammar={loadingGrammarExplanation}
           onContentChange={(nextValue) => {
             setEntryBody(nextValue);
             setCoachFeedback(null);
@@ -381,6 +508,8 @@ export default function WritingSection({
           onDelete={handleDeleteEntry}
           onGeneratePrompt={handleGenerateCoachPrompt}
           onGetFeedback={handleGetCoachFeedback}
+          onGrammarLevelChange={handleGrammarLevelChange}
+          onExplainGrammar={handleExplainGrammar}
         />
       </div>
 
@@ -414,6 +543,57 @@ export default function WritingSection({
           summary={writingSummary}
         />
       ) : null}
-    </div>
+      </div>
+
+      <GrammarExplanationModal
+        open={isGrammarExplanationOpen}
+        explanation={grammarExplanation}
+        loading={loadingGrammarExplanation}
+        error={grammarExplanationError}
+        onClose={() => setIsGrammarExplanationOpen(false)}
+      />
+
+      <WritingCompletionModal
+        completion={writingCompletion}
+        onClose={() => setWritingCompletion(null)}
+      />
+    </>
   );
+}
+
+function getPromptCacheKey(userId = "") {
+  return `${WRITING_PROMPT_CACHE_KEY}:${userId || "local"}`;
+}
+
+function playWritingCompletionJingle() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const completionAudio = new Audio("/sounds/shadowing-session-complete.mp3");
+  completionAudio.volume = 0.65;
+  completionAudio.play().catch(() => playSynthesizedWritingJingle());
+}
+
+function playSynthesizedWritingJingle() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) {
+    return;
+  }
+
+  const context = new AudioContext();
+  const startAt = context.currentTime + 0.03;
+  [523.25, 659.25, 783.99].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, startAt + index * 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.1, startAt + index * 0.12 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + index * 0.12 + 0.22);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(startAt + index * 0.12);
+    oscillator.stop(startAt + index * 0.12 + 0.24);
+  });
+  window.setTimeout(() => void context.close(), 700);
 }
