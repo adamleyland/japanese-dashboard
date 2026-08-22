@@ -134,7 +134,7 @@ export async function POST(request) {
     const model = getOptionalServerEnv("OPENROUTER_MODEL") || DEFAULT_MODEL;
     const appName = getOptionalServerEnv("OPENROUTER_APP_NAME");
     const siteUrl = getOptionalServerEnv("OPENROUTER_SITE_URL");
-    const responseJson = await requestCoachCompletion({
+    const parsed = await requestParsedCoachCompletion({
       action,
       payload,
       model,
@@ -142,8 +142,6 @@ export async function POST(request) {
       appName,
       siteUrl,
     });
-    const content = extractMessageContent(responseJson);
-    const parsed = parseJsonResponse(content);
 
     if (action === "prompt") {
       return NextResponse.json({
@@ -262,6 +260,23 @@ async function requestCoachCompletion({ action, payload, model, apiKey, appName,
   }
 
   throw lastError || new Error("Unable to reach OpenRouter.");
+}
+
+async function requestParsedCoachCompletion(options) {
+  const maximumAttempts = options.action === "assessment" ? 2 : 1;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
+    try {
+      const responseJson = await requestCoachCompletion(options);
+      const content = extractMessageContent(responseJson);
+      return parseJsonResponse(content);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Unable to parse the writing coach response.");
 }
 
 function buildOpenRouterHeaders({ apiKey, appName, siteUrl }) {
@@ -397,7 +412,7 @@ function buildOpenRouterRequest(action, payload, model) {
     return {
       model,
       temperature: 0.2,
-      max_tokens: 1000,
+      max_tokens: 1400,
       response_format: { type: "json_object" },
       messages: [
         {

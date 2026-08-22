@@ -653,6 +653,9 @@ export default function WritingSection({
           isSaving={savingEntry}
           isDeleting={deletingEntry}
           coachPrompt={coachPrompt}
+          grammarPointProgress={grammarProgress.points.find(
+            (point) => point.id === coachPrompt?.grammarPointId,
+          ) || null}
           coachFeedback={coachFeedback}
           coachError={coachError}
           coachNotice={coachNotice}

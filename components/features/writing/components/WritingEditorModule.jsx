@@ -5,6 +5,7 @@ import {
   BookOpenText,
   Check,
   ChevronDown,
+  ChevronUp,
   FilePlus2,
   MessageCircleQuestion,
   MessageSquareQuote,
@@ -30,6 +31,7 @@ export default function WritingEditorModule({
   isSaving = false,
   isDeleting = false,
   coachPrompt = null,
+  grammarPointProgress = null,
   coachFeedback = null,
   coachError = "",
   coachNotice = "",
@@ -46,9 +48,19 @@ export default function WritingEditorModule({
   onGrammarLevelChange,
   onExplainGrammar,
 }) {
+  const [isPromptExpanded, setIsPromptExpanded] = useState(true);
   const saveDisabled = !metrics.characterCount || isSaving || isDeleting;
   const feedbackDisabled =
     !metrics.characterCount || isSaving || isDeleting || isGeneratingPrompt || isGeneratingFeedback;
+  const isPromptCollapsed = isMobile && coachPrompt && !isPromptExpanded;
+  const grammarMasteryLabel = grammarPointProgress
+    ? `${formatGrammarStatus(grammarPointProgress.status)} · ${grammarPointProgress.masteryScore}%`
+    : "";
+
+  const handleGeneratePrompt = () => {
+    setIsPromptExpanded(true);
+    onGeneratePrompt();
+  };
 
   return (
     <div
@@ -91,17 +103,54 @@ export default function WritingEditorModule({
               />
               <button
                 type="button"
-                onClick={onGeneratePrompt}
+                onClick={handleGeneratePrompt}
                 style={localStyles.coachSecondaryButton(isGeneratingPrompt || isGeneratingFeedback)}
                 disabled={isGeneratingPrompt || isGeneratingFeedback}
               >
                 <RefreshCcw size={14} />
                 {isGeneratingPrompt ? "Generating..." : coachPrompt ? "Refresh prompt" : "Get prompt"}
               </button>
+              {isMobile && coachPrompt ? (
+                <button
+                  type="button"
+                  onClick={() => setIsPromptExpanded((current) => !current)}
+                  style={localStyles.promptToggleButton}
+                  aria-expanded={isPromptExpanded}
+                  aria-label={isPromptExpanded ? "Collapse writing prompt" : "Expand writing prompt"}
+                  title={isPromptExpanded ? "Collapse prompt" : "Expand prompt"}
+                >
+                  {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              ) : null}
             </div>
           </div>
 
-          {coachPrompt ? (
+          {isPromptCollapsed ? (
+            <div style={localStyles.collapsedPromptSummary}>
+              <div style={localStyles.collapsedPromptItem}>
+                <span style={localStyles.collapsedPromptLabel}>Topic</span>
+                <span lang="ja" style={localStyles.collapsedPromptValue}>
+                  {coachPrompt.topicJapanese || coachPrompt.topic}
+                </span>
+              </div>
+              <div style={localStyles.collapsedPromptItem}>
+                <span style={localStyles.collapsedPromptLabelRow}>
+                  <span style={localStyles.collapsedPromptLabel}>Grammar</span>
+                  {grammarMasteryLabel ? (
+                    <span
+                      style={localStyles.masteryBadge(true)}
+                      title={`Grammar mastery: ${grammarMasteryLabel}`}
+                    >
+                      {grammarMasteryLabel}
+                    </span>
+                  ) : null}
+                </span>
+                <FuriganaText style={localStyles.collapsedPromptValue}>
+                  {coachPrompt.grammarPointFurigana || coachPrompt.grammarPoint}
+                </FuriganaText>
+              </div>
+            </div>
+          ) : coachPrompt ? (
             <>
               <div style={localStyles.promptGrid(isMobile)}>
                 <div style={localStyles.promptPanel(isMobile)}>
@@ -120,9 +169,19 @@ export default function WritingEditorModule({
 
                 <div style={localStyles.promptPanel(isMobile)}>
                   <div style={localStyles.promptPanelHeader}>
-                    <FuriganaText style={localStyles.grammarPointValue}>
-                      {coachPrompt.grammarPointFurigana || coachPrompt.grammarPoint}
-                    </FuriganaText>
+                    <div style={localStyles.grammarPointHeading}>
+                      <FuriganaText style={localStyles.grammarPointValue}>
+                        {coachPrompt.grammarPointFurigana || coachPrompt.grammarPoint}
+                      </FuriganaText>
+                      {grammarMasteryLabel ? (
+                        <span
+                          style={localStyles.masteryBadge(false)}
+                          title={`Grammar mastery: ${grammarMasteryLabel}`}
+                        >
+                          {grammarMasteryLabel}
+                        </span>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
                       onClick={onExplainGrammar}
@@ -134,9 +193,9 @@ export default function WritingEditorModule({
                       <BookOpenText size={14} />
                     </button>
                   </div>
-                  <FuriganaText style={localStyles.grammarHintJapanese}>
-                    {coachPrompt.grammarHintJapaneseFurigana || coachPrompt.grammarHintJapanese}
-                  </FuriganaText>
+                  <div lang="ja" style={localStyles.grammarHintJapanese}>
+                    {coachPrompt.grammarHintJapanese}
+                  </div>
                   <div style={localStyles.grammarHintEnglish}>{coachPrompt.grammarHint}</div>
                   <div style={localStyles.exampleChip}>
                     <FuriganaText style={localStyles.exampleText}>
@@ -153,8 +212,7 @@ export default function WritingEditorModule({
                     style={localStyles.talkingPointGrid(isMobile)}
                   >
                     {coachPrompt.talkingPoints.map((point, index) => (
-                      <div key={`${point.english}-${index}`} style={localStyles.talkingPoint}>
-                        <span>{point.english}</span>
+                      <div key={`${point.japanese}-${index}`} style={localStyles.talkingPoint}>
                         <span lang="ja" style={localStyles.talkingPointJapanese}>{point.japanese}</span>
                       </div>
                     ))}
@@ -383,6 +441,16 @@ function JlptLevelMenu({ value, onChange, disabled = false }) {
   );
 }
 
+function formatGrammarStatus(status) {
+  return {
+    unseen: "New",
+    learning: "Learning",
+    improving: "Improving",
+    strong: "Strong",
+    mastered: "Mastered",
+  }[status] || "New";
+}
+
 const localStyles = {
   editorShell: {
     display: "grid",
@@ -450,6 +518,60 @@ const localStyles = {
     gap: "7px",
     opacity: disabled ? 0.65 : 1,
   }),
+  promptToggleButton: {
+    width: "38px",
+    height: "38px",
+    flex: "0 0 38px",
+    border: "1px solid var(--app-border-soft)",
+    borderRadius: "999px",
+    background: "var(--app-pill-track)",
+    color: "var(--app-text-muted)",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  collapsedPromptSummary: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    gap: "8px",
+    padding: "9px 10px",
+    borderRadius: "14px",
+    border: "1px solid var(--app-border-soft)",
+    background: "var(--app-surface-elevated)",
+  },
+  collapsedPromptItem: {
+    minWidth: 0,
+    display: "grid",
+    gap: "2px",
+  },
+  collapsedPromptLabel: {
+    fontSize: "9px",
+    lineHeight: 1.2,
+    fontWeight: 800,
+    letterSpacing: "0.07em",
+    textTransform: "uppercase",
+    color: "var(--app-text-muted)",
+  },
+  collapsedPromptLabelRow: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "5px",
+  },
+  collapsedPromptValue: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: "13px",
+    lineHeight: 1.5,
+    fontWeight: 700,
+    color: "var(--app-text)",
+  },
   coachPrimaryButton: (disabled) => ({
     border: "none",
     background: disabled
@@ -574,6 +696,26 @@ const localStyles = {
     alignItems: "center",
     gap: "8px",
   },
+  grammarPointHeading: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  masteryBadge: (compact) => ({
+    flexShrink: 0,
+    width: "fit-content",
+    padding: compact ? "2px 5px" : "3px 7px",
+    borderRadius: "999px",
+    border: "1px solid rgba(16,185,129,0.18)",
+    background: "rgba(16,185,129,0.1)",
+    color: "#047857",
+    fontSize: compact ? "8px" : "10px",
+    lineHeight: 1.2,
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+  }),
   explainButton: {
     border: "1px solid rgba(16,185,129,0.18)",
     background: "rgba(16,185,129,0.09)",
@@ -640,8 +782,8 @@ const localStyles = {
     scrollSnapAlign: "start",
   },
   talkingPointJapanese: {
-    color: "var(--app-text-soft)",
-    fontWeight: 500,
+    color: "var(--app-text)",
+    fontWeight: 650,
   },
   sentenceStarter: {
     display: "flex",
