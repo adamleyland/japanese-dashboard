@@ -434,8 +434,7 @@ function buildOpenRouterRequest(action, payload, model) {
             "naturalnessScore (integer from 0 to 15)",
             "grammarAssessment (an object with attempted, used, correctnessScore, naturalnessScore, qualityScore, evidence, and feedback)",
             "detectedGrammar (an array of objects with grammarPointId, attempted, used, correctnessScore, naturalnessScore, qualityScore, evidence, and feedback)",
-            "strength (one short English phrase)",
-            "nextFocus (one short English phrase)",
+            "mainImprovement (one short, specific and actionable English sentence)",
             "",
             "Rubric:",
             "- Communication: 35 points for conveying a comprehensible idea.",
@@ -696,8 +695,10 @@ function sanitizeAssessmentPayload(payload) {
     naturalnessScore,
     grammarAssessment,
     detectedGrammar,
-    strength: sanitizeString(payload?.strength, "You communicated a clear idea"),
-    nextFocus: sanitizeString(payload?.nextFocus, "Keep building one natural sentence at a time"),
+    mainImprovement: sanitizeString(
+      payload?.mainImprovement,
+      grammarAssessment?.feedback || "Keep building one natural sentence at a time.",
+    ),
   };
 }
 

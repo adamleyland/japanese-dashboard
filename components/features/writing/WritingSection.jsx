@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpenCheck, PenLine } from "lucide-react";
 import WritingEditorModule from "@/components/features/writing/components/WritingEditorModule";
 import GrammarLibraryModule from "@/components/features/writing/components/GrammarLibraryModule";
@@ -36,6 +36,9 @@ import {
 } from "@/components/features/writing/utils/grammarProgress";
 
 const WRITING_PROMPT_CACHE_KEY = "jp-writing-coach-prompt-v4";
+const WRITING_GOAL_STORAGE_KEY = "jp-writing-goal-words";
+const WRITING_GOAL_SETTINGS_STORAGE_KEY = "jp-writing-goal-settings-open";
+const DEFAULT_WRITING_GOAL = 10000;
 
 export default function WritingSection({
   styles,
@@ -70,6 +73,27 @@ export default function WritingSection({
   const [grammarAttempts, setGrammarAttempts] = useState([]);
   const [loadingGrammarAttempts, setLoadingGrammarAttempts] = useState(Boolean(authUserId));
   const [grammarSyncNotice, setGrammarSyncNotice] = useState("");
+  const [writingGoalWords, setWritingGoalWords] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_WRITING_GOAL;
+    const storedGoal = Number(window.localStorage.getItem(WRITING_GOAL_STORAGE_KEY));
+    return Number.isFinite(storedGoal) && storedGoal > 0 ? storedGoal : DEFAULT_WRITING_GOAL;
+  });
+  const [writingGoalSettingsOpen, setWritingGoalSettingsOpen] = useState(() => (
+    typeof window !== "undefined" &&
+    window.localStorage.getItem(WRITING_GOAL_SETTINGS_STORAGE_KEY) === "true"
+  ));
+  const feedbackRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    window.localStorage.setItem(WRITING_GOAL_STORAGE_KEY, String(writingGoalWords));
+  }, [writingGoalWords]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      WRITING_GOAL_SETTINGS_STORAGE_KEY,
+      String(writingGoalSettingsOpen),
+    );
+  }, [writingGoalSettingsOpen]);
 
   useEffect(() => {
     const savedLevel = window.localStorage.getItem("writing-coach-jlpt-level");
@@ -206,9 +230,11 @@ export default function WritingSection({
   );
 
   const resetCoachFeedback = useCallback(() => {
+    feedbackRequestIdRef.current += 1;
     setCoachFeedback(null);
     setCoachError("");
     setCoachNotice("");
+    setLoadingCoachFeedback(false);
   }, []);
 
   const handleSelectEntry = useCallback(
@@ -248,9 +274,13 @@ export default function WritingSection({
   const handleNewEntry = useCallback(() => {
     setSelectedEntryId(null);
     setEntryBody("");
+    setCoachPrompt(null);
     setStatusMessage("Ready for a new entry.");
+    setWritingCompletion(null);
+    setIsGrammarExplanationOpen(false);
+    window.localStorage.removeItem(getPromptCacheKey(authUserId));
     resetCoachFeedback();
-  }, [resetCoachFeedback]);
+  }, [authUserId, resetCoachFeedback]);
 
   const handleGenerateCoachPrompt = useCallback(async (requestedPoint = null) => {
     setLoadingCoachPrompt(true);
@@ -369,6 +399,8 @@ export default function WritingSection({
 
   const handleGetCoachFeedback = useCallback(async () => {
     const nextBody = entryBody.trim();
+    const requestId = feedbackRequestIdRef.current + 1;
+    feedbackRequestIdRef.current = requestId;
 
     if (!nextBody) {
       setCoachError("Write a little first, then ask for feedback.");
@@ -399,6 +431,8 @@ export default function WritingSection({
         throw new Error(payload?.error || "Unable to generate writing feedback.");
       }
 
+      if (feedbackRequestIdRef.current !== requestId) return;
+
       setCoachFeedback({
         ...payload.feedback,
         source: payload?.fallback ? "fallback" : "ai",
@@ -406,11 +440,14 @@ export default function WritingSection({
       });
       setCoachNotice(payload?.notice || "");
     } catch (error) {
+      if (feedbackRequestIdRef.current !== requestId) return;
       setCoachError(error?.message || "Unable to generate writing feedback.");
       setCoachFeedback(null);
       setCoachNotice("");
     } finally {
-      setLoadingCoachFeedback(false);
+      if (feedbackRequestIdRef.current === requestId) {
+        setLoadingCoachFeedback(false);
+      }
     }
   }, [coachPrompt, entryBody]);
 
@@ -475,6 +512,7 @@ export default function WritingSection({
     }
 
     let assessment = null;
+    let grammarPointsUsed = [];
     try {
       const grammarCandidates = findGrammarCandidates(
         nextBody,
@@ -519,6 +557,18 @@ export default function WritingSection({
           }
         });
 
+        grammarPointsUsed = trackedAssessments
+          .filter((item) => (
+            item.grammarPoint.level === grammarLevel && item.grammarAssessment.used
+          ))
+          .map((item) => ({
+            id: item.grammarPoint.id,
+            japanese: item.grammarPoint.japanese,
+            meaning: item.grammarPoint.meaning,
+            level: item.grammarPoint.level,
+            qualityScore: item.grammarAssessment.qualityScore,
+          }));
+
         const progressResults = await Promise.all(trackedAssessments.map((item) =>
           persistGrammarAttempt({
             userId: authUserId,
@@ -553,10 +603,13 @@ export default function WritingSection({
       estimatedWords: persistedEntry.estimatedWords,
       characterCount: persistedEntry.characterCount,
       streak: nextWritingSummary.currentStreak,
-      preview: persistedEntry.preview,
+      grammarLevel,
+      grammarPointsUsed,
+      mainImprovement:
+        assessment?.mainImprovement || assessment?.grammarAssessment?.feedback || "",
     });
     playWritingCompletionJingle();
-  }, [authUserId, coachPrompt, entries, entryBody, grammarProgress.points, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
+  }, [authUserId, coachPrompt, entries, entryBody, grammarLevel, grammarProgress.points, onWritingTotalsRefresh, selectedEntryId, setWordsWritten]);
 
   const handleDeleteEntry = useCallback(async () => {
     if (!selectedEntry) {
@@ -687,6 +740,10 @@ export default function WritingSection({
           styles={styles}
           isMobile
           summary={writingSummary}
+          goalWords={writingGoalWords}
+          setGoalWords={setWritingGoalWords}
+          settingsOpen={writingGoalSettingsOpen}
+          setSettingsOpen={setWritingGoalSettingsOpen}
         />
       ) : null}
 
@@ -710,6 +767,10 @@ export default function WritingSection({
           styles={styles}
           isMobile={isMobile}
           summary={writingSummary}
+          goalWords={writingGoalWords}
+          setGoalWords={setWritingGoalWords}
+          settingsOpen={writingGoalSettingsOpen}
+          setSettingsOpen={setWritingGoalSettingsOpen}
         />
       ) : null}
       </div>
@@ -725,7 +786,7 @@ export default function WritingSection({
 
       <WritingCompletionModal
         completion={writingCompletion}
-        onClose={() => setWritingCompletion(null)}
+        onClose={handleNewEntry}
       />
     </>
   );

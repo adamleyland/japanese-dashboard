@@ -256,11 +256,13 @@ export default function WritingEditorModule({
               <button
                 type="button"
                 onClick={onDelete}
-                style={localStyles.deleteButton}
+                style={localStyles.deleteButton(isMobile)}
                 disabled={isSaving || isDeleting}
+                aria-label={isDeleting ? "Deleting entry" : "Delete entry"}
+                title={isDeleting ? "Deleting entry…" : "Delete entry"}
               >
                 <Trash2 size={15} />
-                {isDeleting ? "Deleting..." : "Delete"}
+                {isMobile ? null : isDeleting ? "Deleting..." : "Delete"}
               </button>
             ) : null}
             <button
@@ -862,18 +864,22 @@ const localStyles = {
     gap: "10px",
     flexWrap: "wrap",
   },
-  deleteButton: {
+  deleteButton: (isMobile) => ({
     border: "1px solid rgba(239,68,68,0.22)",
     background: "rgba(239,68,68,0.1)",
     color: "#dc2626",
     borderRadius: "14px",
-    padding: "11px 14px",
+    width: isMobile ? "42px" : "auto",
+    height: isMobile ? "42px" : "auto",
+    padding: isMobile ? 0 : "11px 14px",
     cursor: "pointer",
     fontWeight: 700,
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
-  },
+    justifyContent: "center",
+    flex: isMobile ? "0 0 42px" : undefined,
+  }),
   secondaryButton: {
     border: "1px solid var(--app-border-soft)",
     background: "var(--app-surface-elevated)",

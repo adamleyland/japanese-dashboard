@@ -64,9 +64,10 @@ export default function WritingCompletionModal({ completion, onClose }) {
           </div>
         )}
 
-        {completion.preview ? (
-          <div lang="ja" style={completionStyles.entryPreview}>{completion.preview}</div>
-        ) : null}
+        <GrammarUsedSummary
+          level={completion.grammarLevel}
+          grammarPoints={completion.grammarPointsUsed}
+        />
 
         <div style={completionStyles.stats}>
           <CompletionStat value={completion.estimatedWords} label="words" />
@@ -74,15 +75,11 @@ export default function WritingCompletionModal({ completion, onClose }) {
           <CompletionStat value={completion.streak} label="day streak" icon={Flame} />
         </div>
 
-        {assessment ? (
+        {completion.mainImprovement ? (
           <div style={completionStyles.notes}>
             <div style={completionStyles.noteRow}>
-              <span style={completionStyles.noteLabel}>Strongest</span>
-              <span>{assessment.strength}</span>
-            </div>
-            <div style={completionStyles.noteRow}>
-              <span style={completionStyles.noteLabel}>Next focus</span>
-              <span>{assessment.nextFocus}</span>
+              <span style={completionStyles.noteLabel}>Main improvement</span>
+              <span>{completion.mainImprovement}</span>
             </div>
           </div>
         ) : null}
@@ -106,8 +103,35 @@ function AchievementBadge({ achieved, icon: Icon, label }) {
 function CompletionStat({ value, label, icon: Icon }) {
   return (
     <div style={completionStyles.stat}>
-      <strong>{Icon ? <><Icon size={14} /> {value}</> : value}</strong>
+      {Icon ? <Icon size={15} style={completionStyles.statIcon} /> : null}
+      <strong>{value}</strong>
       <span>{label}</span>
+    </div>
+  );
+}
+
+function GrammarUsedSummary({ level, grammarPoints = [] }) {
+  const uniquePoints = grammarPoints.filter(
+    (point, index, points) => points.findIndex((candidate) => candidate.id === point.id) === index,
+  );
+
+  return (
+    <div style={completionStyles.grammarSummary}>
+      <div style={completionStyles.grammarSummaryLabel}>{level || "Current level"} grammar used</div>
+      {uniquePoints.length ? (
+        <div style={completionStyles.grammarChipRow}>
+          {uniquePoints.map((point) => (
+            <div key={point.id} style={completionStyles.grammarChip}>
+              <span lang="ja" style={completionStyles.grammarJapanese}>{point.japanese}</span>
+              <span style={completionStyles.grammarScore}>{point.qualityScore}%</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={completionStyles.grammarEmpty}>
+          No {level || "current-level"} grammar points were confidently detected this time.
+        </div>
+      )}
     </div>
   );
 }
@@ -170,13 +194,20 @@ const completionStyles = {
   scoreOutOf: { fontSize: "15px", color: "rgba(255,255,255,0.62)", fontWeight: 700 },
   scoreTier: { width: "100%", marginTop: "3px", color: "#bfdbfe", fontSize: "12px", fontWeight: 750 },
   summary: { maxWidth: "340px", color: "rgba(255,255,255,0.8)", fontSize: "13px", lineHeight: 1.55 },
-  entryPreview: { width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "13px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.88)", fontSize: "13px", lineHeight: 1.65, textAlign: "left" },
+  grammarSummary: { width: "100%", boxSizing: "border-box", display: "grid", gap: "8px", padding: "10px 12px", borderRadius: "13px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "left" },
+  grammarSummaryLabel: { color: "#bfdbfe", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.055em", fontSize: "9px" },
+  grammarChipRow: { display: "flex", flexWrap: "wrap", gap: "7px" },
+  grammarChip: { display: "inline-flex", alignItems: "center", gap: "7px", padding: "6px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.1)" },
+  grammarJapanese: { color: "rgba(255,255,255,0.92)", fontSize: "12px", fontWeight: 750 },
+  grammarScore: { color: "#d9f99d", fontSize: "10px", fontWeight: 800 },
+  grammarEmpty: { color: "rgba(255,255,255,0.68)", fontSize: "11px", lineHeight: 1.45 },
   achievementRow: { display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "7px" },
   achievementBadge: (achieved) => ({ display: "inline-flex", alignItems: "center", gap: "5px", padding: "7px 9px", borderRadius: "999px", color: achieved ? "#d9f99d" : "rgba(255,255,255,0.67)", background: achieved ? "rgba(132,204,22,0.16)" : "rgba(255,255,255,0.08)", border: achieved ? "1px solid rgba(190,242,100,0.2)" : "1px solid rgba(255,255,255,0.1)", fontSize: "11px", fontWeight: 750 }),
   stats: { width: "100%", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "7px", marginTop: "2px" },
-  stat: { display: "grid", gap: "3px", padding: "10px 4px", borderRadius: "12px", background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.66)", fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.055em" },
+  stat: { display: "grid", justifyItems: "center", gap: "3px", padding: "10px 4px", borderRadius: "12px", background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.66)", fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.055em" },
+  statIcon: { color: "#fb923c", marginBottom: "1px" },
   notes: { width: "100%", display: "grid", gap: "1px", overflow: "hidden", borderRadius: "13px", background: "rgba(255,255,255,0.08)", textAlign: "left" },
-  noteRow: { display: "grid", gridTemplateColumns: "76px minmax(0,1fr)", gap: "8px", padding: "9px 11px", color: "rgba(255,255,255,0.8)", fontSize: "11px", lineHeight: 1.4, borderBottom: "1px solid rgba(255,255,255,0.06)" },
+  noteRow: { display: "grid", gap: "5px", padding: "10px 11px", color: "rgba(255,255,255,0.8)", fontSize: "11px", lineHeight: 1.45 },
   noteLabel: { color: "#bfdbfe", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.045em", fontSize: "9px" },
   primaryButton: { width: "100%", minHeight: "45px", marginTop: "2px", border: "none", borderRadius: "14px", background: "#facc15", color: "#422006", fontWeight: 850, fontSize: "14px", cursor: "pointer" },
 };
