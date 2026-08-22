@@ -58,11 +58,11 @@ const styles = {
   card: (compact, fullWidth) => ({
     border:
       compact && fullWidth
-        ? "1px solid rgba(255,255,255,0.1)"
+        ? "1px solid var(--app-border-soft)"
         : "1px solid var(--app-border-soft)",
     background:
       compact && fullWidth
-        ? "linear-gradient(180deg, rgba(30,41,59,0.94) 0%, rgba(30,41,59,0.9) 100%)"
+        ? "var(--app-card)"
         : "var(--app-card)",
     borderRadius: compact && fullWidth ? "20px" : "18px",
     padding: compact ? "12px" : "14px",
@@ -76,7 +76,7 @@ const styles = {
     flex: fullWidth ? "1 1 auto" : "0 0 auto",
     boxShadow:
       compact && fullWidth
-        ? "0 16px 34px rgba(15,23,42,0.16)"
+        ? "0 8px 22px rgba(15,23,42,0.1)"
         : "0 12px 28px rgba(15,23,42,0.08)",
   }),
   cover: (coverImage, coverGradient, useBareArtwork, showArtworkOverlay) => ({
@@ -130,23 +130,23 @@ const styles = {
     display: "grid",
     gap: "4px",
   },
-  title: (overlay) => ({
+  title: () => ({
     fontSize: "14px",
     fontWeight: 700,
-    color: overlay ? "#f8fafc" : "var(--app-text)",
+    color: "var(--app-text)",
     lineHeight: 1.3,
   }),
-  author: (overlay) => ({
+  author: () => ({
     fontSize: "12px",
-    color: overlay ? "rgba(226,232,240,0.72)" : "var(--app-text-muted)",
+    color: "var(--app-text-muted)",
   }),
-  progressMeta: (overlay) => ({
+  progressMeta: () => ({
     display: "flex",
     justifyContent: "space-between",
     gap: "10px",
     alignItems: "center",
     fontSize: "11px",
-    color: overlay ? "rgba(226,232,240,0.72)" : "var(--app-text-muted)",
+    color: "var(--app-text-muted)",
   }),
   progressLabel: {
     fontWeight: 700,
@@ -154,11 +154,11 @@ const styles = {
   progressTime: {
     whiteSpace: "nowrap",
   },
-  progressTrack: (overlay) => ({
+  progressTrack: () => ({
     height: "6px",
     borderRadius: "999px",
-    background: overlay ? "rgba(255,255,255,0.08)" : "var(--app-progress-track)",
-    border: overlay ? "1px solid rgba(255,255,255,0.08)" : "1px solid var(--app-border-soft)",
+    background: "var(--app-progress-track)",
+    border: "1px solid var(--app-border-soft)",
     overflow: "hidden",
   }),
   progressFill: (progressPercent, accentColor) => ({

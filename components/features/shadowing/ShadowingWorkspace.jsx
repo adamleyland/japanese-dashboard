@@ -35,6 +35,7 @@ import {
   fetchProfileShadowingGoal,
   persistProfileShadowingGoal,
 } from "@/lib/profiles";
+import { readFreshSupabaseAuthState } from "@/lib/auth";
 
 const DEFAULT_SHADOWING_GOAL = 250;
 const SHOW_SHADOWING_GARDEN = false;
@@ -400,6 +401,21 @@ async function parseJsonResponse(response) {
   }
 
   return payload;
+}
+
+async function fetchWithFreshAuth(input, init) {
+  let response = await fetch(input, init);
+  if (response.status !== 401) {
+    return response;
+  }
+
+  const authState = await readFreshSupabaseAuthState({ forceRefresh: true });
+  if (!authState.session || !authState.user) {
+    return response;
+  }
+
+  response = await fetch(input, init);
+  return response;
 }
 
 function createImportSessionId() {
@@ -1175,7 +1191,17 @@ export default function ShadowingWorkspace({
     setDeckCardsError("");
 
     try {
-      const payload = await parseJsonResponse(await fetch("/api/shadowing/decks"));
+      const response = await fetchWithFreshAuth("/api/shadowing/decks");
+      if (response.status === 401) {
+        setDecks([]);
+        setDeckCardsById({});
+        setDeckCardsLoadedById({});
+        setSelectedDeckId("");
+        setDecksError("Your session has expired. Sign in again to load shadowing decks.");
+        return;
+      }
+
+      const payload = await parseJsonResponse(response);
       const availableDecks = Array.isArray(payload?.decks) ? payload.decks : [];
       logShadowingDebug("loaded decks", availableDecks);
       setDecks(availableDecks);

@@ -11,10 +11,13 @@ export default function ReadingBookDetails({
   const detailItems = [
     { key: "author", label: "Author", value: book.author },
     { key: "isbn", label: "ISBN", value: book.isbn },
+    { key: "published", label: "Published", value: book.salesDateLabel },
+    { key: "added", label: "Added", value: formatBookDate(book.createdAt) },
     ...(includeStatus ? [{ key: "status", label: "Status", value: book.statusLabel }] : []),
   ].filter((item) => item.value);
 
-  const hasDetails = Boolean(book.caption || detailItems.length || book.rakutenUrl);
+  const hasProgress = typeof book.progressPercent === "number";
+  const hasDetails = Boolean(hasProgress || book.caption || detailItems.length || book.rakutenUrl);
 
   if (!hasDetails) {
     return (
@@ -26,6 +29,26 @@ export default function ReadingBookDetails({
 
   return (
     <div style={{ display: "grid", gap: "12px" }}>
+      {hasProgress ? (
+        <div style={detailStyles.progressCard}>
+          <div style={detailStyles.progressHeader}>
+            <span>Reading progress</span>
+            <strong>{Math.round(book.progressPercent)}%</strong>
+          </div>
+          <div
+            role="progressbar"
+            aria-label={`Reading progress ${Math.round(book.progressPercent)}%`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(book.progressPercent)}
+            style={detailStyles.progressTrack}
+          >
+            <span style={detailStyles.progressFill(book.progressPercent)} />
+          </div>
+          <span style={detailStyles.progressNote}>Synced from your current LingQ book.</span>
+        </div>
+      ) : null}
+
       {book.caption ? (
         <p
           style={{
@@ -110,3 +133,52 @@ export default function ReadingBookDetails({
     </div>
   );
 }
+
+function formatBookDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+const detailStyles = {
+  progressCard: {
+    display: "grid",
+    gap: "9px",
+    padding: "13px",
+    borderRadius: "16px",
+    border: "1px solid rgba(59,130,246,0.16)",
+    background: "rgba(59,130,246,0.07)",
+  },
+  progressHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    color: "var(--app-text)",
+    fontSize: "12px",
+    fontWeight: 750,
+  },
+  progressTrack: {
+    height: "7px",
+    overflow: "hidden",
+    borderRadius: "999px",
+    background: "var(--app-progress-track, #e2e8f0)",
+  },
+  progressFill: (value) => ({
+    display: "block",
+    width: `${Math.max(0, Math.min(100, value))}%`,
+    height: "100%",
+    borderRadius: "inherit",
+    background: "linear-gradient(90deg, #3b82f6, #6366f1)",
+  }),
+  progressNote: {
+    color: "var(--app-text-muted)",
+    fontSize: "10px",
+    lineHeight: 1.4,
+  },
+};

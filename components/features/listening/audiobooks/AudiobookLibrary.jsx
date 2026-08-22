@@ -74,7 +74,8 @@ export default function AudiobookLibrary({
         : "No audiobooks are available right now.";
 
   return (
-    <section style={isOverlay ? styles.overlaySection : styles.section}>
+    <section style={isOverlay ? styles.overlaySection(showHelperText) : styles.section}>
+      <style>{`.audiobook-library-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }`}</style>
       <div style={isOverlay ? styles.overlaySectionHeader : styles.sectionHeader}>
         <input
           type="search"
@@ -128,6 +129,7 @@ export default function AudiobookLibrary({
       {filteredBooks.length ? (
         <div
           ref={shelfRef}
+          className="audiobook-library-scroll"
           style={isOverlay ? styles.overlayList : styles.shelf}
           onWheel={isOverlay ? undefined : handleWheel}
         >
@@ -180,12 +182,14 @@ const styles = {
     display: "grid",
     gap: "12px",
   },
-  overlaySection: {
+  overlaySection: (showHelperText) => ({
     display: "grid",
-    gridTemplateRows: "auto auto minmax(0, 1fr)",
+    gridTemplateRows: showHelperText
+      ? "auto auto minmax(0, 1fr)"
+      : "auto minmax(0, 1fr)",
     gap: "14px",
     minHeight: 0,
-  },
+  }),
   sectionHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -206,7 +210,7 @@ const styles = {
   },
   overlaySectionHint: {
     fontSize: "12px",
-    color: "rgba(226,232,240,0.68)",
+    color: "var(--app-text-muted)",
   },
   filterTrack: {
     display: "inline-flex",
@@ -223,31 +227,25 @@ const styles = {
     scrollbarWidth: "none",
   },
   overlayFilterTrack: {
-    background: "rgba(255,255,255,0.08)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+    background: "var(--app-pill-track)",
+    border: "1px solid var(--app-border-soft)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5)",
   },
-  filterButton: ({ active, iconOnly, overlay }) => ({
+  filterButton: ({ active, iconOnly }) => ({
     border: "none",
     background: active
-      ? overlay
-        ? "rgba(248,250,252,0.18)"
-        : "var(--app-selected-surface)"
+      ? "var(--app-selected-surface)"
       : "transparent",
     color: active
-      ? overlay
-        ? "#f8fafc"
-        : "var(--app-selected-text)"
-      : overlay
-        ? "rgba(226,232,240,0.72)"
-        : "var(--app-text-muted)",
+      ? "var(--app-selected-text)"
+      : "var(--app-text-muted)",
     borderRadius: "999px",
     padding: iconOnly ? "8px" : "8px 14px",
     fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
     transition: "all 160ms ease",
-    boxShadow: active && !overlay ? "0 6px 18px rgba(15,23,42,0.08)" : "none",
+    boxShadow: active ? "0 6px 18px rgba(15,23,42,0.08)" : "none",
     width: iconOnly ? "36px" : "auto",
     height: iconOnly ? "36px" : "auto",
     display: "inline-flex",
@@ -274,13 +272,16 @@ const styles = {
     gap: "14px",
     overflowX: "auto",
     paddingBottom: "8px",
-    scrollbarWidth: "thin",
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
   },
   overlayList: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "14px",
     overflowY: "auto",
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
     paddingRight: "4px",
     minHeight: 0,
   },
@@ -295,19 +296,19 @@ const styles = {
   overlaySearchInput: {
     width: "100%",
     flex: "1 1 auto",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#f8fafc",
-    borderRadius: "14px",
+    border: "1px solid var(--app-border)",
+    background: "var(--app-surface)",
+    color: "var(--app-text)",
+    borderRadius: "999px",
     padding: "12px 14px",
     fontSize: "13px",
     lineHeight: 1.2,
     boxShadow: "none",
   },
   overlayEmptyState: {
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.04)",
-    color: "rgba(248,250,252,0.82)",
+    border: "1px dashed var(--app-border-soft)",
+    background: "var(--app-surface-soft)",
+    color: "var(--app-text-muted)",
     borderRadius: "18px",
     padding: "18px",
     fontSize: "13px",

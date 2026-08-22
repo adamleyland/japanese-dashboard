@@ -11,6 +11,7 @@ export default function ReadingBookModal({
   book,
   onClose,
   styles,
+  isMobile = false,
   isCompact,
   onStatusChange,
   statusUpdatingIds,
@@ -45,14 +46,14 @@ export default function ReadingBookModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1000,
+        zIndex: 10020,
         background: "var(--app-overlay)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: isCompact ? "16px" : "20px",
+        padding: isMobile ? 0 : isCompact ? "16px" : "20px",
       }}
       onMouseDown={onClose}
     >
@@ -62,16 +63,36 @@ export default function ReadingBookModal({
         aria-label={book.title}
         onMouseDown={(event) => event.stopPropagation()}
         style={{
-          width: "min(760px, 100%)",
-          maxHeight: "min(720px, calc(100dvh - 32px))",
+          width: isMobile ? "100%" : "min(760px, 100%)",
+          height: isMobile ? "100dvh" : "auto",
+          maxHeight: isMobile ? "100dvh" : "min(720px, calc(100dvh - 32px))",
           overflowY: "auto",
-          borderRadius: "24px",
-          border: "1px solid var(--app-border-soft)",
-          background: "var(--app-surface-strong)",
-          boxShadow: "0 28px 70px rgba(15,23,42,0.2)",
-          padding: isCompact ? "16px" : "18px",
+          borderRadius: isMobile ? 0 : "24px",
+          border: isMobile ? "none" : "1px solid var(--app-border-soft)",
+          background: isMobile ? "#ffffff" : "var(--app-surface-strong)",
+          boxShadow: isMobile ? "none" : "0 28px 70px rgba(15,23,42,0.2)",
+          padding: isMobile
+            ? "calc(16px + env(safe-area-inset-top, 0px)) 16px calc(18px + env(safe-area-inset-bottom, 0px))"
+            : isCompact ? "16px" : "18px",
           display: "grid",
           gap: "16px",
+          ...(isMobile ? {
+            color: "#0f172a",
+            "--app-surface": "#ffffff",
+            "--app-surface-strong": "#ffffff",
+            "--app-surface-soft": "#f8fafc",
+            "--app-surface-elevated": "#ffffff",
+            "--app-card": "#ffffff",
+            "--app-border": "rgba(15, 23, 42, 0.12)",
+            "--app-border-soft": "rgba(15, 23, 42, 0.07)",
+            "--app-text": "#0f172a",
+            "--app-text-soft": "#334155",
+            "--app-text-muted": "#64748b",
+            "--app-pill-track": "#f1f5f9",
+            "--app-selected-surface": "#111827",
+            "--app-selected-text": "#ffffff",
+            "--app-progress-track": "#e2e8f0",
+          } : null),
         }}
       >
         <div
@@ -134,14 +155,14 @@ export default function ReadingBookModal({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isCompact ? "1fr" : "200px minmax(0, 1fr)",
+            gridTemplateColumns: isMobile || isCompact ? "1fr" : "200px minmax(0, 1fr)",
             gap: "18px",
             alignItems: "start",
           }}
         >
           <ReadingCoverArtwork
             item={book}
-            width={isCompact ? "100%" : 200}
+            width={isMobile || isCompact ? "min(220px, 62vw)" : 200}
             borderRadius={20}
           />
 

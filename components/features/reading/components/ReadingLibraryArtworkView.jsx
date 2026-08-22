@@ -15,7 +15,7 @@ export default function ReadingLibraryArtworkView({
   const [selectedBookId, setSelectedBookId] = useState(null);
   const columns = useMemo(() => {
     if (isMobile) {
-      return "repeat(3, minmax(0, 1fr))";
+      return "repeat(2, minmax(0, 1fr))";
     }
 
     if (isCompact) {
@@ -41,18 +41,25 @@ export default function ReadingLibraryArtworkView({
             type="button"
             onClick={() => setSelectedBookId(item.id)}
             style={{
+              position: "relative",
               width: "100%",
-              border: "none",
+              aspectRatio: "2 / 3",
+              border: "1px solid var(--app-border-soft)",
               borderRadius: "20px",
               overflow: "hidden",
-              background: "transparent",
+              background: "var(--app-surface-soft)",
               cursor: "pointer",
               padding: 0,
-              boxShadow: "none",
+              boxShadow: "0 8px 22px rgba(15,23,42,0.1)",
             }}
             aria-label={`Open details for ${item.title}`}
           >
             <ReadingCoverArtwork item={item} width="100%" borderRadius={20} />
+            <span style={artworkStyles.statusBadge}>
+              {typeof item.progressPercent === "number"
+                ? `${Math.round(item.progressPercent)}%`
+                : item.statusLabel}
+            </span>
           </button>
         ))}
       </div>
@@ -61,6 +68,7 @@ export default function ReadingLibraryArtworkView({
         book={selectedBook}
         onClose={() => setSelectedBookId(null)}
         styles={styles}
+        isMobile={isMobile}
         isCompact={isCompact}
         onStatusChange={onStatusChange}
         statusUpdatingIds={statusUpdatingIds}
@@ -68,3 +76,20 @@ export default function ReadingLibraryArtworkView({
     </>
   );
 }
+
+const artworkStyles = {
+  statusBadge: {
+    position: "absolute",
+    left: "10px",
+    bottom: "10px",
+    border: "1px solid rgba(255,255,255,0.2)",
+    borderRadius: "999px",
+    background: "rgba(15,23,42,0.64)",
+    color: "#fff",
+    padding: "6px 9px",
+    fontSize: "10px",
+    fontWeight: 800,
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+  },
+};

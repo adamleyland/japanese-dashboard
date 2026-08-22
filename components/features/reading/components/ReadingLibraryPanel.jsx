@@ -69,6 +69,7 @@ export default function ReadingLibraryPanel({
       <ReadingLibraryListView
         styles={styles}
         items={items}
+        isMobile={isMobile}
         isCompact={isCompact}
         onStatusChange={onStatusChange}
         statusUpdatingIds={statusUpdatingIds}
@@ -239,10 +240,13 @@ export default function ReadingLibraryPanel({
       </div>
 
       <div
+        className="reading-library-scroll"
         style={{
           minHeight: 0,
           height: "100%",
           overflowY: "auto",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
           paddingRight: "4px",
           paddingBottom: "2px",
           overscrollBehavior: "contain",
@@ -250,6 +254,7 @@ export default function ReadingLibraryPanel({
       >
         {renderBody()}
       </div>
+      <style>{`.reading-library-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }`}</style>
     </div>
   );
 }

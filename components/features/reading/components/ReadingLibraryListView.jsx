@@ -1,40 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import ReadingBookDetails from "@/components/features/reading/components/ReadingBookDetails";
+import { ChevronRight } from "lucide-react";
+import ReadingBookModal from "@/components/features/reading/components/ReadingBookModal";
 import ReadingCoverArtwork from "@/components/features/reading/components/ReadingCoverArtwork";
 import ReadingStatusControl from "@/components/features/reading/components/ReadingStatusControl";
 
 export default function ReadingLibraryListView({
   styles,
   items,
+  isMobile = false,
   isCompact,
   onStatusChange,
   statusUpdatingIds,
 }) {
-  const [expandedBookId, setExpandedBookId] = useState(null);
-  const resolvedExpandedBookId = items.some((item) => item.id === expandedBookId)
-    ? expandedBookId
-    : null;
+  const [selectedBookId, setSelectedBookId] = useState(null);
+  const selectedBook = items.find((item) => item.id === selectedBookId) || null;
 
   return (
-    <div style={{ display: "grid", gap: "10px" }}>
+    <>
+      <div style={{ display: "grid", gap: "10px" }}>
       {items.map((item) => {
-        const isExpanded = resolvedExpandedBookId === item.id;
-
         return (
           <article
             key={item.id}
             style={{
               borderRadius: "20px",
-              border: isExpanded
-                ? "1px solid rgba(59,130,246,0.24)"
-                : "1px solid var(--app-border-soft)",
+              border: "1px solid var(--app-border-soft)",
               background: "var(--app-card)",
-              boxShadow: isExpanded
-                ? "0 16px 32px rgba(59,130,246,0.08)"
-                : "0 10px 24px rgba(15,23,42,0.05)",
+              boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
               overflow: "hidden",
               transition: "border-color 160ms ease, box-shadow 160ms ease",
             }}
@@ -42,20 +36,14 @@ export default function ReadingLibraryListView({
             <div
               role="button"
               tabIndex={0}
-              onClick={() =>
-                setExpandedBookId((currentValue) =>
-                  (resolvedExpandedBookId ?? currentValue) === item.id ? null : item.id,
-                )
-              }
+              onClick={() => setSelectedBookId(item.id)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  setExpandedBookId((currentValue) =>
-                    (resolvedExpandedBookId ?? currentValue) === item.id ? null : item.id,
-                  );
+                  setSelectedBookId(item.id);
                 }
               }}
-              aria-expanded={isExpanded}
+              aria-label={`Open details for ${item.title}`}
               style={{
                 width: "100%",
                 outline: "none",
@@ -137,35 +125,27 @@ export default function ReadingLibraryListView({
                       fontWeight: 700,
                     }}
                   >
-                    {isExpanded ? "Hide details" : "Show details"}
-                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    View details
+                    <ChevronRight size={14} />
                   </span>
                 </div>
               </div>
             </div>
 
-            {isExpanded ? (
-              <div
-                style={{
-                  borderTop: "1px solid var(--app-border-soft)",
-                  padding: "0 12px 12px 12px",
-                }}
-              >
-                <div
-                  style={{
-                    borderRadius: "16px",
-                    background: "var(--app-surface-elevated)",
-                    border: "1px solid var(--app-border-soft)",
-                    padding: "14px",
-                  }}
-                >
-                  <ReadingBookDetails book={item} styles={styles} compact={isCompact} />
-                </div>
-              </div>
-            ) : null}
           </article>
         );
       })}
-    </div>
+      </div>
+
+      <ReadingBookModal
+        book={selectedBook}
+        onClose={() => setSelectedBookId(null)}
+        styles={styles}
+        isMobile={isMobile}
+        isCompact={isCompact}
+        onStatusChange={onStatusChange}
+        statusUpdatingIds={statusUpdatingIds}
+      />
+    </>
   );
 }

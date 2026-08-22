@@ -152,15 +152,27 @@ export default function ReadingTab({
     };
   }, [isMobile]);
 
-  const readingItems = readingLibrary.items;
+  const readingItems = useMemo(() => {
+    const lingqTitle = normalizeComparableTitle(lingqStats.bookTitle);
+    const bookProgress = normalizeProgressPercent(lingqStats.bookProgress);
+
+    if (!lingqTitle || bookProgress === null) {
+      return readingLibrary.items;
+    }
+
+    return readingLibrary.items.map((item) => (
+      normalizeComparableTitle(item.title) === lingqTitle
+        ? {
+            ...item,
+            progressPercent: bookProgress,
+            progressLabel: `${Math.round(bookProgress)}% complete`,
+          }
+        : item
+    ));
+  }, [lingqStats.bookProgress, lingqStats.bookTitle, readingLibrary.items]);
   const libraryCurrentBook = useMemo(() => getCurrentlyReadingItem(readingItems), [readingItems]);
   const currentBook = useMemo(() => {
-    const bookProgress =
-      typeof lingqStats.bookProgress === "number"
-        ? lingqStats.bookProgress <= 1
-          ? lingqStats.bookProgress * 100
-          : lingqStats.bookProgress
-        : null;
+    const bookProgress = normalizeProgressPercent(lingqStats.bookProgress);
 
     if (lingqStats.bookTitle || lingqStats.chapterTitle || lingqStats.bookImage) {
       return {
@@ -302,7 +314,6 @@ export default function ReadingTab({
               <div style={mobileStyles.librarySheet}>
                 <div style={mobileStyles.librarySheetHeader}>
                   <div style={mobileStyles.librarySheetHeaderCopy}>
-                    <div style={mobileStyles.librarySheetEyebrow}>Library</div>
                     <h3 style={mobileStyles.librarySheetTitle}>Reading Library</h3>
                   </div>
 
@@ -390,35 +401,49 @@ const mobileStyles = {
     position: "fixed",
     inset: 0,
     zIndex: 10001,
+    width: "100%",
+    height: "100dvh",
+    background: "#ffffff",
   },
   libraryBackdrop: {
-    position: "absolute",
-    inset: 0,
-    background: "rgba(2, 6, 23, 0.72)",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
+    display: "none",
   },
   librarySheet: {
     position: "absolute",
-    inset: "10px",
+    inset: 0,
     display: "grid",
     gridTemplateRows: "auto minmax(0, 1fr)",
-    gap: "14px",
-    border: "1px solid var(--app-border-soft)",
-    background: "var(--app-card)",
-    borderRadius: "24px",
-    padding: "16px",
-    boxShadow: "0 24px 60px rgba(2, 6, 23, 0.32)",
+    gap: "10px",
+    border: "none",
+    background: "#ffffff",
+    borderRadius: 0,
+    padding: "calc(12px + env(safe-area-inset-top, 0px)) 14px calc(12px + env(safe-area-inset-bottom, 0px))",
+    boxShadow: "none",
+    color: "#0f172a",
+    "--app-surface": "#ffffff",
+    "--app-surface-strong": "#ffffff",
+    "--app-surface-soft": "#f8fafc",
+    "--app-surface-elevated": "#ffffff",
+    "--app-card": "#ffffff",
+    "--app-card-muted": "#f8fafc",
+    "--app-border": "rgba(15, 23, 42, 0.12)",
+    "--app-border-soft": "rgba(15, 23, 42, 0.07)",
+    "--app-text": "#0f172a",
+    "--app-text-soft": "#334155",
+    "--app-text-muted": "#64748b",
+    "--app-pill-track": "#f1f5f9",
+    "--app-pill-slider": "#ffffff",
+    "--app-selected-surface": "#111827",
+    "--app-selected-border": "#111827",
+    "--app-selected-text": "#ffffff",
   },
   librarySheetHeader: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: "12px",
   },
   librarySheetHeaderCopy: {
-    display: "grid",
-    gap: "6px",
     minWidth: 0,
   },
   libraryHeaderActions: {
@@ -427,33 +452,35 @@ const mobileStyles = {
     gap: "10px",
     flexShrink: 0,
   },
-  librarySheetEyebrow: {
-    fontSize: "11px",
-    fontWeight: 700,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    color: "var(--app-text-muted)",
-  },
   librarySheetTitle: {
     margin: 0,
-    fontSize: "24px",
-    fontWeight: 700,
+    fontSize: "22px",
+    fontWeight: 800,
     lineHeight: 1.15,
     letterSpacing: "-0.03em",
     color: "var(--app-text)",
   },
   libraryHeaderIconButton: {
-    width: "42px",
-    height: "42px",
+    width: "38px",
+    height: "38px",
     border: "1px solid var(--app-border)",
     background: "var(--app-surface)",
     color: "var(--app-text-soft)",
-    borderRadius: "14px",
+    borderRadius: "999px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    boxShadow: "none",
     flexShrink: 0,
   },
 };
+
+function normalizeProgressPercent(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, value <= 1 ? value * 100 : value));
+}
+
+function normalizeComparableTitle(value) {
+  return String(value || "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
