@@ -134,7 +134,13 @@ export default function GamingTab({
 
     return window.localStorage.getItem(GAMING_GOAL_SETTINGS_STORAGE_KEY) === "true";
   });
-  const { totalMinutes, topGames } = useGamingTotals(games);
+  // Keep local-game records available for the integration, but hide them from
+  // the Games experience until that source is brought back.
+  const displayGames = useMemo(
+    () => games.filter((game) => game?.source !== "local"),
+    [games],
+  );
+  const { totalMinutes, topGames } = useGamingTotals(displayGames);
 
   const setGamingGoal = useCallback(
     (nextValueOrUpdater, { source = "user", userIdOverride } = {}) => {
@@ -335,18 +341,23 @@ export default function GamingTab({
     };
   }, [isMobile]);
 
-  const includedGames = useMemo(() => selectIncludedGames(games), [games]);
+  const includedGames = useMemo(() => selectIncludedGames(displayGames), [displayGames]);
 
   const visibleGames = useMemo(
-    () => getVisibleLibraryGames(games, { sortKey, sourceFilter, viewMode: libraryView }),
-    [games, libraryView, sortKey, sourceFilter],
+    () =>
+      getVisibleLibraryGames(displayGames, {
+        sortKey,
+        sourceFilter,
+        viewMode: libraryView,
+      }),
+    [displayGames, libraryView, sortKey, sourceFilter],
   );
 
   const currentGame = useMemo(
     () => getCurrentlyPlayingGame(includedGames),
     [includedGames],
   );
-  const hasSourceData = games.length > 0;
+  const hasSourceData = displayGames.length > 0;
 
   const handleRefresh = useCallback(() => {
     refreshAll();
