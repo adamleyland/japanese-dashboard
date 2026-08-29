@@ -92,9 +92,13 @@ export default function GamingTab({
       return DEFAULT_GAMING_SOURCE_FILTER;
     }
 
-    return (
-      window.localStorage.getItem(GAMING_SOURCE_STORAGE_KEY) || DEFAULT_GAMING_SOURCE_FILTER
-    );
+    const storedSourceFilter = window.localStorage.getItem(GAMING_SOURCE_STORAGE_KEY);
+
+    // The local-games integration is temporarily hidden from the UI. Reset any
+    // previously saved selection so the library does not open to an empty view.
+    return storedSourceFilter === "local"
+      ? DEFAULT_GAMING_SOURCE_FILTER
+      : storedSourceFilter || DEFAULT_GAMING_SOURCE_FILTER;
   });
   const [libraryView, setLibraryView] = useState(() => {
     if (typeof window === "undefined") {

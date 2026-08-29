@@ -47,7 +47,7 @@ export default function GamingLibraryPanel({
           label={
             showExcludedOnly
               ? "No excluded games right now. Toggle a game out of the total to move it here."
-              : "No games found yet. Connect Steam or Xbox, or send a game from a Local Games companion client."
+              : "No games found yet. Add a non-Steam game to Steam, then sync it from the Steam Local Games companion."
           }
         />
       );

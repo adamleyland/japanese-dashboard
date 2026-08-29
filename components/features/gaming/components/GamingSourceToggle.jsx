@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOff, Library, Monitor } from "lucide-react";
+import { EyeOff, Library } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
 import { SteamGlyph, XboxGlyph } from "@/components/features/gaming/components/GamingSourceIcons";
 
@@ -14,8 +14,20 @@ export default function GamingSourceToggle({
   onToggleExcludedView,
   fillWidth = false,
 }) {
-  const isConnected = (source) => Boolean(sourceStatus[source]?.configured && !sourceStatus[source]?.loading && !sourceStatus[source]?.error);
-  const statusLabel = (source) => sourceStatus[source]?.loading ? "loading" : isConnected(source) ? "connected" : sourceStatus[source]?.error ? "connection issue" : "not connected";
+  const isConnected = (source) =>
+    Boolean(
+      sourceStatus[source]?.configured &&
+        !sourceStatus[source]?.loading &&
+        !sourceStatus[source]?.error,
+    );
+  const statusLabel = (source) =>
+    sourceStatus[source]?.loading
+      ? "loading"
+      : isConnected(source)
+        ? "connected"
+        : sourceStatus[source]?.error
+          ? "connection issue"
+          : "not connected";
 
   return (
     <div
@@ -43,7 +55,7 @@ export default function GamingSourceToggle({
             icon: function SteamFilterIcon() {
               return <SteamGlyph color={isConnected("steam") ? "#1b8fd8" : "currentColor"} size={14} />;
             },
-            ariaLabel: `Steam games · ${statusLabel("steam")}`,
+            ariaLabel: `Steam games - ${statusLabel("steam")}`,
           },
           {
             value: "xbox",
@@ -51,18 +63,10 @@ export default function GamingSourceToggle({
             icon: function XboxFilterIcon() {
               return <XboxGlyph color={isConnected("xbox") ? "#107c10" : "currentColor"} size={14} />;
             },
-            ariaLabel: `Xbox games · ${statusLabel("xbox")}`,
-          },
-          {
-            value: "local",
-            label: "Local",
-            icon: function LocalFilterIcon() {
-              return <Monitor color={isConnected("local") ? "#8b5cf6" : "currentColor"} size={14} />;
-            },
-            ariaLabel: `Local games · ${statusLabel("local")}`,
+            ariaLabel: `Xbox games - ${statusLabel("xbox")}`,
           },
         ]}
-        width={isMobile ? (fillWidth ? "calc(100% - 48px)" : 160) : isCompact ? 372 : 420}
+        width={isMobile ? (fillWidth ? "calc(100% - 48px)" : 160) : isCompact ? 286 : 330}
         size="sm"
         iconOnly={isMobile}
       />

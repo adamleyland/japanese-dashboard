@@ -24,10 +24,11 @@ export async function POST(request) {
     }
 
     const payload = await request.json().catch(() => ({}));
-    const gameId = text(payload?.gameId, 255);
+    // Steam companions should use Steam's stable shortcut/app identifier here.
+    const gameId = text(payload?.gameId || payload?.steamShortcutId, 255);
     const name = text(payload?.name);
     const coverImageUrl = text(payload?.coverImageUrl, 2000) || null;
-    const metadataProvider = text(payload?.metadataProvider, 100) || "client";
+    const metadataProvider = text(payload?.metadataProvider, 100) || "steam-shortcut";
     const metadata = payload?.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
       ? payload.metadata
       : {};
