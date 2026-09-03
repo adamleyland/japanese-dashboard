@@ -32,7 +32,7 @@ The update keeps the saved dashboard URL and token, replaces the tracker, and re
 
 ## Achievements
 
-The same service scans each non-Steam shortcut's Proton prefix and game directory for common local `achievements.json`, `achievements.ini`, and `user_stats.ini` formats. Recognised unlocks sync automatically. Games that use a proprietary or cloud-only achievement store still retain playtime tracking and achievement definitions, but their unlock state may need a format-specific adapter.
+The same service scans each non-Steam shortcut's Proton prefix and game directory for its real Steam AppID plus common local `achievements.json`, `achievements.ini`, and `user_stats.ini` formats. Recognised definitions and unlocks sync automatically. For an unusual installation, open the game's dashboard settings and enter its Steam AppID manually; a separate title override is available for display and fallback matching. Games that use a proprietary or cloud-only achievement store still retain playtime tracking and achievement definitions, but their unlock state may need a format-specific adapter.
 
 Verify the service with:
 

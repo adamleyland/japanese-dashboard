@@ -114,15 +114,38 @@ function LocalSettings({ game, save, remove }) {
   const [cover, setCover] = useState(game.artworkUrl || "");
   const [heroEdit, setHeroEdit] = useState(null);
   const [logoEdit, setLogoEdit] = useState(null);
+  const [steamAppId, setSteamAppId] = useState(metadata.achievementProviderGameId || "");
+  const [titleOverride, setTitleOverride] = useState(metadata.title_override || "");
   const hero = heroEdit ?? metadata.heroArtworkUrl ?? artwork.heroArtworkUrl ?? "";
   const logo = logoEdit ?? metadata.logoArtworkUrl ?? artwork.logoArtworkUrl ?? "";
 
   return <div style={s.settings}>
-    <strong>Artwork overrides</strong>
+    <strong>Game overrides</strong>
+    <label style={{ display: "grid", gap: 6 }}>
+      <span style={{ fontSize: 11, fontWeight: 800, color: "var(--app-text-muted)" }}>Title override</span>
+      <input
+        type="text"
+        style={{ width: "100%", minWidth: 0, padding: "10px 12px", border: "1px solid var(--app-border-strong)", borderRadius: 10, background: "var(--app-surface-strong)", color: "var(--app-text)", font: "inherit", fontSize: 13, outlineColor: "#6366f1" }}
+        value={titleOverride}
+        onChange={(event) => setTitleOverride(event.target.value)}
+        placeholder={metadata.shortcut_name || game.title}
+      />
+    </label>
     <ArtworkUrlField label="Cover artwork URL" value={cover} onChange={setCover}/>
     <ArtworkUrlField label="Hero artwork URL" value={hero} onChange={setHeroEdit}/>
     <ArtworkUrlField label="Logo artwork URL" value={logo} onChange={setLogoEdit}/>
-    <div><button type="button" style={s.sync} onClick={() => save(game, { coverImageUrl: cover, heroArtworkUrl: hero, logoArtworkUrl: logo })}>Save changes</button><button type="button" style={s.delete} onClick={() => { if (window.confirm("Delete this local game permanently?")) remove(game); }}>Delete game</button></div>
+    <label style={{ display: "grid", gap: 6 }}>
+      <span style={{ fontSize: 11, fontWeight: 800, color: "var(--app-text-muted)" }}>Steam AppID for achievements</span>
+      <input
+        inputMode="numeric"
+        pattern="[0-9]*"
+        style={{ width: "100%", minWidth: 0, padding: "10px 12px", border: "1px solid var(--app-border-strong)", borderRadius: 10, background: "var(--app-surface-strong)", color: "var(--app-text)", font: "inherit", fontSize: 13, outlineColor: "#6366f1" }}
+        value={steamAppId}
+        onChange={(event) => setSteamAppId(event.target.value.replace(/\D/g, ""))}
+        placeholder="e.g. 3357650"
+      />
+    </label>
+    <div><button type="button" style={s.sync} onClick={() => save(game, { coverImageUrl: cover, heroArtworkUrl: hero, logoArtworkUrl: logo, achievementProviderGameId: steamAppId, titleOverride })}>Save changes</button><button type="button" style={s.delete} onClick={() => { if (window.confirm("Delete this local game permanently?")) remove(game); }}>Delete game</button></div>
   </div>;
 }
 

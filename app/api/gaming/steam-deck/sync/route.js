@@ -25,6 +25,7 @@ function normalizeGame(game) {
   const name = safeText(game?.name);
   const totalSeconds = Math.max(0, Math.round(Number(game?.totalPlaytimeSeconds) || 0));
   const lastPlayed = game?.lastPlayedAt ? new Date(game.lastPlayedAt) : null;
+  const actualSteamAppId = safeText(game?.actualSteamAppId, 20);
   if (!shortcutId || !name) return null;
 
   return {
@@ -37,6 +38,10 @@ function normalizeGame(game) {
     metadata: {
       tracker_source: "steam-deck",
       steam_app_id: shortcutId,
+      shortcut_name: name,
+      ...(actualSteamAppId
+        ? { achievementProvider: "steam", achievementProviderGameId: actualSteamAppId }
+        : {}),
       executable_path: safeText(game?.executablePath, 2000),
       start_directory: safeText(game?.startDirectory, 2000),
     },
@@ -73,11 +78,14 @@ export async function POST(request) {
     const existingById = new Map((existing || []).map((game) => [game.client_game_id, game]));
     const rows = games.map((game) => {
       const previous = existingById.get(game.client_game_id);
+      const previousMetadata = previous?.metadata || {};
+      const titleOverride = safeText(previousMetadata?.title_override);
       const previousSeconds = Math.max(0, Number(previous?.total_playtime_seconds) || 0);
       const previousLastPlayed = previous?.last_played_at ? new Date(previous.last_played_at) : null;
       const incomingLastPlayed = game.last_played_at ? new Date(game.last_played_at) : null;
       return {
         ...game,
+        game_name: titleOverride || game.game_name,
         user_id: userId,
         cover_image_url: previous?.cover_image_url || null,
         total_playtime_seconds: Math.max(previousSeconds, game.total_playtime_seconds),
@@ -85,7 +93,7 @@ export async function POST(request) {
           previousLastPlayed && (!incomingLastPlayed || previousLastPlayed > incomingLastPlayed)
             ? previousLastPlayed.toISOString()
             : game.last_played_at,
-        metadata: { ...(previous?.metadata || {}), ...game.metadata },
+        metadata: { ...previousMetadata, ...game.metadata },
         updated_at: new Date().toISOString(),
       };
     });

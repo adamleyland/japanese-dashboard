@@ -232,9 +232,12 @@ export function useGamingData(options = {}) {
     localGames.refresh();
   }, [localGames, steamGames, xboxGames]);
 
-  const updateLocalArtwork = useCallback(async (game, { coverImageUrl, heroArtworkUrl, logoArtworkUrl }) => {
+  const updateLocalArtwork = useCallback(async (game, { coverImageUrl, heroArtworkUrl, logoArtworkUrl, achievementProviderGameId, titleOverride }) => {
     if (!["local", "steam-deck"].includes(game?.source)) return;
-    const response = await fetch("/api/gaming/local/games", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId: game.sourceGameId, name: game.title, coverImageUrl, metadataProvider: game.metadataProvider || "manual", metadata: { ...(game.raw?.metadata || {}), heroArtworkUrl, logoArtworkUrl } }) });
+    const metadata = game.raw?.metadata || {};
+    const normalizedTitleOverride = String(titleOverride || "").trim();
+    const shortcutTitle = metadata.shortcut_name || game.title;
+    const response = await fetch("/api/gaming/local/games", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId: game.sourceGameId, name: normalizedTitleOverride || shortcutTitle, coverImageUrl, metadataProvider: game.metadataProvider || "manual", metadata: { ...metadata, heroArtworkUrl, logoArtworkUrl, title_override: normalizedTitleOverride || null, ...(achievementProviderGameId ? { achievementProvider: "steam", achievementProviderGameId } : {}) } }) });
     const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Unable to save artwork."); localGames.refresh();
   }, [localGames]);
   const deleteLocalGame = useCallback(async (game) => {

@@ -12,6 +12,15 @@ SPEC.loader.exec_module(TRACKER)
 
 
 class AchievementParserTests(unittest.TestCase):
+    def test_discovers_real_steam_app_id_in_proton_prefix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            steam_root = Path(directory)
+            game_directory = steam_root / "steamapps/compatdata/2272562375/pfx/drive_c/game"
+            game_directory.mkdir(parents=True)
+            (game_directory / "steam_appid.txt").write_text("3357650\n", encoding="utf-8")
+            game = {"shortcutId": "2272562375", "executablePath": ""}
+            self.assertEqual(TRACKER.find_actual_steam_app_id(game, steam_root), "3357650")
+
     def test_parses_common_json_unlocks(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "achievements.json"

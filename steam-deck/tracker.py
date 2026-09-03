@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 
 ACHIEVEMENT_FILENAMES = {"achievements.json", "achievements.ini", "user_stats.ini"}
+STEAM_APP_ID_FILENAMES = {"steam_appid.txt", "steam_emu.ini", "steamconfig.ini", "tenoke.ini", "valve.ini"}
 SKIPPED_DIRECTORIES = {"audio", "content", "localization", "movies", "paks", "redist", "textures"}
 
 
@@ -108,7 +109,7 @@ def unsigned_app_id(value):
     return int(value) & 0xFFFFFFFF
 
 
-def collect_games(shortcuts_path, localconfig_path):
+def collect_games(shortcuts_path, localconfig_path, steam_root=None):
     shortcuts = parse_shortcuts(shortcuts_path)
     config = parse_text_vdf(localconfig_path)
     apps = (((config.get("Software") or {}).get("Valve") or {}).get("Steam") or {}).get("apps") or {}
@@ -119,14 +120,17 @@ def collect_games(shortcuts_path, localconfig_path):
         record = apps.get(str(signed_id), apps.get(str(app_id), {}))
         minutes = max(0, int(float(record.get("Playtime", 0) or 0)))
         last_played = int(shortcut.get("LastPlayTime", 0) or 0)
-        games.append({
+        game = {
             "shortcutId": str(app_id),
             "name": str(shortcut.get("AppName") or "Untitled Steam shortcut").strip(),
             "totalPlaytimeSeconds": minutes * 60,
             "lastPlayedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_played)) if last_played else None,
             "executablePath": str(shortcut.get("Exe") or ""),
             "startDirectory": str(shortcut.get("StartDir") or ""),
-        })
+        }
+        if steam_root:
+            game["actualSteamAppId"] = find_actual_steam_app_id(game, steam_root)
+        games.append(game)
     return [game for game in games if game["name"]]
 
 
@@ -141,6 +145,30 @@ def achievement_roots(game, steam_root):
     if executable.is_file():
         roots.append(executable.parent)
     return [root for root in roots if root.is_dir()]
+
+
+def find_actual_steam_app_id(game, steam_root):
+    for root in achievement_roots(game, steam_root):
+        for directory, child_directories, filenames in os.walk(root):
+            child_directories[:] = [
+                name for name in child_directories
+                if name.lower() not in SKIPPED_DIRECTORIES
+            ]
+            for filename in filenames:
+                if filename.lower() not in STEAM_APP_ID_FILENAMES:
+                    continue
+                path = Path(directory) / filename
+                try:
+                    contents = path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                if filename.lower() == "steam_appid.txt":
+                    match = re.search(r"\b(\d{3,10})\b", contents)
+                else:
+                    match = re.search(r"^\s*(?:AppId|SteamAppId|id)\s*=\s*(\d{3,10})", contents, re.IGNORECASE | re.MULTILINE)
+                if match:
+                    return match.group(1)
+    return ""
 
 
 def find_achievement_files(game, steam_root):
@@ -304,7 +332,7 @@ def main():
     while True:
         try:
             shortcuts, localconfig, steam_root = steam_files()
-            games = collect_games(shortcuts, localconfig)
+            games = collect_games(shortcuts, localconfig, steam_root)
             if args.print_only:
                 print(json.dumps(games, indent=2))
                 return
