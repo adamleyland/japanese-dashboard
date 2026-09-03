@@ -41,7 +41,7 @@ export async function POST(request) {
 
     const admin = getSupabaseAdminClient();
     let { data: game, error: gameError } = await admin.from("achievement_games")
-      .select("id")
+      .select("id, game_name")
       .eq("user_id", userId)
       .eq("provider", provider)
       .eq("provider_game_id", gameId)
@@ -56,19 +56,25 @@ export async function POST(request) {
         providerGameId: gameId,
         snapshot: { ...snapshot, trackingMode: "steam-deck-companion" },
       });
-      game = { id: gameRecordId };
+      const { data: createdGame, error: createdGameError } = await admin.from("achievement_games")
+        .select("id, game_name")
+        .eq("id", gameRecordId)
+        .single();
+      if (createdGameError) throw createdGameError;
+      game = createdGame;
     }
     if (!game) return NextResponse.json({ error: "Sync this local game's achievement definitions first." }, { status: 404 });
 
     const ids = updates.map((item) => text(item?.id, 255)).filter(Boolean);
     const { data: rows, error: rowsError } = await admin.from("achievements")
-      .select("id, provider_achievement_id, unlocked, progress_current, progress_target")
+      .select("id, provider_achievement_id, name, icon_url, rarity_percentage, unlocked, progress_current, progress_target")
       .eq("achievement_game_id", game.id)
       .in("provider_achievement_id", ids);
     if (rowsError) throw rowsError;
     const rowByProviderId = new Map((rows || []).map((item) => [item.provider_achievement_id, item]));
     const now = new Date().toISOString();
     const unlockEvents = [];
+    const newlyUnlockedAchievements = [];
     const resultRows = [];
 
     for (const update of updates) {
@@ -88,6 +94,14 @@ export async function POST(request) {
       resultRows.push(updated);
       if (unlocked && !existing.unlocked) {
         unlockEvents.push({ achievement_id: existing.id, user_id: userId, source: text(payload.source, 100) || "local-companion", unlocked_at: unlockedAt, metadata: update.metadata || {} });
+        newlyUnlockedAchievements.push({
+          achievementId: existing.provider_achievement_id,
+          achievementName: existing.name,
+          gameTitle: game.game_name,
+          iconUrl: existing.icon_url,
+          rarityPercentage: existing.rarity_percentage,
+          unlockedAt,
+        });
       }
     }
 
@@ -96,7 +110,12 @@ export async function POST(request) {
       if (error) throw error;
     }
     await admin.from("achievement_games").update({ last_synced_at: now, last_sync_error: null, updated_at: now }).eq("id", game.id);
-    return NextResponse.json({ ok: true, updated: resultRows.length, newlyUnlocked: unlockEvents.length });
+    return NextResponse.json({
+      ok: true,
+      updated: resultRows.length,
+      newlyUnlocked: unlockEvents.length,
+      newlyUnlockedAchievements,
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to ingest local achievements." }, { status: 500 });
   }

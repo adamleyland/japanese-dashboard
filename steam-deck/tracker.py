@@ -14,6 +14,7 @@ import urllib.request
 ACHIEVEMENT_FILENAMES = {"achievements.json", "achievements.ini", "user_stats.ini"}
 STEAM_APP_ID_FILENAMES = {"steam_appid.txt", "steam_emu.ini", "steamconfig.ini", "tenoke.ini", "valve.ini"}
 SKIPPED_DIRECTORIES = {"audio", "content", "localization", "movies", "paks", "redist", "textures"}
+DEFAULT_EVENT_FILE = Path.home() / ".local/share/japanese-dashboard/achievement-events.jsonl"
 
 
 def load_env(path):
@@ -315,12 +316,22 @@ def sync_achievements(endpoint, token, game, achievements):
         return json.loads(response.read().decode("utf-8"))
 
 
+def append_unlock_events(path, events):
+    if not events:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        for event in events:
+            stream.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true", help="Sync once and exit")
     parser.add_argument("--print", dest="print_only", action="store_true", help="Print detected games without syncing")
     parser.add_argument("--interval", type=int, default=60)
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/japanese-dashboard/steam-deck.env")
+    parser.add_argument("--event-file", type=Path, default=DEFAULT_EVENT_FILE)
     args = parser.parse_args()
     settings = load_env(args.config)
     endpoint = settings.get("DASHBOARD_URL", "")
@@ -352,6 +363,7 @@ def main():
                 try:
                     achievement_result = sync_achievements(endpoint, token, game, achievements)
                     achievement_count += achievement_result.get("updated", 0)
+                    append_unlock_events(args.event_file, achievement_result.get("newlyUnlockedAchievements", []))
                     achievement_signatures[game["shortcutId"]] = signature
                 except urllib.error.HTTPError as error:
                     detail = error.read().decode("utf-8", errors="replace")

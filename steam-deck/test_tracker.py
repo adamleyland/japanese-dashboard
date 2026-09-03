@@ -55,6 +55,13 @@ Achieved=0
             updates = TRACKER.parse_ini_achievements(path)
             self.assertEqual([item["id"] for item in updates], ["ACH_WIN"])
 
+    def test_appends_unlock_events_as_json_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "events.jsonl"
+            events = [{"achievementName": "First Win", "gameTitle": "Example"}]
+            TRACKER.append_unlock_events(path, events)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), events[0])
+
 
 if __name__ == "__main__":
     unittest.main()

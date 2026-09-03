@@ -34,6 +34,25 @@ The update keeps the saved dashboard URL and token, replaces the tracker, and re
 
 The same service scans each non-Steam shortcut's Proton prefix and game directory for its real Steam AppID plus common local `achievements.json`, `achievements.ini`, and `user_stats.ini` formats. Recognised definitions and unlocks sync automatically. For an unusual installation, open the game's dashboard settings and enter its Steam AppID manually; a separate title override is available for display and fallback matching. Games that use a proprietary or cloud-only achievement store still retain playtime tracking and achievement definitions, but their unlock state may need a format-specific adapter.
 
+### Gaming Mode achievement notifications
+
+After installing Decky Loader, install the Japanese Dashboard plugin:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adamleyland/japanese-dashboard/main/steam-deck/install-decky-plugin.sh | bash
+```
+
+Update the tracker so it can forward newly confirmed unlocks to Decky:
+
+```bash
+cd ~/japanese-dashboard-tracker
+curl -fLO https://raw.githubusercontent.com/adamleyland/japanese-dashboard/main/steam-deck/tracker.py
+curl -fLO https://raw.githubusercontent.com/adamleyland/japanese-dashboard/main/steam-deck/install.sh
+bash install.sh --update
+```
+
+Return to Gaming Mode and open **Decky → Japanese Dashboard Achievements → Show test notification**. Existing achievements are not replayed; notifications are created only when the dashboard confirms a new locked-to-unlocked transition.
+
 Verify the service with:
 
 ```bash
