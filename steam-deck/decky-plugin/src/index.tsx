@@ -1,5 +1,5 @@
 import { ButtonItem, PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
-import { addEventListener, definePlugin, removeEventListener } from "@decky/api";
+import { addEventListener, definePlugin, removeEventListener, toaster } from "@decky/api";
 import { FaTrophy } from "react-icons/fa";
 
 type Achievement = {
@@ -11,6 +11,21 @@ type Achievement = {
 
 let nativeToast: HTMLDivElement | null = null;
 let hideTimer = 0;
+
+function showDeckyToast(item: Achievement) {
+  const rarity = Number(item.rarityPercentage);
+  toaster.toast({
+    title: <span style={{ color: "#facc15", fontSize: "11px", fontWeight: 800, letterSpacing: ".08em" }}>ACHIEVEMENT UNLOCKED</span>,
+    body: <span style={{ fontSize: "16px", fontWeight: 800 }}>{item.achievementName || "Achievement unlocked"}</span>,
+    subtext: <span>{item.gameTitle || "Non-Steam game"}{Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""}</span>,
+    logo: item.iconUrl
+      ? <img src={item.iconUrl} alt="" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" }} />
+      : <FaTrophy style={{ color: "#facc15", fontSize: "30px" }} />,
+    duration: 8000,
+    playSound: true,
+    showToast: true,
+  });
+}
 
 function showNativeToast(item: Achievement) {
   if (!nativeToast) {
@@ -60,11 +75,11 @@ function showNativeToast(item: Achievement) {
 }
 
 function Content() {
-  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showNativeToast({ achievementName: "Battlefield Martial Artist", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
+  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showDeckyToast({ achievementName: "Battlefield Martial Artist", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
 }
 
 export default definePlugin(() => {
-  const listener = addEventListener<[Achievement]>("achievement_unlocked", showNativeToast);
+  const listener = addEventListener<[Achievement]>("achievement_unlocked", showDeckyToast);
   return {
     name: "Japanese Dashboard Achievements",
     titleView: <div className={staticClasses.Title}>Japanese Dashboard</div>,

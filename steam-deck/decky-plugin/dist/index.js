@@ -17,6 +17,7 @@ if (api._version != API_VERSION) {
 }
 const addEventListener = api.addEventListener;
 const removeEventListener = api.removeEventListener;
+const toaster = api.toaster;
 const definePlugin = (fn) => {
     return (...args) => {
         return fn(...args);
@@ -85,65 +86,25 @@ function FaTrophy (props) {
 
 let nativeToast = null;
 let hideTimer = 0;
-function showNativeToast(item) {
-    if (!nativeToast) {
-        nativeToast = document.createElement("div");
-        Object.assign(nativeToast.style, {
-            position: "fixed", zIndex: "999999", top: "22px", right: "22px", width: "430px",
-            minHeight: "104px", display: "grid", gridTemplateColumns: "58px minmax(0,1fr) auto",
-            alignItems: "center", gap: "14px", padding: "14px 16px", overflow: "hidden",
-            border: "1px solid rgba(255,255,255,.16)", borderRadius: "18px", color: "#fff",
-            background: "linear-gradient(135deg,rgba(11,18,34,.97),rgba(27,36,58,.94))",
-            boxShadow: "0 8px 18px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.07)",
-            fontFamily: "Inter,Segoe UI,sans-serif", opacity: "0", transform: "translateX(38px) scale(.97)",
-            transition: "opacity .46s ease, transform .46s cubic-bezier(.2,.9,.2,1)", pointerEvents: "none",
-        });
-        document.body.appendChild(nativeToast);
-    }
+function showDeckyToast(item) {
     const rarity = Number(item.rarityPercentage);
-    nativeToast.replaceChildren();
-    const icon = document.createElement("div");
-    Object.assign(icon.style, { width: "58px", height: "58px", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "13px", background: "rgba(250,204,21,.12)", color: "#facc15", fontSize: "28px" });
-    if (item.iconUrl) {
-        const image = document.createElement("img");
-        image.src = item.iconUrl;
-        image.alt = "";
-        Object.assign(image.style, { width: "100%", height: "100%", objectFit: "cover" });
-        icon.appendChild(image);
-    }
-    else
-        icon.textContent = "◆";
-    const copy = document.createElement("div");
-    copy.style.minWidth = "0";
-    const label = document.createElement("div");
-    label.textContent = "ACHIEVEMENT UNLOCKED";
-    Object.assign(label.style, { color: "#facc15", fontSize: "10px", fontWeight: "800", letterSpacing: ".11em" });
-    const name = document.createElement("div");
-    name.textContent = item.achievementName || "Achievement unlocked";
-    Object.assign(name.style, { fontSize: "16px", fontWeight: "800", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "4px" });
-    const game = document.createElement("div");
-    game.textContent = item.gameTitle || "Non-Steam game";
-    Object.assign(game.style, { color: "rgba(255,255,255,.66)", fontSize: "11px", fontWeight: "650", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "4px" });
-    copy.append(label, name, game);
-    const rarityLabel = document.createElement("div");
-    rarityLabel.textContent = Number.isFinite(rarity) ? `${rarity.toFixed(1)}% players` : "";
-    Object.assign(rarityLabel.style, { alignSelf: "end", color: "rgba(255,255,255,.56)", fontSize: "10px", fontWeight: "700" });
-    nativeToast.append(icon, copy, rarityLabel);
-    window.clearTimeout(hideTimer);
-    requestAnimationFrame(() => { if (nativeToast) {
-        nativeToast.style.opacity = "1";
-        nativeToast.style.transform = "translateX(0) scale(1)";
-    } });
-    hideTimer = window.setTimeout(() => { if (nativeToast) {
-        nativeToast.style.opacity = "0";
-        nativeToast.style.transform = "translateX(28px) scale(.98)";
-    } }, 8000);
+    toaster.toast({
+        title: SP_JSX.jsx("span", { style: { color: "#facc15", fontSize: "11px", fontWeight: 800, letterSpacing: ".08em" }, children: "ACHIEVEMENT UNLOCKED" }),
+        body: SP_JSX.jsx("span", { style: { fontSize: "16px", fontWeight: 800 }, children: item.achievementName || "Achievement unlocked" }),
+        subtext: SP_JSX.jsxs("span", { children: [item.gameTitle || "Non-Steam game", Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""] }),
+        logo: item.iconUrl
+            ? SP_JSX.jsx("img", { src: item.iconUrl, alt: "", style: { width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" } })
+            : SP_JSX.jsx(FaTrophy, { style: { color: "#facc15", fontSize: "30px" } }),
+        duration: 8000,
+        playSound: true,
+        showToast: true,
+    });
 }
 function Content() {
-    return SP_JSX.jsx(DFL.PanelSection, { title: "Notifications", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => showNativeToast({ achievementName: "Battlefield Martial Artist", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 }), children: "Show test notification" }) }) });
+    return SP_JSX.jsx(DFL.PanelSection, { title: "Notifications", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => showDeckyToast({ achievementName: "Battlefield Martial Artist", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 }), children: "Show test notification" }) }) });
 }
 var index = definePlugin(() => {
-    const listener = addEventListener("achievement_unlocked", showNativeToast);
+    const listener = addEventListener("achievement_unlocked", showDeckyToast);
     return {
         name: "Japanese Dashboard Achievements",
         titleView: SP_JSX.jsx("div", { className: DFL.staticClasses.Title, children: "Japanese Dashboard" }),
