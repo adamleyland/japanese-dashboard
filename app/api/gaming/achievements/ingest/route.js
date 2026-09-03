@@ -20,9 +20,10 @@ function text(value, maxLength = 500) {
 export async function POST(request) {
   try {
     const payload = await request.json().catch(() => ({}));
-    const provider = payload?.source === "steam-deck" ? "steam-deck" : "local";
+    const isSteamDeck = payload?.source === "steam-deck";
+    const provider = "local";
     const configuredSecret = String(
-      provider === "steam-deck"
+      isSteamDeck
         ? process.env.STEAM_DECK_SYNC_TOKEN
         : process.env.LOCAL_ACHIEVEMENT_SYNC_SECRET,
     ).trim();
@@ -46,7 +47,7 @@ export async function POST(request) {
       .eq("provider_game_id", gameId)
       .maybeSingle();
     if (gameError) throw gameError;
-    if (!game && provider === "steam-deck") {
+    if (!game && isSteamDeck) {
       const snapshot = await getLocalAchievementSnapshot({ admin, userId, gameId });
       const gameRecordId = await persistAchievementSnapshot({
         admin,

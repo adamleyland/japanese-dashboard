@@ -16,6 +16,21 @@ export const dynamic = "force-dynamic";
 const CACHE_MS = 30 * 60 * 1000;
 const SUPPORTED_PROVIDERS = new Set(["steam", "xbox", "local", "steam-deck"]);
 
+function storageProvider(provider) {
+  // The existing database constraint predates the visible Deck source. Deck
+  // records are safely namespaced by provider_game_id, so reuse local storage.
+  return provider === "steam-deck" ? "local" : provider;
+}
+
+function errorMessage(error, fallback = "Unable to sync achievements.") {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && typeof error.message === "string") {
+    return error.message;
+  }
+  if (typeof error === "string" && error) return error;
+  return fallback;
+}
+
 async function readAchievementGame(admin, userId, provider, providerGameId) {
   const { data, error } = await admin.from("achievement_games")
     .select("*, achievements(*)")
@@ -39,8 +54,9 @@ async function createSnapshot({ admin, userId, provider, gameId, title }) {
 
 async function syncAchievements({ admin, userId, provider, gameId, title }) {
   const snapshot = await createSnapshot({ admin, userId, provider, gameId, title });
-  await persistAchievementSnapshot({ admin, userId, provider, providerGameId: gameId, snapshot });
-  return readAchievementGame(admin, userId, provider, gameId);
+  const persistedProvider = storageProvider(provider);
+  await persistAchievementSnapshot({ admin, userId, provider: persistedProvider, providerGameId: gameId, snapshot });
+  return readAchievementGame(admin, userId, persistedProvider, gameId);
 }
 
 export async function GET(request) {
@@ -58,7 +74,7 @@ export async function GET(request) {
       if (error) throw error;
       return NextResponse.json({
         summaries: (data || []).map((game) => ({
-          key: `${game.provider}:${game.provider_game_id}`,
+          key: `${game.provider === "local" && game.provider_game_id.startsWith("steam-deck-shortcut:") ? "steam-deck" : game.provider}:${game.provider_game_id}`,
           unlocked: (game.achievements || []).filter((item) => item.unlocked).length,
           total: (game.achievements || []).length,
           lastSyncedAt: game.last_synced_at,
@@ -74,7 +90,8 @@ export async function GET(request) {
     if (!provider || !gameId) return NextResponse.json({ error: "provider and gameId are required." }, { status: 400 });
     if (!SUPPORTED_PROVIDERS.has(provider)) return NextResponse.json({ error: `Achievement provider ${provider} is not supported yet.` }, { status: 400 });
 
-    const cached = await readAchievementGame(admin, user.id, provider, gameId);
+    const persistedProvider = storageProvider(provider);
+    const cached = await readAchievementGame(admin, user.id, persistedProvider, gameId);
     const stale = !cached?.last_synced_at || Date.now() - new Date(cached.last_synced_at).getTime() > CACHE_MS;
     if (!forceRefresh && cached && !stale) return NextResponse.json({ game: cached, cached: true });
 
@@ -82,13 +99,14 @@ export async function GET(request) {
       const game = await syncAchievements({ admin, userId: user.id, provider, gameId, title });
       return NextResponse.json({ game, cached: false });
     } catch (syncError) {
-      await recordAchievementSyncError({ admin, userId: user.id, provider, providerGameId: gameId, error: syncError });
+      await recordAchievementSyncError({ admin, userId: user.id, provider: persistedProvider, providerGameId: gameId, error: syncError });
       if (cached) {
         return NextResponse.json({ game: cached, cached: true, warning: syncError instanceof Error ? syncError.message : "Achievement refresh failed." });
       }
       throw syncError;
     }
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to sync achievements." }, { status: 500 });
+    console.error("Achievement sync failed", error);
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
