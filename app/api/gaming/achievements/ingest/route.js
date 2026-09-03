@@ -67,7 +67,7 @@ export async function POST(request) {
 
     const ids = updates.map((item) => text(item?.id, 255)).filter(Boolean);
     const { data: rows, error: rowsError } = await admin.from("achievements")
-      .select("id, provider_achievement_id, name, icon_url, rarity_percentage, unlocked, progress_current, progress_target")
+      .select("id, provider_achievement_id, name, description, icon_url, rarity_percentage, unlocked, progress_current, progress_target")
       .eq("achievement_game_id", game.id)
       .in("provider_achievement_id", ids);
     if (rowsError) throw rowsError;
@@ -97,6 +97,7 @@ export async function POST(request) {
         newlyUnlockedAchievements.push({
           achievementId: existing.provider_achievement_id,
           achievementName: existing.name,
+          description: existing.description,
           gameTitle: game.game_name,
           iconUrl: existing.icon_url,
           rarityPercentage: existing.rarity_percentage,

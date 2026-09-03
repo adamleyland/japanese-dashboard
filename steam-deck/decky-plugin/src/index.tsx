@@ -4,6 +4,7 @@ import { FaTrophy } from "react-icons/fa";
 
 type Achievement = {
   achievementName?: string;
+  description?: string;
   gameTitle?: string;
   iconUrl?: string;
   rarityPercentage?: number | null;
@@ -16,7 +17,7 @@ function showDeckyToast(item: Achievement) {
   const rarity = Number(item.rarityPercentage);
   toaster.toast({
     title: <span style={{ color: "#facc15", fontSize: "11px", fontWeight: 800, letterSpacing: ".08em" }}>ACHIEVEMENT UNLOCKED</span>,
-    body: <span style={{ fontSize: "16px", fontWeight: 800 }}>{item.achievementName || "Achievement unlocked"}</span>,
+    body: <span><strong style={{ display: "block", fontSize: "16px" }}>{item.achievementName || "Achievement unlocked"}</strong>{item.description ? <span style={{ display: "block", marginTop: "3px", opacity: .82 }}>{item.description}</span> : null}</span>,
     subtext: <span>{item.gameTitle || "Non-Steam game"}{Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""}</span>,
     logo: item.iconUrl
       ? <img src={item.iconUrl} alt="" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" }} />
@@ -75,7 +76,7 @@ function showNativeToast(item: Achievement) {
 }
 
 function Content() {
-  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showDeckyToast({ achievementName: "Battlefield Martial Artist", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
+  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showDeckyToast({ achievementName: "Battlefield Martial Artist", description: "Master the fundamentals and win your first major battle.", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
 }
 
 export default definePlugin(() => {
