@@ -11,6 +11,7 @@
     "enrich:audiobooks": "node ./scripts/enrich-audiobooks.js",
     "sync:audiobooks": "node ./scripts/sync-audiobooks.js",
     "sync:steam-local": "node ./scripts/sync-steam-local-games.js",
+    "setup:steam-deck": "bash ./steam-deck/install.sh",
     "sync:local-achievements": "node ./scripts/watch-local-achievements.js",
     "watch:local-achievements": "node ./scripts/watch-local-achievements.js --watch",
     "audit:local-achievements": "node ./scripts/audit-local-achievement-sources.js",

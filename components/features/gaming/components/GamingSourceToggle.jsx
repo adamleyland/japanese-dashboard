@@ -2,6 +2,7 @@
 
 import { EyeOff, Library } from "lucide-react";
 import { PillSliderToggle } from "@/components/dashboard/DictionaryCarousel";
+import { Gamepad2 } from "lucide-react";
 import { SteamGlyph, XboxGlyph } from "@/components/features/gaming/components/GamingSourceIcons";
 
 export default function GamingSourceToggle({
@@ -65,8 +66,14 @@ export default function GamingSourceToggle({
             },
             ariaLabel: `Xbox games - ${statusLabel("xbox")}`,
           },
+          {
+            value: "steam-deck",
+            label: "Deck",
+            icon: Gamepad2,
+            ariaLabel: `Steam Deck games - ${statusLabel("steam-deck")}`,
+          },
         ]}
-        width={isMobile ? (fillWidth ? "calc(100% - 48px)" : 160) : isCompact ? 286 : 330}
+        width={isMobile ? (fillWidth ? "calc(100% - 48px)" : 206) : isCompact ? 360 : 410}
         size="sm"
         iconOnly={isMobile}
       />

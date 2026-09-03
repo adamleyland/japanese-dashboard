@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const CACHE_MS = 30 * 60 * 1000;
-const SUPPORTED_PROVIDERS = new Set(["steam", "xbox", "local"]);
+const SUPPORTED_PROVIDERS = new Set(["steam", "xbox", "local", "steam-deck"]);
 
 async function readAchievementGame(admin, userId, provider, providerGameId) {
   const { data, error } = await admin.from("achievement_games")

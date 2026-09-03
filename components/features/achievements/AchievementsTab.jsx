@@ -21,7 +21,7 @@ function AchievementDetail({ game, onClose }) {
 export default function AchievementsTab({ gamingData }) {
   const [selectedGame, setSelectedGame] = useState(null);
   const [notificationMessage, setNotificationMessage] = useState("");
-  const games = useMemo(() => gamingData.games.filter((game) => ["steam", "xbox", "local"].includes(game.source)), [gamingData.games]);
+  const games = useMemo(() => gamingData.games.filter((game) => ["steam", "xbox", "local", "steam-deck"].includes(game.source)), [gamingData.games]);
   if (selectedGame) return <AchievementDetail game={selectedGame} onClose={() => setSelectedGame(null)} />;
   const triggerTestAchievement = async () => {
     if (!("Notification" in window)) { setNotificationMessage("Windows notifications are not available in this browser."); return; }

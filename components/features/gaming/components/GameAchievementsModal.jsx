@@ -15,8 +15,9 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
   const metadata = game.raw?.metadata || {};
   const achievements = data.game?.achievements || [];
   const unlocked = achievements.filter((item) => item.unlocked).length;
-  const hero = (game.source === "local" && metadata.heroArtworkUrl) || art.heroArtworkUrl || game.headerArtworkUrl || "/window.svg";
-  const logo = (game.source === "local" && metadata.logoArtworkUrl) || art.logoArtworkUrl;
+  const isCompanionGame = game.source === "local" || game.source === "steam-deck";
+  const hero = (isCompanionGame && metadata.heroArtworkUrl) || art.heroArtworkUrl || game.headerArtworkUrl || "/window.svg";
+  const logo = (isCompanionGame && metadata.logoArtworkUrl) || art.logoArtworkUrl;
 
   useEffect(() => {
     const handler = (event) => { if (event.key === "Escape") onClose(); };
@@ -43,7 +44,7 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
             <div style={s.actionGroup}>
               {canLaunchGame(game) ? <a className="gaming-expanded-play-button" href={game.launchUrl} style={{ ...s.icon, ...s.play }} aria-label={`Play ${game.title} through Steam`} title="Play through Steam"><Play size={15} fill="currentColor"/>Play</a> : null}
               <button type="button" style={{ ...s.icon, opacity: data.loading ? .62 : 1 }} disabled={data.loading} aria-label="Sync achievements" title="Sync achievements" onClick={data.refresh}><RefreshCw size={16}/></button>
-              {game.source === "local" ? <button type="button" style={s.icon} aria-label="Artwork settings" onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={16}/></button> : null}
+              {isCompanionGame ? <button type="button" style={s.icon} aria-label="Artwork settings" onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={16}/></button> : null}
               <button type="button" style={s.icon} aria-label="Close" onClick={onClose}><X size={18}/></button>
             </div>
           </div>

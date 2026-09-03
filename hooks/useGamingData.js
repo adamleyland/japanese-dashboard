@@ -157,6 +157,15 @@ export function useGamingData(options = {}) {
     [includeOverrides, mergedGames],
   );
 
+  const steamDeckGames = useMemo(
+    () => localGames.games.filter((game) => game.source === "steam-deck"),
+    [localGames.games],
+  );
+  const desktopLocalGames = useMemo(
+    () => localGames.games.filter((game) => game.source === "local"),
+    [localGames.games],
+  );
+
   const setGameIncluded = useCallback((game, includeInOverallTotal) => {
     const storageKey = getGameStorageKey(game);
     const previousIncluded = Object.prototype.hasOwnProperty.call(includeOverrides, storageKey)
@@ -224,12 +233,12 @@ export function useGamingData(options = {}) {
   }, [localGames, steamGames, xboxGames]);
 
   const updateLocalArtwork = useCallback(async (game, { coverImageUrl, heroArtworkUrl, logoArtworkUrl }) => {
-    if (game?.source !== "local") return;
+    if (!["local", "steam-deck"].includes(game?.source)) return;
     const response = await fetch("/api/gaming/local/games", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId: game.sourceGameId, name: game.title, coverImageUrl, metadataProvider: game.metadataProvider || "manual", metadata: { ...(game.raw?.metadata || {}), heroArtworkUrl, logoArtworkUrl } }) });
     const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Unable to save artwork."); localGames.refresh();
   }, [localGames]);
   const deleteLocalGame = useCallback(async (game) => {
-    if (game?.source !== "local") return;
+    if (!["local", "steam-deck"].includes(game?.source)) return;
     const response = await fetch(`/api/gaming/local/games?gameId=${encodeURIComponent(game.sourceGameId)}`, { method: "DELETE" });
     const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Unable to delete local game."); localGames.refresh();
   }, [localGames]);
@@ -245,7 +254,12 @@ export function useGamingData(options = {}) {
     sourceStatus: {
       steam: steamGames,
       xbox: xboxGames,
-      local: localGames,
+      local: { ...localGames, games: desktopLocalGames },
+      "steam-deck": {
+        ...localGames,
+        games: steamDeckGames,
+        configured: steamDeckGames.length > 0,
+      },
     },
     achievementSummaries: achievementSummaries.summaries,
     updateLocalArtwork,
