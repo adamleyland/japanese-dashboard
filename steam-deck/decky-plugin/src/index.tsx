@@ -1,5 +1,5 @@
 import { ButtonItem, PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
-import { addEventListener, callable, definePlugin, removeEventListener } from "@decky/api";
+import { addEventListener, definePlugin, removeEventListener } from "@decky/api";
 import { FaTrophy } from "react-icons/fa";
 
 type Achievement = {
@@ -9,7 +9,6 @@ type Achievement = {
   rarityPercentage?: number | null;
 };
 
-const testNotification = callable<[], void>("test_notification");
 let nativeToast: HTMLDivElement | null = null;
 let hideTimer = 0;
 
@@ -61,7 +60,7 @@ function showNativeToast(item: Achievement) {
 }
 
 function Content() {
-  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => testNotification()}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
+  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showNativeToast({ achievementName: "Battlefield Martial Artist", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
 }
 
 export default definePlugin(() => {

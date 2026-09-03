@@ -1,6 +1,6 @@
 {
   "name": "japanese-dashboard-achievements",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Japanese Dashboard achievement overlay for Decky Loader",
   "type": "module",
   "scripts": { "build": "rollup -c" },
