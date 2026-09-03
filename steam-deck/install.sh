@@ -14,11 +14,15 @@ SERVICE_DIR="$HOME/.config/systemd/user"
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$SERVICE_DIR"
 install -m 755 "$SCRIPT_DIR/tracker.py" "$INSTALL_DIR/steam-deck-tracker.py"
 
-read -r -p "Dashboard URL (for example https://dashboard.example.com): " DASHBOARD_URL
-read -r -s -p "Steam Deck sync token: " STEAM_DECK_SYNC_TOKEN
-echo
-printf 'DASHBOARD_URL=%s\nSTEAM_DECK_SYNC_TOKEN=%s\n' "$DASHBOARD_URL" "$STEAM_DECK_SYNC_TOKEN" > "$CONFIG_DIR/steam-deck.env"
-chmod 600 "$CONFIG_DIR/steam-deck.env"
+if [[ "${1:-}" != "--update" || ! -s "$CONFIG_DIR/steam-deck.env" ]]; then
+  read -r -p "Dashboard URL (for example https://dashboard.example.com): " DASHBOARD_URL
+  read -r -s -p "Steam Deck sync token: " STEAM_DECK_SYNC_TOKEN
+  echo
+  printf 'DASHBOARD_URL=%s\nSTEAM_DECK_SYNC_TOKEN=%s\n' "$DASHBOARD_URL" "$STEAM_DECK_SYNC_TOKEN" > "$CONFIG_DIR/steam-deck.env"
+  chmod 600 "$CONFIG_DIR/steam-deck.env"
+else
+  echo "Keeping the existing dashboard URL and sync token."
+fi
 
 cat > "$SERVICE_DIR/japanese-dashboard-steam-deck.service" <<EOF
 [Unit]

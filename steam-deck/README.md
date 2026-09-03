@@ -20,6 +20,20 @@ Generate a token with `openssl rand -hex 32`. Deploy the dashboard after adding 
 3. Open Konsole in the repository and run `bash steam-deck/install.sh`.
 4. Enter the deployed dashboard URL and the same sync token when prompted.
 
+## Updating an existing installation
+
+Download the latest `install.sh` and `tracker.py` into the same folder, then run:
+
+```bash
+bash install.sh --update
+```
+
+The update keeps the saved dashboard URL and token, replaces the tracker, and restarts the service.
+
+## Achievements
+
+The same service scans each non-Steam shortcut's Proton prefix and game directory for common local `achievements.json`, `achievements.ini`, and `user_stats.ini` formats. Recognised unlocks sync automatically. Games that use a proprietary or cloud-only achievement store still retain playtime tracking and achievement definitions, but their unlock state may need a format-specific adapter.
+
 Verify the service with:
 
 ```bash

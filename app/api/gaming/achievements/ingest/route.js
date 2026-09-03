@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { getLocalAchievementSnapshot } from "@/lib/achievements/local-provider";
+import { persistAchievementSnapshot } from "@/lib/achievements/server-utils";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -17,13 +19,18 @@ function text(value, maxLength = 500) {
 
 export async function POST(request) {
   try {
-    const configuredSecret = String(process.env.LOCAL_ACHIEVEMENT_SYNC_SECRET || "").trim();
+    const payload = await request.json().catch(() => ({}));
+    const provider = payload?.source === "steam-deck" ? "steam-deck" : "local";
+    const configuredSecret = String(
+      provider === "steam-deck"
+        ? process.env.STEAM_DECK_SYNC_TOKEN
+        : process.env.LOCAL_ACHIEVEMENT_SYNC_SECRET,
+    ).trim();
     const suppliedSecret = text(request.headers.get("authorization")).replace(/^Bearer\s+/i, "");
     if (!configuredSecret || !safeEqual(configuredSecret, suppliedSecret)) {
       return NextResponse.json({ error: "Invalid companion sync credentials." }, { status: 401 });
     }
 
-    const payload = await request.json().catch(() => ({}));
     const userId = text(process.env.LOCAL_GAMES_USER_ID, 100);
     const gameId = text(payload.gameId, 255);
     const updates = Array.isArray(payload.achievements) ? payload.achievements : [];
@@ -32,13 +39,24 @@ export async function POST(request) {
     }
 
     const admin = getSupabaseAdminClient();
-    const { data: game, error: gameError } = await admin.from("achievement_games")
+    let { data: game, error: gameError } = await admin.from("achievement_games")
       .select("id")
       .eq("user_id", userId)
-      .eq("provider", "local")
+      .eq("provider", provider)
       .eq("provider_game_id", gameId)
       .maybeSingle();
     if (gameError) throw gameError;
+    if (!game && provider === "steam-deck") {
+      const snapshot = await getLocalAchievementSnapshot({ admin, userId, gameId });
+      const gameRecordId = await persistAchievementSnapshot({
+        admin,
+        userId,
+        provider,
+        providerGameId: gameId,
+        snapshot: { ...snapshot, trackingMode: "steam-deck-companion" },
+      });
+      game = { id: gameRecordId };
+    }
     if (!game) return NextResponse.json({ error: "Sync this local game's achievement definitions first." }, { status: 404 });
 
     const ids = updates.map((item) => text(item?.id, 255)).filter(Boolean);
