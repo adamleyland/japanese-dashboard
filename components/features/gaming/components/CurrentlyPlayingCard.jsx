@@ -186,7 +186,7 @@ export default function CurrentlyPlayingCard({
                     <img src={achievement.icon_url || "/window.svg"} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }}/>
                     <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
                       <strong style={{ fontSize: "12px", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{achievement.name}</strong>
-                      <span style={{ fontSize: "10.5px", lineHeight: 1.25, color: "var(--app-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{achievement.description || (achievement.metadata?.hidden ? "Hidden achievement" : "Achievement unlocked")}</span>
+                      <span style={{ fontSize: "10.5px", lineHeight: 1.25, color: "var(--app-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{/^hidden achievement\.?$/i.test(achievement.description?.trim() || "") ? "Secret achievement unlocked." : achievement.description || "Achievement unlocked"}</span>
                     </div>
                     <span style={{ fontSize: "10px", color: "var(--app-text-muted)", whiteSpace: "nowrap" }}>{formatBritishOrdinalDate(achievement.unlocked_at)}</span>
                   </div>

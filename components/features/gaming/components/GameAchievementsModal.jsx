@@ -63,7 +63,7 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
           {data.loading && !data.game ? <div style={{ padding: "26px 0", textAlign: "center", color: "var(--app-text-muted)", fontSize: 13 }}>Syncing achievement progress…</div> : null}
           <div style={s.collectionHeader}><h3 style={s.collectionTitle}>Achievements</h3><span style={s.collectionCount}>{unlocked} / {achievements.length}</span></div>
           <div style={s.completionTrack}><div style={{ ...s.completionFill, width: `${achievements.length ? unlocked / achievements.length * 100 : 0}%` }}/></div>
-          <div style={s.grid}>{achievements.map((item) => <article key={item.id} style={{ ...s.card, opacity: item.unlocked ? 1 : .62 }}><img src={(item.unlocked ? item.icon_url : item.icon_locked_url) || item.icon_url || "/window.svg"} alt="" style={{ ...s.achievementImage, filter: item.unlocked ? "none" : "grayscale(1)" }}/><div style={s.achievementBody}><div style={s.achievementCopy}><strong style={s.achievementName}>{item.name}</strong><p style={s.achievementDescription}>{item.description || (item.metadata?.hidden ? "Hidden achievement" : "No description provided.")}</p></div><AchievementMeta item={item}/><AchievementProgress item={item}/></div></article>)}</div>
+          <div style={s.grid}>{achievements.map((item) => <article key={item.id} style={{ ...s.card, opacity: item.unlocked ? 1 : .62 }}><img src={(item.unlocked ? item.icon_url : item.icon_locked_url) || item.icon_url || "/window.svg"} alt="" style={{ ...s.achievementImage, filter: item.unlocked ? "none" : "grayscale(1)" }}/><div style={s.achievementBody}><div style={s.achievementCopy}><strong style={s.achievementName}>{item.name}</strong><p style={s.achievementDescription}>{achievementDescription(item)}</p></div><AchievementMeta item={item}/><AchievementProgress item={item}/></div></article>)}</div>
         </main>
       </section>
     </div>,
@@ -72,6 +72,11 @@ export default function GameAchievementsModal({ game, onClose, onUpdateLocalArtw
 }
 
 function Stat({ icon, label, value }) { return <div className="gaming-expanded-stat" style={s.stat}><small style={s.statLabel}>{icon}{label}</small><strong style={s.statValue}>{value}</strong></div>; }
+function achievementDescription(item) {
+  const hiddenPlaceholder = /^hidden achievement\.?$/i.test(item.description?.trim() || "");
+  if (item.unlocked && (hiddenPlaceholder || (!item.description && item.metadata?.hidden))) return "Secret achievement unlocked.";
+  return item.description || (item.metadata?.hidden ? "Hidden achievement" : "No description provided.");
+}
 function AchievementMeta({ item }) {
   const unlockedAt = formatBritishOrdinalDate(item.unlocked_at);
   const statusLabel = unlockedAt ? `Unlocked ${unlockedAt}` : "Locked";

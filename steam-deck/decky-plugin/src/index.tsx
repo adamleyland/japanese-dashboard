@@ -16,7 +16,10 @@ let hideTimer = 0;
 function showDeckyToast(item: Achievement) {
   const rarity = Number(item.rarityPercentage);
   const achievementName = item.achievementName || "Achievement unlocked";
-  const description = item.description || "A new achievement has been unlocked.";
+  const hiddenDescription = /^hidden achievement\.?$/i.test(item.description?.trim() || "");
+  const description = hiddenDescription
+    ? "Secret achievement unlocked."
+    : item.description || "A new achievement has been unlocked.";
   const gameDetails = `${item.gameTitle || "Non-Steam game"}${Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""}`;
   toaster.toast({
     title: achievementName,
