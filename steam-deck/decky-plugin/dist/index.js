@@ -88,20 +88,23 @@ let nativeToast = null;
 let hideTimer = 0;
 function showDeckyToast(item) {
     const rarity = Number(item.rarityPercentage);
+    const achievementName = item.achievementName || "Achievement unlocked";
+    const description = item.description || "A new achievement has been unlocked.";
+    const gameDetails = `${item.gameTitle || "Non-Steam game"}${Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""}`;
     toaster.toast({
-        title: SP_JSX.jsx("span", { style: { color: "#facc15", fontSize: "11px", fontWeight: 800, letterSpacing: ".08em" }, children: "ACHIEVEMENT UNLOCKED" }),
-        body: SP_JSX.jsxs("span", { children: [SP_JSX.jsx("strong", { style: { display: "block", fontSize: "16px" }, children: item.achievementName || "Achievement unlocked" }), item.description ? SP_JSX.jsx("span", { style: { display: "block", marginTop: "3px", opacity: .82 }, children: item.description }) : null] }),
-        subtext: SP_JSX.jsxs("span", { children: [item.gameTitle || "Non-Steam game", Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""] }),
+        title: achievementName,
+        body: description,
+        subtext: gameDetails,
         logo: item.iconUrl
-            ? SP_JSX.jsx("img", { src: item.iconUrl, alt: "", style: { width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" } })
-            : SP_JSX.jsx(FaTrophy, { style: { color: "#facc15", fontSize: "30px" } }),
+            ? SP_JSX.jsx("img", { src: item.iconUrl, alt: "", style: { width: "44px", height: "44px", borderRadius: "6px", objectFit: "cover", display: "block" } })
+            : SP_JSX.jsx(FaTrophy, { style: { color: "#facc15", fontSize: "28px" } }),
         duration: 8000,
         playSound: true,
         showToast: true,
     });
 }
 function Content() {
-    return SP_JSX.jsx(DFL.PanelSection, { title: "Notifications", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => showDeckyToast({ achievementName: "Battlefield Martial Artist", description: "Master the fundamentals and win your first major battle.", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 }), children: "Show test notification" }) }) });
+    return SP_JSX.jsx(DFL.PanelSection, { title: "Notifications", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => showDeckyToast({ achievementName: "Battlefield Martial Artist", description: "Master the fundamentals and win your first major battle.", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4, iconUrl: "https://www.jpdashboard.app/images/shadowing/bonsai-tree.png" }), children: "Show test notification" }) }) });
 }
 var index = definePlugin(() => {
     const listener = addEventListener("achievement_unlocked", showDeckyToast);

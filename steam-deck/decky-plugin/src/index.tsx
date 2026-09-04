@@ -15,13 +15,16 @@ let hideTimer = 0;
 
 function showDeckyToast(item: Achievement) {
   const rarity = Number(item.rarityPercentage);
+  const achievementName = item.achievementName || "Achievement unlocked";
+  const description = item.description || "A new achievement has been unlocked.";
+  const gameDetails = `${item.gameTitle || "Non-Steam game"}${Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""}`;
   toaster.toast({
-    title: <span style={{ color: "#facc15", fontSize: "11px", fontWeight: 800, letterSpacing: ".08em" }}>ACHIEVEMENT UNLOCKED</span>,
-    body: <span><strong style={{ display: "block", fontSize: "16px" }}>{item.achievementName || "Achievement unlocked"}</strong>{item.description ? <span style={{ display: "block", marginTop: "3px", opacity: .82 }}>{item.description}</span> : null}</span>,
-    subtext: <span>{item.gameTitle || "Non-Steam game"}{Number.isFinite(rarity) ? ` · ${rarity.toFixed(1)}% players` : ""}</span>,
+    title: achievementName,
+    body: description,
+    subtext: gameDetails,
     logo: item.iconUrl
-      ? <img src={item.iconUrl} alt="" style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" }} />
-      : <FaTrophy style={{ color: "#facc15", fontSize: "30px" }} />,
+      ? <img src={item.iconUrl} alt="" style={{ width: "44px", height: "44px", borderRadius: "6px", objectFit: "cover", display: "block" }} />
+      : <FaTrophy style={{ color: "#facc15", fontSize: "28px" }} />,
     duration: 8000,
     playSound: true,
     showToast: true,
@@ -76,7 +79,7 @@ function showNativeToast(item: Achievement) {
 }
 
 function Content() {
-  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showDeckyToast({ achievementName: "Battlefield Martial Artist", description: "Master the fundamentals and win your first major battle.", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4 })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
+  return <PanelSection title="Notifications"><PanelSectionRow><ButtonItem layout="below" onClick={() => showDeckyToast({ achievementName: "Battlefield Martial Artist", description: "Master the fundamentals and win your first major battle.", gameTitle: "Japanese Dashboard", rarityPercentage: 12.4, iconUrl: "https://www.jpdashboard.app/images/shadowing/bonsai-tree.png" })}>Show test notification</ButtonItem></PanelSectionRow></PanelSection>;
 }
 
 export default definePlugin(() => {
